@@ -958,13 +958,29 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             ws_opt = pyo.SolverFactory('ipopt')
             ws_opt.options['print_level'] = 3 if not tee else 5
             ws_opt.options['max_iter'] = 5000
+            # Relax acceptable tolerances so warm-start exits sooner
+            # (default acceptable_tol=1e-6 may not be reached; 
+            #  the goal is a good starting point, not full NLP optimality)
+            ws_opt.options['acceptable_tol'] = 1e-4
+            ws_opt.options['acceptable_constr_viol_tol'] = 1e-4
+            ws_opt.options['acceptable_dual_inf_tol'] = 1e-2
+            
+            # Extract IPOPT-compatible options from solver_options
+            # (options without 'bonmin.' prefix are IPOPT options passed through)
+            if solver_options:
+                for key, val in solver_options.items():
+                    if not key.startswith('bonmin.'):
+                        ws_opt.options[key] = val
+            
             ws_results = ws_opt.solve(model, tee=tee)
             ws_tc = str(ws_results.solver.termination_condition)
             ws_msg = str(getattr(ws_results.solver, 'message', '') or '')
             print(f"  NLP warm-start termination: {ws_tc}")
             print(f"  NLP warm-start message:     {ws_msg}")
-            if ws_tc in ('optimal', 'locallyOptimal', 'feasible'):
+            if ws_tc in ('optimal', 'locallyOptimal', 'feasible', 'acceptable'):
                 print("  SUCCESS: Variable values initialized from NLP solution.")
+            elif 'Acceptable' in ws_msg or 'acceptable' in ws_msg:
+                print("  SUCCESS: Variable values initialized from acceptable NLP solution.")
             else:
                 print("  WARNING: NLP did not converge optimally, but variable values may still help.")
             print("=" * 60)
