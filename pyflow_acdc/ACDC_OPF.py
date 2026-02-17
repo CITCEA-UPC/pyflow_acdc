@@ -967,9 +967,11 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             
             # Extract IPOPT-compatible options from solver_options
             # (options without 'bonmin.' prefix are IPOPT options passed through)
+            # Skip warm_start_init_point/mu_init — those are for post-warmstart solves
+            ws_skip = {'warm_start_init_point', 'mu_init', 'warm_start_bound_push', 'warm_start_mult_bound_push'}
             if solver_options:
                 for key, val in solver_options.items():
-                    if not key.startswith('bonmin.'):
+                    if not key.startswith('bonmin.') and key not in ws_skip:
                         ws_opt.options[key] = val
             
             ws_results = ws_opt.solve(model, tee=tee)
