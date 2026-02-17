@@ -775,10 +775,19 @@ def _parse_highs_log(log_path):
     return feasible_solutions, all_solutions
 
 def _parse_ipopt_log(log_path):
-    """Parse Ipopt log file to extract iteration progress.
-    Returns list of (time, objective, iteration, nlp_call_num, is_feasible) tuples.
+    """Parse Ipopt log file to extract iteration progress and final solution.
+    Returns list of (iteration, objective, is_feasible) tuples.
+    
+    Feasibility is determined by inf_pr (primal infeasibility):
+      - During iterations: inf_pr < 1e-4 (relaxed, since IPOPT's acceptable
+        tolerance is ~1e-6 and per-iteration inf_pr can oscillate)
+      - Final solution: captured from the EXIT line and summary statistics
     """
     progress_events = []
+    final_objective = None
+    final_iteration = None
+    exit_acceptable = False
+    exit_optimal = False
     
     try:
         with open(log_path, 'r') as f:
@@ -786,24 +795,34 @@ def _parse_ipopt_log(log_path):
                 # Look for Ipopt iteration lines like:
                 # iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
                 #   0  1.5929771e+10 1.00e+00 1.00e+00  -1.0 1.00e+00    -  1.00e+00 1.00e+00   0
-                if re.match(r'^\s*\d+\s+[\d\.eE\+\-]+\s+', line.strip()):
+                if re.match(r'^\s*\d+r?\s+[\d\.eE\+\-]+\s+', line.strip()):
                     parts = line.strip().split()
-                    if len(parts) >= 3:  # Need at least iter, obj, inf_pr
+                    if len(parts) >= 3:
                         try:
-                            iteration = int(parts[0])
+                            iteration = int(parts[0].rstrip('r'))
                             objective = float(parts[1])
-                            inf_pr = float(parts[2])  # Primal infeasibility
+                            inf_pr = float(parts[2])
                             
-                            # Determine feasibility based on inf_pr (typically < 1e-6 is feasible)
-                            is_feasible = inf_pr < 1e-6
+                            is_feasible = inf_pr < 1e-4
                             
-                            # For time, we'll use cumulative iteration count as proxy
-                            # (since Ipopt doesn't always show per-iteration time)
-                            progress_events.append((iteration, objective,is_feasible))
+                            progress_events.append((iteration, objective, is_feasible))
+                            final_objective = objective
+                            final_iteration = iteration
                         except (ValueError, IndexError):
                             continue
+                
+                # Capture EXIT status
+                if 'EXIT: Optimal Solution Found' in line:
+                    exit_optimal = True
+                elif 'EXIT: Solved To Acceptable Level' in line:
+                    exit_acceptable = True
     except (FileNotFoundError, IOError):
         pass
+    
+    # If IPOPT declared optimal or acceptable, ensure the final point is marked feasible
+    if (exit_optimal or exit_acceptable) and progress_events:
+        last_iter, last_obj, _ = progress_events[-1]
+        progress_events[-1] = (last_iter, last_obj, True)
     
     return progress_events
 
@@ -883,7 +902,7 @@ def reset_to_initialize(model, initial_values):
 
 
 def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=None, callback=False, 
-              suppress_warnings=False, solver_options=None, objective_name=None):
+              suppress_warnings=False, solver_options=None, objective_name=None, nlp_warmstart=False):
     """
     Generic Pyomo model solver with support for custom solver parameters.
     
@@ -914,6 +933,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         - Minotaur: {'specific_solver': 'mglob', 'executable': '/path/to/minotaur', 'time_limit': 3600, ...}
     objective_name : str, optional
         Name of objective function in model (default: tries 'obj' then 'objective')
+    nlp_warmstart : bool, default=False
+        If True and solver is a MINLP solver (bonmin, minotaur), first solve the NLP
+        relaxation with IPOPT to initialize all variable values. This gives the MINLP
+        solver a much better starting point for its root-node NLP solve.
     
     Returns:
     --------
@@ -925,6 +948,30 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     solver = solver.lower()
     feasible_solutions = []  # Always defined, but only populated if callback is used
     all_solutions = []  # Always defined, but only populated if callback is used
+
+    # NLP warm-start: solve continuous relaxation with IPOPT first
+    if nlp_warmstart and solver in ('bonmin', 'minotaur'):
+        print("=" * 60)
+        print("NLP WARM-START: Solving continuous relaxation with IPOPT...")
+        print("=" * 60)
+        try:
+            ws_opt = pyo.SolverFactory('ipopt')
+            ws_opt.options['print_level'] = 3 if not tee else 5
+            ws_opt.options['max_iter'] = 5000
+            ws_results = ws_opt.solve(model, tee=tee)
+            ws_tc = str(ws_results.solver.termination_condition)
+            ws_msg = str(getattr(ws_results.solver, 'message', '') or '')
+            print(f"  NLP warm-start termination: {ws_tc}")
+            print(f"  NLP warm-start message:     {ws_msg}")
+            if ws_tc in ('optimal', 'locallyOptimal', 'feasible'):
+                print("  SUCCESS: Variable values initialized from NLP solution.")
+            else:
+                print("  WARNING: NLP did not converge optimally, but variable values may still help.")
+            print("=" * 60)
+        except Exception as e:
+            print(f"  NLP warm-start failed: {e}")
+            print("  Proceeding with default initialization.")
+            print("=" * 60)
 
     # Check for MixedBinCont warning (only if grid is provided)
     if grid is not None and hasattr(grid, 'MixedBinCont') and grid.MixedBinCont and solver == 'ipopt':
