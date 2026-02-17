@@ -1022,7 +1022,7 @@ def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NP
 
     s=1
 
-def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clustering_options=None,ObjRule=None,solver='bonmin',tee=False,callback=False,alpha=None,limit_flow_rate=True,obj_scaling=1.0):
+def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clustering_options=None,ObjRule=None,solver='bonmin',tee=False,callback=False,alpha=None,limit_flow_rate=True,obj_scaling=1.0,solver_options=None):
     
     analyse_grid(grid)
 
@@ -1055,7 +1055,7 @@ def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clust
     t_modelcreate = t2-t1
     if tee : 
         print('Model loaded') 
-    model_results,solver_stats = pyomo_model_solve(model,grid,solver,tee,callback=callback)
+    model_results,solver_stats = pyomo_model_solve(model,grid,solver,tee,callback=callback,solver_options=solver_options)
     
     t1 = time.perf_counter()
     TEP_multiScenario_res = ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones)   

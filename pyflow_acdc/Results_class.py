@@ -47,7 +47,7 @@ class Results:
             print(method_name)
     # def export(self):
 
-    def All(self, decimals=None, export_location=None, export_type=None):
+    def All(self, decimals=None, export_location=None, export_type=None,print_table=True, file_name=None):
         # Allow overriding configuration for this run
         if decimals is not None:
             self.dec = decimals
@@ -63,59 +63,59 @@ class Results:
                 os.makedirs(self.export_location, exist_ok=True)
       
         if self.Grid.Clustering_information != {}:
-            self.Clustering_results()
+            self.Clustering_results(print_table=print_table)
         if self.Grid.nodes_AC != []:
-            self.AC_Powerflow()
-            self.AC_voltage()
-            self.AC_lines_current()
-            self.AC_lines_power()
+            self.AC_Powerflow(print_table=print_table)
+            self.AC_voltage(print_table=print_table)
+            self.AC_lines_current(print_table=print_table)
+            self.AC_lines_power(print_table=print_table)
         
         if self.Grid.nodes_DC != []:
             if self.Grid.nconv != 0:
-                self.Converter()
-            self.DC_bus()
-            self.DC_lines_current()
-            self.DC_lines_power()
+                self.Converter(print_table=print_table)
+            self.DC_bus(print_table=print_table)
+            self.DC_lines_current(print_table=print_table)
+            self.DC_lines_power(print_table=print_table)
             
 
             if self.Grid.Converters_DCDC != []:
-                self.DC_converter()
+                self.DC_converter(print_table=print_table)
         
         if self.Grid.nodes_AC != [] and self.Grid.nodes_DC != []:
-            self.Slack_All()
+            self.Slack_All(print_table=print_table)
             
         elif self.Grid.nodes_AC != []:
-            self.Slack_AC()
+            self.Slack_AC(print_table=print_table)
 
-        self.Power_loss()
+        self.Power_loss(print_table=print_table)
         if self.Grid.OPF_run :
             if self.Grid.Generators != [] or self.Grid.Generators_DC != []:
-                self.Ext_gen()
+                self.Ext_gen(print_table=print_table)
             if self.Grid.RenSources:
-                self.Ext_REN()
+                self.Ext_REN(print_table=print_table)
             if not self.Grid.TEP_run and not self.Grid.MP_TEP_run:
-                self.OBJ_res()
+                self.OBJ_res(print_table=print_table)
             if self.Grid.Price_Zones != []: 
-                self.Price_Zone()    
+                self.Price_Zone(print_table=print_table)    
         if self.Grid.lines_AC_exp+self.Grid.lines_AC_rec+self.Grid.lines_AC_ct != []:
-            self.AC_exp_lines_power()
+            self.AC_exp_lines_power(print_table=print_table)
         if self.Grid.TEP_run:    
-            self.TEP_N()
+            self.TEP_N(print_table=print_table)
             if self.Grid.TEP_multiScenario_res is not None:
-                self.TEP_TS_norm()
-                self.TEP_multiScenario_res()
+                self.TEP_TS_norm(print_table=print_table)
+                self.TEP_multiScenario_res(print_table=print_table)
                 s=1
             else:
-                self.TEP_norm()
+                self.TEP_norm(print_table=print_table)
         if self.Grid.MP_TEP_run:
-            self.MP_TEP_results()
-            self.MP_TEP_obj_res()
+            self.MP_TEP_results(print_table=print_table)
+            self.MP_TEP_obj_res(print_table=print_table)
         # Final separator for All() run
         print('------')
 
         # Optional Excel export of all collected tables
         if self.save_res and self.export_type == "excel" and self.tables:
-            base_name = getattr(self.Grid, "name", None) or "pyflowacdc"
+            base_name = file_name if file_name else (getattr(self.Grid, "name", None) or "pyflowacdc")
             excel_path = os.path.join(self.export_location, f"{base_name}_results.xlsx")
             with pd.ExcelWriter(excel_path) as writer:
                 for name, df in self.tables.items():
@@ -125,25 +125,25 @@ class Results:
                     sheet_name = name[:31]
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-    def All_AC(self):
-        self.AC_Powerflow()
-        self.AC_voltage()
-        self.AC_lines_current()
-        self.AC_lines_power()
-        self.Slack_AC()
-        self.Power_loss_AC()
+    def All_AC(self, print_table=True):
+        self.AC_Powerflow(print_table=print_table)
+        self.AC_voltage(print_table=print_table)
+        self.AC_lines_current(print_table=print_table)
+        self.AC_lines_power(print_table=print_table)
+        self.Slack_AC(print_table=print_table)
+        self.Power_loss_AC(print_table=print_table)
 
-    def All_DC(self):
+    def All_DC(self, print_table=True):
 
         if self.Grid.nconv != 0:
-            self.Converter()
+            self.Converter(print_table=print_table)
 
-        self.DC_bus()
+        self.DC_bus(print_table=print_table)
 
-        self.DC_lines_current()
-        self.DC_lines_power()
-        self.Slack_DC()
-        self.Power_loss_DC()
+        self.DC_lines_current(print_table=print_table)
+        self.DC_lines_power(print_table=print_table)
+        self.Slack_DC(print_table=print_table)
+        self.Power_loss_DC(print_table=print_table)
 
     def Slack_All(self, print_table=True):
         rows = []
@@ -1242,6 +1242,49 @@ class Results:
         for key in self.Grid.Clustering_information:
             if key.startswith('technique_'):
                 self.Clustering_technique(key, print_table)
+        self.Cluster_representatives(print_table=print_table)
+
+    def Cluster_representatives(self, print_table=True):
+        """
+        Display cluster representatives (centroids/medoids) for each clustering run.
+        Each row is a cluster, columns are the time series features plus Weight and Count.
+        """
+        if not hasattr(self.Grid, 'Clusters') or not self.Grid.Clusters:
+            return pd.DataFrame()
+
+        all_dfs = {}
+        for n_clusters, cluster_data in self.Grid.Clusters.items():
+            reps = cluster_data.get('Representatives', None)
+            if reps is None or not isinstance(reps, pd.DataFrame):
+                continue
+
+            df = reps.copy()
+            df.insert(0, 'Cluster', range(1, len(df) + 1))
+
+            # Round numeric columns
+            numeric_cols = df.select_dtypes(include='number').columns
+            df[numeric_cols] = df[numeric_cols].round(self.dec)
+
+            table_name = f"Cluster_Representatives_{n_clusters}"
+            self.tables[table_name] = df
+            all_dfs[n_clusters] = df
+
+            if print_table:
+                print(f'\n--------------')
+                print(f'Cluster Representatives (k={n_clusters})')
+                print('')
+                table = pt()
+                table.field_names = list(df.columns)
+                for col in table.field_names:
+                    table.align[col] = 'r'
+                table.align[table.field_names[0]] = 'c'
+                for _, row in df.iterrows():
+                    table.add_row([row[c] for c in df.columns])
+                print(table)
+
+        if len(all_dfs) == 1:
+            return list(all_dfs.values())[0]
+        return all_dfs
                 
     def Clustering_technique(self, key, print_table=True):
         """
@@ -2297,3 +2340,159 @@ class Results:
             df_combined.to_csv(csv_filename, index=False)
 
         return df_combined
+
+    def pyomo_model_results(self, model, solver_stats=None, model_results=None, print_table=True):
+        """
+        Extract and display solver/model information from a solved Pyomo model.
+
+        Parameters
+        ----------
+        model : pyomo.ConcreteModel
+            The solved Pyomo model.
+        solver_stats : dict, optional
+            Dictionary returned by pyomo_model_solve (contains time, termination, etc.).
+        model_results : pyomo SolverResults, optional
+            Raw Pyomo solver results object returned by pyomo_model_solve.
+        print_table : bool
+            Whether to print a PrettyTable summary.
+
+        Returns
+        -------
+        df : pd.DataFrame
+            Single-row DataFrame with all solver/model statistics.
+        """
+        try:
+            import pyomo.environ as pyo
+        except ImportError:
+            print("Pyomo is not installed — cannot extract model results.")
+            return pd.DataFrame()
+
+        obj_scaling = getattr(model, 'obj_scaling', 1.0)
+
+        # --- Objective value ---
+        obj_value_scaled = None
+        obj_value_real = None
+        try:
+            obj_comp = next(model.component_objects(pyo.Objective, active=True))
+            obj_value_scaled = pyo.value(obj_comp)
+            obj_value_real = obj_value_scaled * obj_scaling
+        except (StopIteration, ValueError):
+            pass
+
+        # --- Model dimensions ---
+        n_vars = sum(len(v) for v in model.component_objects(pyo.Var, active=True))
+        n_constraints = sum(len(c) for c in model.component_objects(pyo.Constraint, active=True))
+        n_objectives = sum(1 for _ in model.component_objects(pyo.Objective, active=True))
+
+        # Count integer/binary variables
+        n_integer = 0
+        n_binary = 0
+        n_continuous = 0
+        for var_obj in model.component_objects(pyo.Var, active=True):
+            for idx in var_obj:
+                v = var_obj[idx]
+                if v.domain is pyo.Binary or v.domain is pyo.Boolean:
+                    n_binary += 1
+                elif v.domain is pyo.Integers or v.domain is pyo.NonNegativeIntegers or v.domain is pyo.PositiveIntegers:
+                    n_integer += 1
+                else:
+                    n_continuous += 1
+
+        # --- Solver statistics (from solver_stats dict) ---
+        solver_name = None
+        solve_time = None
+        termination = None
+        solution_found = None
+        has_callback = False
+        n_feasible_solutions = 0
+        solver_message = ''
+
+        if solver_stats is not None:
+            solver_name = solver_stats.get('solver', None)
+            solve_time = solver_stats.get('time', None)
+            termination = solver_stats.get('termination_condition', None)
+            solution_found = solver_stats.get('solution_found', None)
+            solver_message = solver_stats.get('solver_message', '') or ''
+            feasible = solver_stats.get('feasible_solutions', [])
+            has_callback = len(feasible) > 0 if feasible else False
+            n_feasible_solutions = len(feasible) if feasible else 0
+
+            # Refine termination: detect "acceptable" from IPOPT message
+            if termination == 'optimal' and 'Acceptable' in solver_message:
+                termination = 'acceptable'
+
+        # --- Extra info from raw Pyomo results ---
+        lower_bound = None
+        upper_bound = None
+        gap = None
+
+        if model_results is not None:
+            try:
+                lb = getattr(model_results.problem, 'lower_bound', None)
+                ub = getattr(model_results.problem, 'upper_bound', None)
+                if lb is not None and np.isfinite(lb):
+                    lower_bound = lb
+                if ub is not None and np.isfinite(ub):
+                    upper_bound = ub
+                if lower_bound is not None and upper_bound is not None and upper_bound != 0:
+                    gap = abs(upper_bound - lower_bound) / max(abs(upper_bound), 1e-10)
+            except (AttributeError, TypeError):
+                pass
+
+            try:
+                time_limit_info = getattr(model_results.solver, 'time', None)
+                if time_limit_info and solve_time is None:
+                    solve_time = time_limit_info
+            except AttributeError:
+                pass
+
+        # --- Build row, only include fields that carry useful info ---
+        row = {}
+        row['Model Name'] = getattr(model, 'name', '')
+        if solver_name:
+            row['Solver'] = solver_name
+        row['Termination'] = termination
+        row['Solution Found'] = solution_found
+
+        if obj_scaling != 1.0:
+            row['Objective (scaled)'] = np.round(obj_value_scaled, decimals=self.dec) if obj_value_scaled is not None else None
+            row['Objective (real)'] = np.round(obj_value_real, decimals=self.dec) if obj_value_real is not None else None
+            row['Obj Scaling'] = f'{obj_scaling:.0e}'
+        else:
+            row['Objective'] = np.round(obj_value_real, decimals=self.dec) if obj_value_real is not None else None
+
+        row['Solve Time (s)'] = np.round(solve_time, decimals=self.dec) if solve_time is not None else None
+
+        if lower_bound is not None:
+            row['Lower Bound'] = np.round(lower_bound, decimals=self.dec)
+        if upper_bound is not None:
+            row['Upper Bound'] = np.round(upper_bound, decimals=self.dec)
+        if gap is not None and np.isfinite(gap):
+            row['Gap'] = np.round(gap, decimals=6)
+        if has_callback:
+            row['Feasible Solutions'] = n_feasible_solutions
+
+        row['Variables'] = n_vars
+        row['Continuous'] = n_continuous
+        if n_integer > 0:
+            row['Integer'] = n_integer
+        if n_binary > 0:
+            row['Binary'] = n_binary
+        row['Constraints'] = n_constraints
+
+        df = pd.DataFrame([row])
+        self.tables["Pyomo_Model_Results"] = df
+
+        if print_table:
+            print('--------------')
+            print('Pyomo Model Results')
+            print('')
+            table = pt()
+            table.field_names = ['Property', 'Value']
+            table.align['Property'] = 'l'
+            table.align['Value'] = 'r'
+            for key, val in row.items():
+                table.add_row([key, val])
+            print(table)
+
+        return df

@@ -441,7 +441,8 @@ def  identify_correlations(grid,time_series=[], correlation_threshold=0,cv_thres
                         
                         if scale_groups:
                             scaling_factor = np.sqrt(len(group_list))
-                            print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
+                            if print_details:
+                                print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
                             data_scaled[max_var_col] *= scaling_factor
                         
                         columns_to_drop.extend([col for col in group_list if col != max_var_col])
@@ -499,12 +500,14 @@ def  identify_correlations(grid,time_series=[], correlation_threshold=0,cv_thres
                         
                         if scale_groups:
                             scaling_factor = np.sqrt(len(group_list))
-                            print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
+                            if print_details:
+                                print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
                             data_scaled[max_cor_col] *= scaling_factor
                         
                         columns_to_drop.extend([col for col in group_list if col != max_cor_col])
                 
-                print(f"\nDropping {len(columns_to_drop)} columns from scaled data: {columns_to_drop}")
+                if print_details:
+                    print(f"\nDropping {len(columns_to_drop)} columns from scaled data: {columns_to_drop}")
                 data_scaled = data_scaled.drop(columns=columns_to_drop)
     
         
@@ -698,6 +701,7 @@ def cluster_TS(grid, n_clusters, time_series=[], central_market=[], algorithm='K
     cluster_idx = {k: np.where(labels == k)[0].tolist() for k in np.unique(labels)}
     grid.Clusters[n_clusters]['Cluster idx'] = cluster_idx
     grid.Clusters[n_clusters]['Labels'] = labels
+    grid.Clusters[n_clusters]['Representatives'] = clusters.copy()
 
     for ts in grid.Time_series:
         if not hasattr(ts, 'data_clustered') or not isinstance(ts.data_clustered, dict):
@@ -739,7 +743,7 @@ def _run_clustering_algorithm(grid, n_clusters, data, data_scaled, scaler, print
                                                                 print_details=print_details, scaler_type=scaler_type, **kwargs)
     return n_clusters,clusters, returns, data_info
 
-def _process_clusters(grid, data, cluster_centers):
+def _process_clusters(grid, data, cluster_centers, representative_indices=None):
     """
     Process clustering results and update grid with cluster information.
     
@@ -751,11 +755,16 @@ def _process_clusters(grid, data, cluster_centers):
         Time series data used for clustering
     cluster_centers : numpy.ndarray
         Array containing the centroids/medoids of each cluster
+    representative_indices : array-like, optional
+        Original data row indices of the representative points (medoids).
+        For k-medoids these are the actual time-step indices; for centroid-
+        based methods this is None (centroids are synthetic).
         
     Returns:
     --------
-    grid : pandapower.Grid
-        Updated grid object with cluster information
+    clusters : pandas.DataFrame
+        DataFrame with cluster representatives, counts, weights, and
+        optionally the representative index.
     """
     new_columns = [col for col in data.columns if col != 'Cluster']
     n_clusters = len(cluster_centers)
@@ -773,18 +782,8 @@ def _process_clusters(grid, data, cluster_centers):
     clusters.insert(0, 'Cluster Count', cluster_counts.values)
     clusters.insert(1, 'Weight', cluster_weights.values)
     
-    
-    # Update grid with cluster weights
-    # grid.Clusters['Weight'][n_clusters] = clusters['Weight'].to_numpy(dtype=float)
-    # grid.Clusters['Cluster Count'][n_clusters] = cluster_counts.values
-    # grid.Clusters['Cluster idx'][n_clusters] = clusters['Cluster'].values
-    # Update time series with clustered data
-    #for ts in grid.Time_series:
-    #    if not hasattr(ts, 'data_clustered') or not isinstance(ts.data_clustered, dict):
-    #        ts.data_clustered = {}
-    #    name = ts.name
-    #    ts.data_clustered[n_clusters] = clusters[name].to_numpy(dtype=float)
-    
+    if representative_indices is not None:
+        clusters.insert(0, 'Rep. Index', representative_indices)
     return clusters
 
 
@@ -870,7 +869,7 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
         print_clustering_results("K-medoids", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=medoid_indices)
     return processed_results, [CoV, kmedoids.inertia_], [data_scaled, labels]
 
 
@@ -904,6 +903,7 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
     time_taken = time.perf_counter() - start_time
     
     all_centers = []
+    rep_indices = [] if use_medoids else None
     for i in range(n_clusters):
         cluster_mask = labels == i
         cluster_data = data[cluster_mask]
@@ -915,6 +915,7 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
             medoid_idx = distances.sum(axis=1).argmin()
             cluster_center = cluster_data.iloc[medoid_idx]
             all_centers.append(cluster_center.values)
+            rep_indices.append(cluster_data.index[medoid_idx])
         else:
             # Use mean (centroid)
             cluster_means = cluster_data.mean()
@@ -953,7 +954,7 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
         print_clustering_results(cluster_label, n_clusters, specific_info)
 
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
 
     return processed_results, [CoV, kmeans.inertia_, kmeans.n_iter_], [data_scaled, labels]
 
@@ -1108,7 +1109,7 @@ def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_de
         print_clustering_results("PAM hierarchical", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=medoid_indices)
     return processed_results, CoV, [data_scaled, labels]
 
 
@@ -1503,11 +1504,13 @@ def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     for i in range(actual_clusters):
         cluster_mask = best_labels == i
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
@@ -1548,7 +1551,7 @@ def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
         print_clustering_results("OPTICS", actual_clusters, specific_info)
     
     data['Cluster'] = best_labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
 
 def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, initial_eps=0.5, print_details=False, scaler_type='robust'):
@@ -1586,6 +1589,7 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     valid_labels = best_labels[best_labels >= 0]
     unique_clusters = np.unique(valid_labels)
     for i in range(len(unique_clusters)):
@@ -1594,6 +1598,7 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
@@ -1634,7 +1639,7 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
         print_clustering_results("DBSCAN", actual_clusters, specific_info)
     
     data['Cluster'] = best_labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
 
 
@@ -1704,11 +1709,13 @@ def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assig
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     for i in range(n_clusters):
         cluster_mask = labels == i
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
@@ -1759,7 +1766,7 @@ def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assig
         print_clustering_results("Spectral", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return processed_results, CoV, [data_scaled, labels]
 
 def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=5, min_samples=None, cluster_selection_method='eom', print_details=False, scaler_type='robust'):
@@ -1804,11 +1811,13 @@ def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     for i in range(actual_clusters):
         cluster_mask = labels == i
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
@@ -1852,7 +1861,7 @@ def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=
         print_clustering_results("HDBSCAN", actual_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return actual_clusters, processed_results, CoV, [data_scaled, labels]
 
 def find_medoid(cluster_data):

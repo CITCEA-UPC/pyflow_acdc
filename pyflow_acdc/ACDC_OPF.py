@@ -982,11 +982,22 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             return None, None
 
     obj_scaling = getattr(model, 'obj_scaling', 1.0)
+
+    # Extract solver message for more detailed termination info
+    solver_message = ''
+    if results:
+        try:
+            solver_message = str(getattr(results.solver, 'message', '') or '')
+        except (AttributeError, TypeError):
+            pass
+
     solver_stats = {
+        'solver': solver,
         'iterations': None,
         'best_objective': getattr(results.problem, 'upper_bound', None) if results else None,
         'time': getattr(results.solver, 'time', None) if results else None,
         'termination_condition': str(results.solver.termination_condition) if results else None,
+        'solver_message': solver_message,
         'feasible_solutions': feasible_solutions,
         'all_solutions': all_solutions,
         'solution_found': False,  # Will be set below
