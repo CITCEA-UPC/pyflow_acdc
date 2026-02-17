@@ -86,7 +86,7 @@ def obj_w_rule(grid,ObjRule,OnlyGen):
 
 
 
-def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',tee=False,callback=False):
+def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',tee=False,callback=False,obj_scaling=1.0):
     grid.reset_run_flags()
     analyse_grid(grid)
 
@@ -127,7 +127,10 @@ def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',
   
     obj_rule= OPF_obj_L(model,grid,weights_def)
 
+    if obj_scaling != 1.0:
+        obj_rule = obj_rule / obj_scaling
     model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
     
                 
     """
@@ -163,7 +166,7 @@ def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',
     }
     return model, model_res , timing_info, solver_stats
 
-def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,limit_flow_rate=True,solver='ipopt',tee=False,callback=False):
+def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,limit_flow_rate=True,solver='ipopt',tee=False,callback=False,obj_scaling=1.0):
     grid.reset_run_flags()
     analyse_grid(grid)
 
@@ -197,7 +200,10 @@ def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,lim
     
     obj_rule= OPF_obj(model,grid,weights_def,OnlyGen)
 
+    if obj_scaling != 1.0:
+        obj_rule = obj_rule / obj_scaling
     model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
     """
     """
     
@@ -975,6 +981,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         except (ValueError, AttributeError):
             return None, None
 
+    obj_scaling = getattr(model, 'obj_scaling', 1.0)
     solver_stats = {
         'iterations': None,
         'best_objective': getattr(results.problem, 'upper_bound', None) if results else None,
@@ -982,7 +989,8 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'termination_condition': str(results.solver.termination_condition) if results else None,
         'feasible_solutions': feasible_solutions,
         'all_solutions': all_solutions,
-        'solution_found': False  # Will be set below
+        'solution_found': False,  # Will be set below
+        'obj_scaling': obj_scaling,
     }
 
     # Determine if a feasible solution was found

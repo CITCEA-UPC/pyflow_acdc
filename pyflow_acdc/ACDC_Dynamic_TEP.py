@@ -332,7 +332,7 @@ def _MP_TEP_variables(model,grid):
         model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_Conv_bounds_install_opt)
         model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
         
-def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,callback=False,solver_options=None):
+def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,callback=False,solver_options=None,obj_scaling=1.0):
     grid.reset_run_flags()
     analyse_grid(grid)
     weights_def, PZ = obj_w_rule(grid,ObjRule,True)
@@ -421,7 +421,10 @@ def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,d
     
 
     net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate)
+    if obj_scaling != 1.0:
+        net_cost = net_cost / obj_scaling
     model.obj = pyo.Objective(rule=net_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
     
     t2 = time.time()
 
@@ -748,7 +751,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
 
 def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760, 
                        discount_rate=0.02, clustering_options=None, ObjRule=None, 
-                       solver='bonmin'):
+                       solver='bonmin', obj_scaling=1.0):
     """
     Multi-period Transmission Expansion Planning with time series clustering.
     Hierarchical model structure:
@@ -799,7 +802,10 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
 
     
     net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate)
+    if obj_scaling != 1.0:
+        net_cost = net_cost / obj_scaling
     model.obj = pyo.Objective(rule=net_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
 
 
     # 10. Solve the model

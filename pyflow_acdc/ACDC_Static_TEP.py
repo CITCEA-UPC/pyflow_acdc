@@ -527,7 +527,7 @@ def GEN_balance_constraints(model,grid):
     
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, rule=gen_type_balance_rule)
     
-def transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,export=True,PV_set=False,alpha=None,callback=False,solver_options=None):
+def transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,export=True,PV_set=False,alpha=None,callback=False,solver_options=None,obj_scaling=1.0):
     grid.reset_run_flags()
     t1 = time.perf_counter()
     model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule,PV_set)
@@ -541,7 +541,10 @@ def transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,O
         obj_OPF *= (1-alpha)
 
     total_cost = obj_TEP + obj_OPF
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
 
     t2 = time.perf_counter()  
     t_modelcreate = t2-t1
@@ -575,7 +578,7 @@ def transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,O
     }
     return model, model_results , timing_info, solver_stats
 
-def linear_transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,solver='gurobi',time_limit=300,tee=False,export=True,fs=False):
+def linear_transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,solver='gurobi',time_limit=300,tee=False,export=True,fs=False,obj_scaling=1.0):
     grid.reset_run_flags()
     analyse_grid(grid)
     
@@ -600,7 +603,10 @@ def linear_transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate
     
 
     total_cost = obj_TEP + obj_OPF
-    model.obj = pyo.Objective(rule=obj_TEP, sense=pyo.minimize)
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
+    model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
 
     t2 = time.perf_counter()  
     t_modelcreate = t2-t1
@@ -652,7 +658,7 @@ def _initialize_MS_STEP_sets_model(model,grid):
     if grid.GPR:
         model.gen_AC = pyo.Set(initialize=list(range(0,grid.n_gen)))
 
-def alpha_paretto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,solver='bonmin',time_limit=99999,tee=False,save_name=None):
+def alpha_paretto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,solver='bonmin',time_limit=99999,tee=False,save_name=None,obj_scaling=1.0):
     model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule)
     present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
     if NPV:
@@ -663,7 +669,10 @@ def alpha_paretto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=8760,discount_rate=0
     modified_obj_OPF = obj_OPF * (1-model.alpha)
 
     total_cost = modified_obj_TEP + modified_obj_OPF
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
     
     # Store initial values for resetting
     
@@ -690,7 +699,7 @@ def alpha_paretto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=8760,discount_rate=0
             'alpha': a,
             'obj_TEP': pyo.value(obj_TEP),
             'obj_OPF': pyo.value(obj_OPF),
-            'Total_cost': pyo.value(model.obj),
+            'Total_cost': pyo.value(model.obj) * obj_scaling,
             'Time': solver_stats.get('time', None) if solver_stats is not None else None
         }
         
@@ -723,7 +732,7 @@ def alpha_paretto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=8760,discount_rate=0
     
     return df
 
-def rate_sensitivity(grid,steps,ObjRule,min_rate=0.0,max_rate=0.1,NPV=True,n_years=25,Hy=8760,solver='bonmin',time_limit=99999,tee=False):
+def rate_sensitivity(grid,steps,ObjRule,min_rate=0.0,max_rate=0.1,NPV=True,n_years=25,Hy=8760,solver='bonmin',time_limit=99999,tee=False,obj_scaling=1.0):
    
     model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,min_rate,ObjRule)
     
@@ -735,7 +744,10 @@ def rate_sensitivity(grid,steps,ObjRule,min_rate=0.0,max_rate=0.1,NPV=True,n_yea
     obj_OPF  *= present_value
 
     total_cost = obj_TEP + obj_OPF
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
     
     # Store initial values for resetting
     
@@ -762,7 +774,7 @@ def rate_sensitivity(grid,steps,ObjRule,min_rate=0.0,max_rate=0.1,NPV=True,n_yea
             'rate': rate,
             'obj_TEP': pyo.value(obj_TEP),
             'obj_OPF': pyo.value(obj_OPF),
-            'Total_cost': pyo.value(model.obj),
+            'Total_cost': pyo.value(model.obj) * obj_scaling,
             'Time': solver_stats.get('time', None) if solver_stats is not None else None
         }
         
@@ -779,7 +791,7 @@ def rate_sensitivity(grid,steps,ObjRule,min_rate=0.0,max_rate=0.1,NPV=True,n_yea
     
     return df
 
-def kappa_sensitivity(grid,steps,ObjRule,min_kappa=0.0,max_kappa=1.0,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,solver='bonmin',time_limit=99999,tee=False):
+def kappa_sensitivity(grid,steps,ObjRule,min_kappa=0.0,max_kappa=1.0,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,solver='bonmin',time_limit=99999,tee=False,obj_scaling=1.0):
    
     model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule)
     
@@ -791,7 +803,10 @@ def kappa_sensitivity(grid,steps,ObjRule,min_kappa=0.0,max_kappa=1.0,NPV=True,n_
     obj_OPF  *= present_value
     obj_TEP *= model.kappa
     total_cost = obj_TEP + obj_OPF
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
     
     # Store initial values for resetting
     
@@ -818,7 +833,7 @@ def kappa_sensitivity(grid,steps,ObjRule,min_kappa=0.0,max_kappa=1.0,NPV=True,n_
             'kappa': kappa,
             'obj_TEP': pyo.value(obj_TEP),
             'obj_OPF': pyo.value(obj_OPF),
-            'Total_cost': pyo.value(model.obj),
+            'Total_cost': pyo.value(model.obj) * obj_scaling,
             'Time': solver_stats.get('time', None) if solver_stats is not None else None
         }
         
@@ -850,7 +865,8 @@ def comprehensive_sensitivity_analysis(
     discount_rate=0.02,
     solver='bonmin', 
     time_limit=99999, 
-    tee=False
+    tee=False,
+    obj_scaling=1.0
 ):
     """
     Comprehensive sensitivity analysis combining alpha, rate, and kappa variations.
@@ -895,7 +911,10 @@ def comprehensive_sensitivity_analysis(
     modified_obj_OPF = obj_OPF * (1 - model.alpha)
     
     total_cost = modified_obj_TEP + modified_obj_OPF
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
                 
     # Nested loops
     for alpha in alpha_values:
@@ -924,7 +943,7 @@ def comprehensive_sensitivity_analysis(
                     'kappa': kappa,
                     'obj_TEP': pyo.value(obj_TEP),
                     'obj_OPF': pyo.value(obj_OPF),
-                    'Total_cost': pyo.value(model.obj),
+                    'Total_cost': pyo.value(model.obj) * obj_scaling,
                     'Time': solver_stats.get('time', None) if solver_stats is not None else None
                 }
                 results.append(row)
@@ -944,7 +963,7 @@ def _generate_steps(steps, range_tuple):
     else:
         return np.asarray(steps, dtype=float).ravel()   
 
-def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy,alpha,limit_flow_rate):
+def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy,alpha,limit_flow_rate,obj_scaling=1.0):
        
     
     from .Time_series import  _modify_parameters    
@@ -996,11 +1015,14 @@ def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NP
         total_cost = obj_TEP + Hy*obj_weighted
     else:    
         total_cost = obj_TEP*alpha + Hy*obj_weighted*(1-alpha)
+    if obj_scaling != 1.0:
+        total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
 
     s=1
 
-def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clustering_options=None,ObjRule=None,solver='bonmin',tee=False,callback=False,alpha=None,limit_flow_rate=True):
+def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clustering_options=None,ObjRule=None,solver='bonmin',tee=False,callback=False,alpha=None,limit_flow_rate=True,obj_scaling=1.0):
     
     analyse_grid(grid)
 
@@ -1027,7 +1049,7 @@ def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clust
     #print(list(model.scenario_frames))
     model.scenario_model    = pyo.Block(model.scenario_frames)
     
-    create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy,alpha,limit_flow_rate)
+    create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy,alpha,limit_flow_rate,obj_scaling=obj_scaling)
 
     t2 = time.time()  
     t_modelcreate = t2-t1

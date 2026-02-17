@@ -585,7 +585,7 @@ def _modify_parameters(grid,model,Price_Zones):
     
     
                 
-def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=False,expand=False,print_step=False,limit_flow_rate=True,use_clusters=False,solver='ipopt'):
+def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=False,expand=False,print_step=False,limit_flow_rate=True,use_clusters=False,solver='ipopt',obj_scaling=1.0):
     idx = start-1
     TS_len = len(grid.Time_series[0].data)
     total_solve_time  = 0
@@ -655,7 +655,10 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
         initial_values[var_obj.name] = {index: var_obj[index].value for index in var_obj}
 
     obj_rule= OPF_obj(model,grid,weights_def,OnlyGen=True)
+    if obj_scaling != 1.0:
+        obj_rule = obj_rule / obj_scaling
     model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
 
     if expand:
         for price_zone in grid.Price_Zones:
