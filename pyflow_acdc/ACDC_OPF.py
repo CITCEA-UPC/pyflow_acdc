@@ -979,6 +979,15 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             ws_msg = str(getattr(ws_results.solver, 'message', '') or '')
             print(f"  NLP warm-start termination: {ws_tc}")
             print(f"  NLP warm-start message:     {ws_msg}")
+            
+            # Verify variable values were loaded back
+            n_vars = sum(1 for v in model.component_objects(pyo.Var, active=True) 
+                         for _ in v)
+            n_set = sum(1 for v in model.component_objects(pyo.Var, active=True) 
+                        for idx in v if v[idx].value is not None)
+            n_none = n_vars - n_set
+            print(f"  Variables: {n_vars} total, {n_set} with values, {n_none} None")
+            
             if ws_tc in ('optimal', 'locallyOptimal', 'feasible', 'acceptable'):
                 print("  SUCCESS: Variable values initialized from NLP solution.")
             elif 'Acceptable' in ws_msg or 'acceptable' in ws_msg:
