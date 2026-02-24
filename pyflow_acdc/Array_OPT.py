@@ -31,7 +31,8 @@ __all__ = [
     'sequential_CSS',
     'min_sub_connections',
     'MIP_path_graph',
-    'simple_CSS'
+    'simple_CSS',
+    'simple_assign_cable_types'
 ]
 
 
@@ -546,6 +547,34 @@ def min_sub_connections(grid, max_flow=None, solver_name='glpk', crossings=True,
     return flag, high_flow,model_MIP,feasible_solutions_MIP ,ns, i , path_time
 
 
+def simple_assign_cable_types(grid, model, t_MW=None):
+    """Assign the smallest sufficient cable type to each active branch.
+
+    For every line activated by the MIP solution (``line_used > 0.5``),
+    compute the MW flow as ``abs(line_flow) * t_MW`` and pick the first
+    cable type whose MVA rating can carry it.  Inactive lines get
+    ``active_config = -1``.
+    """
+    import pyomo.environ as pyo
+    if t_MW is None:
+        t_MW = grid.RenSources[0].PGi_ren_base*grid.S_base
+    cable_options = grid.Cable_options[0]
+    ratings = cable_options.MVA_ratings
+
+    for line in model.lines:
+        ct_line = grid.lines_AC_ct[line]
+
+        if pyo.value(model.line_used[line]) < 0.5:
+            ct_line.active_config = -1
+            continue
+
+        mw_flow = abs(pyo.value(model.line_flow[line])) * t_MW
+
+        selected = next(
+            (i for i, r in enumerate(ratings) if r >= mw_flow),
+            len(ratings) - 1,
+        )
+        ct_line.active_config = selected
 
 
 def MIP_path_graph(grid, max_flow=None, solver_name='glpk', crossings=False, tee=False,
@@ -553,7 +582,9 @@ def MIP_path_graph(grid, max_flow=None, solver_name='glpk', crossings=False, tee
                    enable_cable_types=False, t_MW=None, cab_types_allowed=None,
                    min_turbines_per_string=False, fixed_substation_connections=None,
                    min_sub_connections=False, sub_k_max=None,
-                   mip_cfg: MIPConfig | None = None):
+                   mip_cfg: MIPConfig | None = None,
+                   flow_dir_tightening='auto',
+                   solver_options_override: dict | None = None):
     """
     Solve the master MIP problem and track feasible solutions over time.
     
@@ -596,7 +627,8 @@ def MIP_path_graph(grid, max_flow=None, solver_name='glpk', crossings=False, tee
             fixed_substation_connections = mip_cfg.fixed_substation_connections
         if t_MW is None:
             t_MW = mip_cfg.t_MW
-
+    if t_MW is None:
+        t_MW = grid.RenSources[0].PGi_ren_base*grid.S_base
     # Route to appropriate backend
     if backend.lower() == 'ortools':
         if not ORTOOLS_AVAILABLE:
@@ -624,20 +656,19 @@ def MIP_path_graph(grid, max_flow=None, solver_name='glpk', crossings=False, tee
                                          min_turbines_per_string=min_turbines_per_string,
                                          fixed_substation_connections=fixed_substation_connections,
                                          min_sub_connections=min_sub_connections,
-                                         sub_k_max=sub_k_max)
+                                         sub_k_max=sub_k_max,
+                                         flow_dir_tightening=flow_dir_tightening)
     # Build solver options based on solver and grid attributes
     solver_options = {}
     time_limit = getattr(grid, "MIP_time", None)
     
     if solver_name == 'gurobi':
-        # MIPFocus: 0=balanced, 1=feasibility, 2=optimality, 3=bound improvement
-        # Default to 2 for better gap reduction
         mip_focus = getattr(grid, "MIP_focus", 2)
         solver_options = {
             'MIPFocus': mip_focus,
-            'Cuts': 2,  # Aggressive cutting
-            'Heuristics': 0.05,  # Spend 5% of time on heuristics
-            'Presolve': 2  # Aggressive presolve
+            'Cuts': 2,
+            'Heuristics': 0.05,
+            'Presolve': 2,
         }
         if MIP_gap is not None:
             solver_options['MIPGap'] = MIP_gap
@@ -647,6 +678,9 @@ def MIP_path_graph(grid, max_flow=None, solver_name='glpk', crossings=False, tee
     elif solver_name == 'highs':
         if MIP_gap is not None:
             solver_options['mip_rel_gap'] = MIP_gap
+    
+    if solver_options_override is not None:
+        solver_options.update(solver_options_override)
     
     # Use pyomo_model_solve to handle all solver logic
     results, solver_stats = pyomo_model_solve(
@@ -718,13 +752,14 @@ def MIP_path_graph(grid, max_flow=None, solver_name='glpk', crossings=False, tee
                     last_cable_type_index = len(grid.Cable_options[0]._cable_types) - 1 if grid.Cable_options and len(grid.Cable_options) > 0 else -1
                     ct_line.active_config = last_cable_type_index
 
+        model._solver_stats = solver_stats
         return True, high_flow, model, feasible_solutions
 
     else:
         print("✗ MIP model failed")
         return False, None, None, feasible_solutions
 
-def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, callback=False, MIP_gap=None, enable_cable_types=False, t_MW=None, cab_types_allowed=None, min_turbines_per_string=False, fixed_substation_connections=None,min_sub_connections=False,sub_k_max=None):
+def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, callback=False, MIP_gap=None, enable_cable_types=False, t_MW=None, cab_types_allowed=None, min_turbines_per_string=False, fixed_substation_connections=None,min_sub_connections=False,sub_k_max=None, flow_dir_tightening='auto'):
     """Solve the master MIP problem using OR-Tools CP-SAT solver."""
     if not ORTOOLS_AVAILABLE:
         raise ImportError(
@@ -735,7 +770,8 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
     
     # Create model (calculation will be done inside _create_master_problem_ortools)
     model, vars_dict = _create_master_problem_ortools(grid, crossings, max_flow, min_turbines_per_string, length_scale, 
-                                                       enable_cable_types, t_MW, cab_types_allowed, fixed_substation_connections,min_sub_connections,sub_k_max)
+                                                       enable_cable_types, t_MW, cab_types_allowed, fixed_substation_connections,min_sub_connections,sub_k_max,
+                                                       flow_dir_tightening=flow_dir_tightening)
     
     feasible_solutions = []
     feasible_solution_found = False
@@ -1103,7 +1139,8 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
                                   min_turbines_per_string=False,
                                   fixed_substation_connections=None,
                                   min_sub_connections=False,
-                                  sub_k_max=None):
+                                  sub_k_max=None,
+                                  flow_dir_tightening='auto'):
         """Create master problem using Pyomo
         
         Parameters:
@@ -1119,7 +1156,14 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
             - False: Set to 1 (minimum constraint)
             - True: Calculate automatically based on grid topology
             - int: Use the specified value directly
+        flow_dir_tightening : bool or 'auto'
+            Add auxiliary line_flow_dir binary + big-M constraints that tighten
+            the LP relaxation.  'auto' (default) enables when the number of
+            crossing groups >= 3000.
         """
+        if flow_dir_tightening == 'auto':
+            n_crossings = len(grid.crossing_groups) if hasattr(grid, 'crossing_groups') and grid.crossing_groups else 0
+            flow_dir_tightening = n_crossings >= 3000
         min_turbines_per_string, max_ct_flow, ct_flow_capacity, nT, nS = _prepare_capacity_and_min_turbines(
             grid, max_flow=max_flow, min_turbines_per_string=min_turbines_per_string,
             enable_cable_types=enable_cable_types, t_MW=t_MW, num_nodes=len(grid.nodes_AC),
@@ -1193,8 +1237,17 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
         
         # Flow variables (integer - can carry flow in either direction)
         model.line_flow = pyo.Var(model.lines, domain=pyo.Integers, bounds=line_flow_bounds)
-        model.node_flow = pyo.Var(model.nodes, domain=pyo.Integers)
-        model.line_flow_dir = pyo.Var(model.lines, domain=pyo.Binary)
+
+        def _node_flow_expr(model, node):
+            nf = 0
+            for line in model.lines:
+                line_obj = grid.lines_AC_ct[line]
+                if line_obj.fromNode.nodeNumber == node:
+                    nf += model.line_flow[line]
+                elif line_obj.toNode.nodeNumber == node:
+                    nf -= model.line_flow[line]
+            return nf
+        model.node_flow = pyo.Expression(model.nodes, rule=_node_flow_expr)
         # Objective: minimize total cable length (+ optional investment cost)
         def objective_rule(model):
             installation_cost = sum(model.line_used[line] * grid.lines_AC_ct[line].installation_cost  for line in model.lines)
@@ -1261,27 +1314,6 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
 
 
 
-        # Flow conservation for all nodes
-        def flow_conservation_rule(model, node):
-            node_flow = 0
-            
-            for line in model.lines:
-                line_obj = grid.lines_AC_ct[line]
-                from_node = line_obj.fromNode.nodeNumber
-                to_node = line_obj.toNode.nodeNumber
-            
-                if from_node == node:
-                    # This node is fromNode, so positive flow leaves this node
-                    node_flow += model.line_flow[line]
-    
-                elif to_node == node:
-                    # This node is toNode, so negative flow leaves this node
-                    node_flow -= model.line_flow[line]
-                    
-            return model.node_flow[node] == node_flow
-        
-        model.flow_conservation = pyo.Constraint(model.nodes, rule=flow_conservation_rule)
-        
         def source_node_rule(model, node):
             return model.node_flow[node] == 1
             
@@ -1381,56 +1413,39 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
             model.flow_investment_link = pyo.Constraint(model.lines, rule=flow_investment_rule)
             model.flow_investment_link_2 = pyo.Constraint(model.lines, rule=flow_investment_rule_2)
 
-        # NEW: If line is used, flow must be >= min_turbines_per_string (when positive towards substation) OR >= 1 (otherwise)
-        # OR <= -1 (when negative)
-        def flow_nonzero_positive(model, line):
-            line_obj = grid.lines_AC_ct[line]
-            to_node = line_obj.toNode
-            to_is_slack = to_node.type == 'Slack'
-            
-            # For lines connected to substations (to_is_slack), enforce min_turbines_per_string when used
-            # For other lines, enforce minimum of 1
-            if to_is_slack:
-                min_flow = min_turbines_per_string
-            else:
-                min_flow = 1
-            
-            if enable_cable_types:
-                M = max_ct_flow + 1
-            else:
-                M = max_flow + 1
-            return model.line_flow[line] >= min_flow - M * (1 - model.line_used[line]) - M * (1 - model.line_flow_dir[line])
+        # line_flow_dir: auxiliary binary for flow direction.
+        # Theoretically redundant (spanning tree implies nonzero flow on every
+        # bridge), but these big-M constraints tighten the LP relaxation
+        # dramatically and are essential for solver performance.
+        if flow_dir_tightening:
+            model.line_flow_dir = pyo.Var(model.lines, domain=pyo.Binary)
 
-        def flow_nonzero_negative(model, line):
-            # If line_used=1 and line_flow_dir=0, then line_flow <= -min_flow
-            # For lines with substation as fromNode, enforce min_turbines_per_string; otherwise -1
-            # If line_used=0 or line_flow_dir=1, this constraint is relaxed
-            line_obj = grid.lines_AC_ct[line]
-            from_node = line_obj.fromNode
-            from_is_slack = from_node.type == 'Slack'
-            
-            # For lines with substation as fromNode, enforce min_turbines_per_string when flowing negative
-            # Note: This shouldn't happen for substation-turbine edges (substations are always toNode),
-            # but included for safety and other edge types
-            if from_is_slack:
-                min_flow = min_turbines_per_string
-            else:
-                min_flow = 1
-            
-            if enable_cable_types:
-                # Use max_ct_flow (already calculated, same as max cable type capacity)
-                M = max_ct_flow + 1
-            else:
-                M = max_flow + 1
-            return model.line_flow[line] <= -min_flow + M * (1 - model.line_used[line]) + M * model.line_flow_dir[line]
+            def flow_nonzero_positive(model, line):
+                line_obj = grid.lines_AC_ct[line]
+                to_is_slack = line_obj.toNode.type == 'Slack'
+                min_flow = min_turbines_per_string if to_is_slack else 1
+                if enable_cable_types:
+                    M = max_ct_flow + 1
+                else:
+                    M = max_flow + 1
+                return model.line_flow[line] >= min_flow - M * (1 - model.line_used[line]) - M * (1 - model.line_flow_dir[line])
 
-        # Ensure direction variable is only active when line is used
-        def flow_dir_active(model, line):
-            return model.line_flow_dir[line] <= model.line_used[line]
+            def flow_nonzero_negative(model, line):
+                line_obj = grid.lines_AC_ct[line]
+                from_is_slack = line_obj.fromNode.type == 'Slack'
+                min_flow = min_turbines_per_string if from_is_slack else 1
+                if enable_cable_types:
+                    M = max_ct_flow + 1
+                else:
+                    M = max_flow + 1
+                return model.line_flow[line] <= -min_flow + M * (1 - model.line_used[line]) + M * model.line_flow_dir[line]
 
-        model.flow_nonzero_pos = pyo.Constraint(model.lines, rule=flow_nonzero_positive)
-        model.flow_nonzero_neg = pyo.Constraint(model.lines, rule=flow_nonzero_negative)
-        model.flow_dir_active = pyo.Constraint(model.lines, rule=flow_dir_active)
+            def flow_dir_active(model, line):
+                return model.line_flow_dir[line] <= model.line_used[line]
+
+            model.flow_nonzero_pos = pyo.Constraint(model.lines, rule=flow_nonzero_positive)
+            model.flow_nonzero_neg = pyo.Constraint(model.lines, rule=flow_nonzero_negative)
+            model.flow_dir_active = pyo.Constraint(model.lines, rule=flow_dir_active)
 
 
 
@@ -1455,7 +1470,8 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
 
 
 def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turbines_per_string=False, length_scale=1000,
-                                   enable_cable_types=False, t_MW=None, cab_types_allowed=None, fixed_substation_connections=None,min_sub_connections=False,sub_k_max=None):
+                                   enable_cable_types=False, t_MW=None, cab_types_allowed=None, fixed_substation_connections=None,min_sub_connections=False,sub_k_max=None,
+                                   flow_dir_tightening='auto'):
     """
     OR-Tools version of _create_master_problem_pyomo(grid, crossings=True, max_flow=None)
 
@@ -1464,8 +1480,6 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
         vars_dict: {
             "line_used": {line: BoolVar},
             "line_flow": {line: IntVar},
-            "line_flow_dir": {line: BoolVar},
-            "node_flow": {node: IntVar},
             "source_nodes": list[int],
             "sink_nodes": list[int],
         }
@@ -1475,6 +1489,10 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
             "OR-Tools is not installed. Please install it with: pip install ortools"
         )
     
+    if flow_dir_tightening == 'auto':
+        n_crossings = len(grid.crossing_groups) if hasattr(grid, 'crossing_groups') and grid.crossing_groups else 0
+        flow_dir_tightening = n_crossings >= 3000
+
     from ortools.sat.python import cp_model
 
     model = cp_model.CpModel()
@@ -1598,9 +1616,6 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
             else:
                 line_lb[l], line_ub[l] = -(max_ct_flow - 1), (max_ct_flow - 1)
     
-    # Node flow bounds: each source contributes +1, sinks absorb −1
-    max_node_flow = len(source_nodes)
-
     # --------------------
     # Variables
     # --------------------
@@ -1610,11 +1625,12 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
         for l in lines
     }
 
-    # Binary: line_flow_dir[l] = 1 for "positive" orientation, 0 for "negative"
-    line_flow_dir = {
-        l: model.NewBoolVar(f"line_flow_dir[{l}]")
-        for l in lines
-    }
+    # line_flow_dir: auxiliary binary — tightens LP relaxation (see Pyomo model)
+    if flow_dir_tightening:
+        line_flow_dir = {
+            l: model.NewBoolVar(f"line_flow_dir[{l}]")
+            for l in lines
+        }
 
     # Integer flow on each line (can be negative)
     line_flow = {
@@ -1633,11 +1649,17 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
         for ct in ct_set:
             ct_types[ct] = model.NewBoolVar(f"ct_types[{ct}]")
 
-    # Integer net flow at each node
-    node_flow = {
-        n: model.NewIntVar(-max_node_flow, max_node_flow, f"node_flow[{n}]")
-        for n in nodes
-    }
+    # node_flow replaced with inline expressions (no variable needed)
+    # Build net-flow expression per node for reuse in constraints
+    node_flow_expr = {}
+    for n in nodes:
+        terms = []
+        for l in incident_lines[n]:
+            if line_from[l] == n:
+                terms.append(line_flow[l])
+            elif line_to[l] == n:
+                terms.append(-line_flow[l])
+        node_flow_expr[n] = sum(terms) if terms else 0
 
     # --------------------
     # Objective: minimize total cable length (+ optional cable type investment cost)
@@ -1701,42 +1723,18 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
             model.Add(deg >= 1)
 
     # --------------------
-    # Flow conservation: node_flow[n] = sum(outgoing) - sum(ingoing)
-    # --------------------
-    for n in nodes:
-        expr_terms = []
-        for l in incident_lines[n]:
-            if line_from[l] == n:
-                expr_terms.append(line_flow[l])
-            elif line_to[l] == n:
-                expr_terms.append(-line_flow[l])
-            else:
-                # Should not happen
-                pass
-        if expr_terms:
-            model.Add(node_flow[n] == sum(expr_terms))
-        else:
-            model.Add(node_flow[n] == 0)
-
-    # --------------------
-    # Source nodes: node_flow[n] == 1
+    # Flow constraints using inline expressions (no node_flow variable)
     # --------------------
     for n in source_nodes:
-        model.Add(node_flow[n] == 1)
+        model.Add(node_flow_expr[n] == 1)
 
-    # --------------------
-    # Intermediate nodes: net flow = 0 (not source, not sink)
-    # --------------------
     for n in nodes:
         if n not in source_nodes_set and n not in sink_nodes_set:
-            model.Add(node_flow[n] == 0)
+            model.Add(node_flow_expr[n] == 0)
 
-    # --------------------
-    # Total sink absorption: sum(node_flow[sink]) == -len(source_nodes)
-    # --------------------
     if sink_nodes:
         model.Add(
-            sum(node_flow[n] for n in sink_nodes) == -len(source_nodes)
+            sum(node_flow_expr[n] for n in sink_nodes) == -len(source_nodes)
         )
 
     # --------------------
@@ -1781,72 +1779,27 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
             model.Add(line_flow[l] <= max_flow * line_used[l])
             model.Add(line_flow[l] >= -max_flow * line_used[l])
 
-    # --------------------
-    # Nonzero flow when line is used:
-    #   If line_used=1 and line_flow_dir=1 -> line_flow >= min_flow (min_turbines_per_string for substation lines, 1 otherwise)
-    #   If line_used=1 and line_flow_dir=0 -> line_flow <= -min_flow (min_turbines_per_string for substation lines, 1 otherwise)
-    #
-    # Using Big-M linearization (expanded to avoid product of vars)
-    # --------------------
-    if enable_cable_types:
-        M = max(ct_flow_capacity.values()) + 1 if ct_flow_capacity else max_flow + 1
-    else:
-        M = max_flow + 1
-
-    # flow_nonzero_positive:
-    # For lines with substation as toNode, enforce min_turbines_per_string; otherwise 1
-    # line_flow >= min_flow - M*(1 - line_used) - M*(1 - line_flow_dir)
-    # Expand:
-    #   = min_flow - M + M*line_used - M + M*line_flow_dir
-    #   = (min_flow - 2M) + M*line_used + M*line_flow_dir
-    for l in lines:
-        line_obj = grid.lines_AC_ct[l]
-        to_node = line_obj.toNode
-        to_is_slack = getattr(to_node, "type", None) == "Slack"
-        
-        # For lines connected to substations (to_is_slack), enforce min_turbines_per_string when used
-        # For other lines, enforce minimum of 1
-        if to_is_slack:
-            min_flow = min_turbines_per_string
+    # line_flow_dir constraints: tighten LP relaxation (essential for performance)
+    if flow_dir_tightening:
+        if enable_cable_types:
+            M = max(ct_flow_capacity.values()) + 1 if ct_flow_capacity else max_flow + 1
         else:
-            min_flow = 1
-        
-        model.Add(
-            line_flow[l] >=
-            (min_flow - 2 * M)
-            + M * line_used[l]
-            + M * line_flow_dir[l]
-        )
+            M = max_flow + 1
 
-    # flow_nonzero_negative:
-    # For lines with substation as fromNode, enforce min_turbines_per_string; otherwise 1
-    # line_flow <= -min_flow + M*(1 - line_used) + M*(line_flow_dir)
-    # Expand:
-    #   = -min_flow + M - M*line_used + M*line_flow_dir
-    for l in lines:
-        line_obj = grid.lines_AC_ct[l]
-        from_node = line_obj.fromNode
-        from_is_slack = getattr(from_node, "type", None) == "Slack"
-        
-        # For lines with substation as fromNode, enforce min_turbines_per_string when flowing negative
-        # Note: This shouldn't happen for substation-turbine edges (substations are always toNode),
-        # but included for safety and other edge types
-        if from_is_slack:
-            min_flow = min_turbines_per_string
-        else:
-            min_flow = 1
-        
-        model.Add(
-            line_flow[l] <=
-            (-min_flow + M)
-            - M * line_used[l]
-            + M * line_flow_dir[l]
-        )
+        for l in lines:
+            line_obj = grid.lines_AC_ct[l]
+            to_is_slack = getattr(line_obj.toNode, "type", None) == "Slack"
+            min_flow = min_turbines_per_string if to_is_slack else 1
+            model.Add(line_flow[l] >= (min_flow - 2*M) + M*line_flow_dir[l] + M*line_used[l])
 
-    # Direction variable only active when line is used:
-    # line_flow_dir <= line_used
-    for l in lines:
-        model.Add(line_flow_dir[l] <= line_used[l])
+        for l in lines:
+            line_obj = grid.lines_AC_ct[l]
+            from_is_slack = getattr(line_obj.fromNode, "type", None) == "Slack"
+            min_flow = min_turbines_per_string if from_is_slack else 1
+            model.Add(line_flow[l] <= (-min_flow + M) - M*line_used[l] + M*line_flow_dir[l])
+
+        for l in lines:
+            model.Add(line_flow_dir[l] <= line_used[l])
 
     # --------------------
     # Crossing constraints: at most one line per crossing group
@@ -1876,11 +1829,11 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
     vars_dict = {
         "line_used": line_used,
         "line_flow": line_flow,
-        "line_flow_dir": line_flow_dir,
-        "node_flow": node_flow,
         "source_nodes": source_nodes,
         "sink_nodes": sink_nodes,
     }
+    if flow_dir_tightening:
+        vars_dict["line_flow_dir"] = line_flow_dir
     
     if enable_cable_types:
         vars_dict["ct_branch"] = ct_branch

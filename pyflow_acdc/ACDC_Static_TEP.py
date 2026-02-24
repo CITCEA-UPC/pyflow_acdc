@@ -1073,7 +1073,7 @@ def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clust
     
     timing_info = {
     "create": t_modelcreate,
-    "solve": solver_stats['time'],
+    "solve": solver_stats.get('time', None),
     "export": t_modelexport,
     }
     
