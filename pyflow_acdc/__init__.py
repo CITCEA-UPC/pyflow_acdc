@@ -80,6 +80,7 @@ __all__ = [
     'pol2cartz',
     'cartz2pol',
     'import_orbit_cables',
+    'current_fuel_type_distribution',
     'initialize_pyflowacdc',
     
     # Power Flow

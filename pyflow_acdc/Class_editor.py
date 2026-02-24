@@ -75,6 +75,7 @@ __all__ = [
     'analyse_grid',
     'grid_state',
     'import_orbit_cables',
+    'current_fuel_type_distribution'
 ]
 
 def pol2cart(r, theta):
@@ -1498,3 +1499,74 @@ def analyse_grid(grid):
     return grid.ACmode, grid.DCmode, [grid.TEP_AC, grid.TAP_tf, grid.REC_AC, grid.CT_AC], [grid.CFC, grid.CDC], grid.GPR
     
 
+def current_fuel_type_distribution(grid, output='df'):
+    """
+    Build current generation-type distribution summary.
+
+    The summary follows Static TEP style normalization (lowercase types) and
+    includes both conventional generators and renewable sources.
+
+    Parameters
+    ----------
+    grid : Grid
+        Pyflow grid object.
+    output : str, optional
+        'df' (default) -> pandas DataFrame with columns:
+        ['Type', 'number of gen', 'total install cap', 'percentage'].
+        'dict' -> dict keyed by Type with the same fields.
+    """
+    def _norm(t):
+        return str(t).lower() if t else None
+
+    type_capacity = {}
+    type_units = {}
+
+    for gen in getattr(grid, 'Generators', []):
+        gt = _norm(getattr(gen, 'gen_type', None))
+        if gt is None:
+            continue
+        units = float(getattr(gen, 'np_gen', 1.0))
+        cap = float(getattr(gen, 'Max_pow_gen', 0.0)) * units
+        type_units[gt] = type_units.get(gt, 0.0) + units
+        type_capacity[gt] = type_capacity.get(gt, 0.0) + cap
+
+    for rs in getattr(grid, 'RenSources', []):
+        rt = _norm(getattr(rs, 'rs_type', None))
+        if rt is None:
+            continue
+        units = float(getattr(rs, 'np_rsgen', 1.0))
+        cap = float(getattr(rs, 'PGi_ren_base', 0.0)) * units
+        type_units[rt] = type_units.get(rt, 0.0) + units
+        type_capacity[rt] = type_capacity.get(rt, 0.0) + cap
+
+    total_cap = sum(type_capacity.values())
+    total_units = sum(type_units.values())
+
+    rows = []
+    for typ in sorted(type_capacity):
+        cap = type_capacity[typ]
+        units = type_units.get(typ, 0.0)
+        pct = (cap / total_cap * 100.0) if total_cap > 0 else 0.0
+        rows.append({
+            'Type': typ,
+            'number of gen': units,
+            'total install cap': cap,
+            'percentage': pct,
+        })
+
+    rows.append({
+        'Type': 'All',
+        'number of gen': total_units,
+        'total install cap': total_cap,
+        'percentage': 100.0 if total_cap > 0 else 0.0,
+    })
+
+    if output == 'df':
+        return pd.DataFrame(rows, columns=['Type', 'number of gen', 'total install cap', 'percentage'])
+    if output == 'dict':
+        return {row['Type']: {
+            'number of gen': row['number of gen'],
+            'total install cap': row['total install cap'],
+            'percentage': row['percentage'],
+        } for row in rows}
+    raise ValueError("output must be either 'df' or 'dict'")
