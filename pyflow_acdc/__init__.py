@@ -108,6 +108,7 @@ __all__ = [
     'plot_TS_res',
     'save_network_svg',
     'plot_model_feasebility',
+    'plot_3D',
     
     # Market Analysis
     'price_zone_data_pd',
@@ -146,7 +147,7 @@ try:
     # Array_OPT depends on both OPF and Static_TEP modules
     try:
         from .Array_OPT import *
-        __all__.extend(['simple_CSS', 'sequential_CSS', 'MIP_path_graph'])
+        __all__.extend(['simple_CSS', 'sequential_CSS', 'MIP_path_graph', 'simple_assign_cable_types'])
     except ImportError:
         pass
     

@@ -54,7 +54,8 @@ dependencies = ["numpy",
                 "kmedoids",
                 "openpyxl",
                 "dill",
-                "xlsxwriter"]
+                "xlsxwriter",
+                "utm"]
 
 
 [project.optional-dependencies]

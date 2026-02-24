@@ -10,6 +10,7 @@ import base64
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 import os
+import utm
 from shapely.geometry import Point, LineString,Polygon,MultiPolygon
 
 from .Classes import Node_AC
@@ -37,7 +38,8 @@ __all__ = ['plot_Graph',
            'plot_neighbour_graph',
            'plot_TS_res',
            'plot_model_feasebility',
-           'save_network_svg']
+           'save_network_svg',
+           'plot_3D']
 
 def update_ACnode_hovertext(node,S_base,text):
     # print(f"Updating hover text for node: {node.name}")
@@ -1307,6 +1309,9 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                 height - (padding + (y - miny) * scale)  # Flip Y axis
             )
         
+        _LOADING_MODES = {'loading', 'ts_max_loading', 'ts_avg_loading'}
+        _is_custom_color = coloring is not None and coloring not in _LOADING_MODES
+
         cable_type_colors = {
             0: 'cyan', 
             1: 'magenta', 
@@ -1371,22 +1376,26 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     continue
                     
                 path_data = "M "
-                for x, y in coords:
-                    svg_x, svg_y = transform_coords(x, y)
+                for c in coords:
+                    svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
                 dwg.add(dwg.path(d=path_data, stroke='black', stroke_width=2, fill='none'))
 
         # Draw AC lines
         for line in grid.lines_AC + grid.lines_AC_tf + grid.lines_AC_rec + grid.lines_AC_ct:
+            if line in grid.lines_AC_ct and getattr(line, 'active_config', 0) < 0:
+                continue
             if hasattr(line, 'geometry') and line.geometry:
                 coords = list(line.geometry.coords)
                 path_data = "M "
-                for x, y in coords:
-                    svg_x, svg_y = transform_coords(x, y)
+                for c in coords:
+                    svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]  # Remove last "L "
-                if coloring in ['loading','ts_max_loading','ts_avg_loading']:
+                if _is_custom_color:
+                    color = coloring
+                elif coloring in _LOADING_MODES:
                     if coloring == 'ts_max_loading':
                         load_show  = line.ts_max_loading
                     elif coloring == 'ts_avg_loading':
@@ -1402,11 +1411,9 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     if line in grid.lines_AC_rec and line.rec_branch:
                         color = "green"
                     elif line in grid.lines_AC_ct:
-                        if line.active_config <0:
-                            continue
                         color = cable_type_colors.get(line.active_config, "black")  
                     else:
-                        color = "red" if getattr(line, 'isTf', False) else "black"  # Original logic for other lines
+                        color = "red" if getattr(line, 'isTf', False) else "black"
                 
                 dwg.add(dwg.path(d=path_data, stroke=color, stroke_width=2, fill='none'))
         
@@ -1415,11 +1422,13 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
             if hasattr(line, 'geometry') and line.geometry:
                 coords = list(line.geometry.coords)
                 path_data = "M "
-                for x, y in coords:
-                    svg_x, svg_y = transform_coords(x, y)
+                for c in coords:
+                    svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
-                if coloring == 'loading':
+                if _is_custom_color:
+                    color = coloring
+                elif coloring == 'loading':
                     map_color = _loading_colormap(min(max(line.loading,line.ts_max_loading),100))
                     color, opacity = _svg_color_and_opacity(map_color)
                 else:
@@ -1439,8 +1448,8 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
             if hasattr(line, 'geometry') and line.geometry:
                 coords = list(line.geometry.coords)
                 path_data = "M "
-                for x, y in coords:
-                    svg_x, svg_y = transform_coords(x, y)
+                for c in coords:
+                    svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
                 stroke_width = float(2 * float(line.np_line))
@@ -1451,8 +1460,8 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
             if hasattr(conv, 'geometry') and conv.geometry:
                 coords = list(conv.geometry.coords)
                 path_data = "M "
-                for x, y in coords:
-                    svg_x, svg_y = transform_coords(x, y)
+                for c in coords:
+                    svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
                 stroke_width = float(2 * float(conv.NumConvP))
@@ -1629,6 +1638,396 @@ def plot_model_feasebility(solver_stats,sol='all', x_axis='time', y_axis= 'objec
             plt.close(fig)
         plt.close(fig)
         return
+
+
+def plot_3D(grid, show=True, save_path=None, coloring='cable_type',
+            line_width=6, node_size=6, title=None,
+            show_unused=False, poly=None, coords_lonlat=False,
+            elevation_grid=None, show_elevation_surface=True,
+            show_elevation_points=False, elevation_opacity=0.35,
+            elevation_colorscale='Viridis',
+            surface_z_margin=None,
+            show_verticals=1.0,
+            dev_area=None):
+    """Plot the grid network in 3D using plotly.
+
+    When ``coords_lonlat=True`` (default), node positions and LineString
+    geometries are assumed to be in lon/lat and are converted to local
+    meters so that X, Y and Z (elevation) share the same unit.
+    Set ``coords_lonlat=True`` when coordinates are in lon/lat.
+
+    Parameters
+    ----------
+    grid : Grid object
+        Must contain ``lines_AC_ct`` with 3D ``geometry`` (has_z=True).
+    show : bool
+        Whether to display the figure interactively in the browser.
+    save_path : str or None
+        If given, save the figure as an HTML file.
+    coloring : str
+        'cable_type' colours cables by ``active_config``;
+        'loading' colours by cable loading percentage.
+    line_width : float
+        Width of cable traces.
+    node_size : float
+        Marker size for nodes.
+    title : str or None
+        Figure title.
+    show_unused : bool
+        If True, draw unused cables (active_config < 0) as thin grey lines.
+    poly : shapely Polygon/MultiPolygon or list, optional
+        Development area polygon(s) to draw on the z=0 plane.
+    coords_lonlat : bool
+        If True, convert lon/lat to local meters via equirectangular
+        projection.  If False, assume X/Y are already in meters.
+    elevation_grid : pandas.DataFrame or dict, optional
+        Optional set of elevation points to plot as a surface/plane.
+        Expected columns/keys: ``x``, ``y``, ``elevation``.
+        Coordinates are assumed to be in the same system as the plot
+        (if ``coords_lonlat=True``, pass lon/lat so they are converted too).
+    show_elevation_surface : bool
+        If True (default) and ``elevation_grid`` is provided, draw a triangulated
+        surface (Mesh3d) colored by elevation.
+    show_elevation_points : bool
+        If True, also plot the elevation points as markers.
+    elevation_opacity : float
+        Opacity for the elevation surface.
+    elevation_colorscale : str or list
+        Plotly colorscale for the elevation surface/points.
+    show_verticals : float
+        Opacity of vertical cable segments from 0 (hidden) to 1 (fully visible).
+    """
+    cable_type_colors = [
+        '#00BCD4', '#E91E63', '#795548', '#9E9E9E', '#8BC34A',
+        '#3F51B5', '#009688', '#9C27B0', '#303F9F', '#00ACC1',
+        '#F5F5DC', '#FF7043', '#EF9A9A', '#827717',
+    ]
+
+    fig = go.Figure()
+
+    # -- Coordinate projection ------------------------------------------------
+    if coords_lonlat:
+        slack = next((n for n in grid.nodes_AC if getattr(n, 'type', '') == 'Slack'), grid.nodes_AC[0])
+        origin_lon, origin_lat = slack.x_coord, slack.y_coord
+        x0, y0, zone0, letter0 = utm.from_latlon(origin_lat, origin_lon)
+
+        def _to_m(lon, lat):
+            lon = np.asarray(lon, dtype=float)
+            lat = np.asarray(lat, dtype=float)
+            if lon.ndim == 0:
+                x, y, _, _ = utm.from_latlon(float(lat), float(lon), zone0, letter0)
+                return (x - x0, y - y0)
+            xs, ys = np.empty_like(lon), np.empty_like(lat)
+            for i in range(len(lon)):
+                xi, yi, _, _ = utm.from_latlon(float(lat[i]), float(lon[i]), zone0, letter0)
+                xs[i], ys[i] = xi - x0, yi - y0
+            return (xs, ys)
+    else:
+        def _to_m(x, y):
+            return (x, y)
+
+    # -- Optional elevation surface / plane ----------------------------------
+    if elevation_grid is not None:
+        if isinstance(elevation_grid, pd.DataFrame):
+            if coords_lonlat and 'lon' in elevation_grid.columns and 'lat' in elevation_grid.columns:
+                ex = elevation_grid['lon'].to_numpy()
+                ey = elevation_grid['lat'].to_numpy()
+            else:
+                ex = elevation_grid['x'].to_numpy()
+                ey = elevation_grid['y'].to_numpy()
+            ez = elevation_grid['elevation'].to_numpy()
+        else:
+            if coords_lonlat and 'lon' in elevation_grid and 'lat' in elevation_grid:
+                ex = np.asarray(elevation_grid['lon'])
+                ey = np.asarray(elevation_grid['lat'])
+            else:
+                ex = np.asarray(elevation_grid['x'])
+                ey = np.asarray(elevation_grid['y'])
+            ez = np.asarray(elevation_grid['elevation'])
+
+
+        # Build prepared dev_area polygon for triangle filtering
+        _dev_prepared = None
+        if dev_area is not None:
+            from shapely.ops import unary_union as _union
+            from shapely.prepared import prep as _prep
+            polys = []
+            for p in (dev_area if isinstance(dev_area, (list, tuple)) else [dev_area]):
+                if isinstance(p, MultiPolygon):
+                    polys.extend(p.geoms)
+                else:
+                    polys.append(p)
+            _dev_prepared = _prep(_union(polys))
+
+        ex_m, ey_m = _to_m(ex, ey)
+
+        ex_m = np.asarray(ex_m).ravel()
+        ey_m = np.asarray(ey_m).ravel()
+        ez = np.asarray(ez).ravel()
+
+        if show_elevation_surface and len(ex_m) >= 3:
+            import matplotlib.tri as mtri
+            tri = mtri.Triangulation(ex_m, ey_m)
+            tris = tri.triangles
+
+            # Remove triangles whose centroid falls outside the dev_area
+            if _dev_prepared is not None and tris is not None and len(tris) > 0:
+                keep = np.ones(len(tris), dtype=bool)
+                for t_idx in range(len(tris)):
+                    i0, i1, i2 = tris[t_idx]
+                    cx = (ex[i0] + ex[i1] + ex[i2]) / 3.0
+                    cy = (ey[i0] + ey[i1] + ey[i2]) / 3.0
+                    if not _dev_prepared.contains(Point(cx, cy)):
+                        keep[t_idx] = False
+                tris = tris[keep]
+
+            if tris is not None and len(tris) > 0:
+                fig.add_trace(go.Mesh3d(
+                    x=ex_m, y=ey_m, z=ez,
+                    i=tris[:, 0], j=tris[:, 1], k=tris[:, 2],
+                    intensity=ez,
+                    colorscale=elevation_colorscale,
+                    opacity=float(elevation_opacity),
+                    name='Elevation surface',
+                    legendgroup='elevation',
+                    showlegend=True,
+                    showscale=False,
+                    hoverinfo='skip',
+                ))
+
+        if show_elevation_points and len(ex_m) > 0:
+            fig.add_trace(go.Scatter3d(
+                x=ex_m, y=ey_m, z=ez,
+                mode='markers',
+                marker=dict(size=2, color=ez, colorscale=elevation_colorscale, opacity=0.9),
+                name='Elevation points',
+                legendgroup='elevation',
+                showlegend=not show_elevation_surface,
+                hoverinfo='skip',
+            ))
+
+    # -- Helper: extract 3D coords from LineString, convert to meters ---------
+    def _line_coords(geometry):
+        coords = list(geometry.coords)
+        if geometry.has_z:
+            result = [(*_to_m(c[0], c[1]), c[2]) for c in coords]
+        else:
+            result = [(*_to_m(c[0], c[1]), 0.0) for c in coords]
+        xs, ys, zs = zip(*result)
+        return list(xs), list(ys), list(zs)
+
+    def _split_verticals(xs, ys, zs):
+        """Split a cable into (seabed, leading_vertical, trailing_vertical).
+
+        A vertical is detected where consecutive points share the same x,y.
+        Returns (main_xs, main_ys, main_zs), (lead_xs, lead_ys, lead_zs), (trail_xs, trail_ys, trail_zs).
+        Lead/trail lists are empty if no vertical exists.
+        """
+        n = len(xs)
+        # Find end of leading vertical
+        lead_end = 0
+        while lead_end < n - 1 and xs[lead_end] == xs[lead_end + 1] and ys[lead_end] == ys[lead_end + 1]:
+            lead_end += 1
+        # Find start of trailing vertical
+        trail_start = n - 1
+        while trail_start > lead_end and xs[trail_start] == xs[trail_start - 1] and ys[trail_start] == ys[trail_start - 1]:
+            trail_start -= 1
+
+        lead = (xs[:lead_end + 1], ys[:lead_end + 1], zs[:lead_end + 1]) if lead_end > 0 else ([], [], [])
+        trail = (xs[trail_start:], ys[trail_start:], zs[trail_start:]) if trail_start < n - 1 else ([], [], [])
+        main = (xs[lead_end:trail_start + 1], ys[lead_end:trail_start + 1], zs[lead_end:trail_start + 1])
+        return main, lead, trail
+
+    # -- Draw cables ----------------------------------------------------------
+    used_configs = set()
+    for line in grid.lines_AC_ct:
+        geo = getattr(line, 'geometry', None)
+        if geo is None:
+            continue
+        
+        is_used = getattr(line, 'active_config', 0) >= 0
+
+        if not is_used and not show_unused:
+            continue
+
+        xs, ys, zs = _line_coords(geo)
+
+        if not is_used:
+            color = 'lightgrey'
+            width = 1
+            legend_group = 'unused'
+            legend_name = 'Unused'
+            show_legend = legend_group not in used_configs
+            used_configs.add(legend_group)
+        elif coloring == 'loading':
+            load_val = getattr(line, 'loading', 0)
+            color = _loading_colormap(min(load_val, 100))
+            width = line_width
+            legend_group = None
+            legend_name = f'{line.name} ({load_val:.0f}%)'
+            show_legend = True
+        else:
+            cfg = getattr(line, 'active_config', 0)
+            color = cable_type_colors[cfg % len(cable_type_colors)]
+            width = line_width
+            legend_group = f'type_{cfg}'
+            legend_name = f'Cable type {cfg}'
+            show_legend = cfg not in used_configs
+            used_configs.add(cfg)
+
+        vertical_opacity = 1.0 if show_verticals is True else (0.0 if show_verticals is False else float(show_verticals))
+        vertical_opacity = max(0.0, min(1.0, vertical_opacity))
+
+        (mx, my, mz), (lx, ly, lz), (tx, ty, tz) = _split_verticals(xs, ys, zs)
+        fig.add_trace(go.Scatter3d(
+            x=mx, y=my, z=mz,
+            mode='lines',
+            line=dict(color=color, width=width),
+            name=legend_name,
+            legendgroup=legend_group,
+            showlegend=show_legend,
+            hovertext=f'{line.name}',
+            hoverinfo='text',
+        ))
+        if vertical_opacity > 0:
+            for vx, vy, vz in [(lx, ly, lz), (tx, ty, tz)]:
+                if vx:
+                    fig.add_trace(go.Scatter3d(
+                        x=vx, y=vy, z=vz,
+                        mode='lines',
+                        line=dict(color=color, width=max(1, width // 2)),
+                        opacity=vertical_opacity,
+                        legendgroup=legend_group,
+                        showlegend=False,
+                        hoverinfo='skip',
+                    ))
+
+    # -- Draw export cables ---------------------------------------------------
+    _exp_added = False
+    for line in getattr(grid, 'lines_AC_exp', []):
+        geo = getattr(line, 'geometry', None)
+        if geo is None:
+            continue
+        xs, ys, zs = _line_coords(geo)
+        fig.add_trace(go.Scatter3d(
+            x=xs, y=ys, z=zs,
+            mode='lines',
+            line=dict(color='black', width=line_width + 1),
+            name='Export cable',
+            legendgroup='export',
+            showlegend=not _exp_added,
+            hovertext=f'{line.name}',
+            hoverinfo='text',
+        ))
+        _exp_added = True
+
+    # -- Build node elevation lookup from line endpoints -----------------------
+    node_z_lookup = {}
+    for line in grid.lines_AC_ct + getattr(grid, 'lines_AC_exp', []):
+        geo = getattr(line, 'geometry', None)
+        if geo is None or not getattr(geo, 'has_z', False):
+            continue
+       
+        coords = list(geo.coords)
+        if coords and len(coords[0]) >= 3:
+            fn = getattr(line.fromNode, 'name', None)
+            tn = getattr(line.toNode, 'name', None)
+            if fn is not None and fn not in node_z_lookup:
+                node_z_lookup[fn] = coords[0][2]
+            if tn is not None and tn not in node_z_lookup:
+                node_z_lookup[tn] = coords[-1][2]
+
+    # -- Draw nodes -----------------------------------------------------------
+    turbine_x, turbine_y, turbine_z, turbine_text = [], [], [], []
+    sub_x, sub_y, sub_z, sub_text = [], [], [], []
+
+    for node in grid.nodes_AC:
+        ntype = getattr(node, 'type', '')
+        mx, my = _to_m(node.x_coord, node.y_coord)
+        z = node_z_lookup.get(node.name, 0.0)
+
+        hover = f'{node.name}<br>({mx:.0f}, {my:.0f}, {z:.1f}) m'
+        if ntype == 'Slack':
+            sub_x.append(mx); sub_y.append(my); sub_z.append(z); sub_text.append(hover)
+        else:
+            turbine_x.append(mx); turbine_y.append(my); turbine_z.append(z); turbine_text.append(hover)
+
+    if turbine_x:
+        fig.add_trace(go.Scatter3d(
+            x=turbine_x, y=turbine_y, z=turbine_z,
+            mode='markers',
+            marker=dict(size=node_size, color='green', symbol='circle'),
+            name='Turbines',
+            hovertext=turbine_text,
+            hoverinfo='text',
+        ))
+    if sub_x:
+        fig.add_trace(go.Scatter3d(
+            x=sub_x, y=sub_y, z=sub_z,
+            mode='markers',
+            marker=dict(size=node_size * 2, color='red', symbol='diamond'),
+            name='Substations',
+            hovertext=sub_text,
+            hoverinfo='text',
+        ))
+
+    # -- Draw development area polygon on z=0 plane ---------------------------
+    if poly is not None:
+        def _iter_polys(obj):
+            if isinstance(obj, Polygon):
+                yield obj
+            elif isinstance(obj, MultiPolygon):
+                for p in obj.geoms:
+                    yield p
+            elif isinstance(obj, (list, tuple)):
+                for o in obj:
+                    yield from _iter_polys(o)
+
+        for pg in _iter_polys(poly):
+            ring = list(pg.exterior.coords)
+            pts = [_to_m(c[0], c[1]) for c in ring]
+            px, py = zip(*pts)
+            pz = [0.0] * len(px)
+            fig.add_trace(go.Scatter3d(
+                x=list(px), y=list(py), z=pz,
+                mode='lines',
+                line=dict(color='dodgerblue', width=2),
+                name='Dev. area',
+                legendgroup='dev_area',
+                showlegend=True,
+                hoverinfo='skip',
+            ))
+
+    # -- Layout ---------------------------------------------------------------
+    fig.update_layout(
+        title=title or 'Array Cable Layout – 3D',
+        scene=dict(
+            xaxis_title='X (meters)',
+            yaxis_title='Y (meters)',
+            zaxis_title='Elevation (meters)',
+        ),
+        width=900,
+        height=800,
+        template='plotly_white',
+        legend=dict(
+            itemsizing='constant',
+            yanchor='top', y=0.99,
+            xanchor='left', x=1.01,
+            bgcolor='rgba(255,255,255,0.8)',
+            bordercolor='rgba(0,0,0,0.2)',
+            borderwidth=1,
+        ),
+        margin=dict(l=0, r=0, t=40, b=0),
+    )
+
+    if save_path is not None:
+        pio.write_html(fig, save_path)
+        print(f"3D plot saved to {save_path}")
+
+    if show:
+        fig.show(renderer='browser')
+
+    return fig
 
 
 def _svg_color_and_opacity(color):

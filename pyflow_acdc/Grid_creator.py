@@ -717,16 +717,10 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
     return    Converters
 
 
-def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],cable_database=None,cable_types_allowed=3,curtailment_allowed=0.05,max_turbines_per_string= None,LCoE=1,trenching_cost=1,MIP_check=False,MIP_solver='glpk',MIP_time=None,MIP_tee=False,svg=True,name=None):
+def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],cable_database=None,cable_types_allowed=3,curtailment_allowed=0.05,max_turbines_per_string= None,LCoE=1,trenching_cost=1,MIP_time=None,name=None):
     from .Class_editor import add_AC_node, add_line_sizing, add_RenSource, add_extGrid, add_cable_option
-    from .Graph_and_plot import save_network_svg
     from .Classes import Cable_options, Line_AC, Line_DC
 
-    try:
-        from .Array_OPT import MIP_path_graph
-        mip_check_av =True
-    except:    
-        mip_check_av =False
     turbines_df = Data["turbine"]
     substations_df = Data["offshore_substation"] if 'offshore_substation' in Data else Data['transformer_station']
     
@@ -819,13 +813,14 @@ def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],ca
             fromnode = str(v)
             tonode = str(u)
             name= f'{str(v)}_{str(u)}'
+            geo = attrs['geometry'].reverse()
         else:
             fromnode = str(u)
             tonode = str(v)
             name= f'{str(u)}_{str(v)}'
+            geo = attrs['geometry']
 
         l = attrs['length']/1000
-        geo= attrs['geometry']
         w_l = attrs['weight']/1000
         
         line_obj = add_line_sizing(grid,fromnode,tonode,cable_option=cable_option.name,active_config=0,Length_km=l,name=name,geometry=geo,update_grid=False)
@@ -863,31 +858,6 @@ def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],ca
     # Enable crossings if there are crossing groups
     
     
-    if MIP_check and mip_check_av:
-        grid.MIP_time=MIP_time
-        flag,high_flow,_ = MIP_path_graph(grid,max_flow=max_turbines_per_string,solver_name=MIP_solver,crossings=limit_crossings,tee=MIP_tee)
-        
-
-        if not flag:
-            return None, None
-        if  high_flow < max_turbines_per_string:
-            
-            t_MW = turbines_df.iloc[0].MW_rating
-            max_power_per_string = t_MW*high_flow 
-            first_index_to_comply = next((i for i, rating in enumerate(grid.Cable_options[0].MVA_ratings) if rating >= max_power_per_string), len(grid.Cable_options[0].MVA_ratings) - 1)
-            for line in grid.lines_AC_ct:
-                if line.active_config > 0:
-                    line.active_config = first_index_to_comply
-
-            #grid.Cable_options[0].cable_types = grid.Cable_options[0]._cable_types[:first_index_to_comply + 1]
-        
-            
-            grid.max_turbines_per_string = high_flow
-  
-        if svg:
-            save_network_svg(grid, name='MIP_solve')
-
-        grid.MIP_check = True
     return grid, res
 
 def Create_grid_from_mat(matfile):

@@ -1052,8 +1052,15 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
 
         try:
             results = opt.solve(model, tee=tee)
-        except (ValueError, AttributeError):
-            return None, None
+        except Exception as e:
+            print(f"  Solver crashed: {e}")
+            solver_stats = {
+            'solver': solver, 'iterations': None, 'best_objective': None,
+            'time': None, 'termination_condition': 'error',
+            'solver_message': 'Solver crashed', 'feasible_solutions': [],
+            'all_solutions': [], 'solution_found': False, 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
+        }
+            return None, solver_stats
 
     obj_scaling = getattr(model, 'obj_scaling', 1.0)
 
@@ -1069,6 +1076,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'solver': solver,
         'iterations': None,
         'best_objective': getattr(results.problem, 'upper_bound', None) if results else None,
+        'lower_bound': getattr(results.problem, 'lower_bound', None) if results else None,
         'time': getattr(results.solver, 'time', None) if results else None,
         'termination_condition': str(results.solver.termination_condition) if results else None,
         'solver_message': solver_message,

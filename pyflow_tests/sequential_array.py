@@ -33,7 +33,7 @@ def run_case(case,MIP_solver='gurobi'):
     array_graph,Data,cable_types,final_polygon =touple
 
     
-    grid, res = pyf.Create_grid_from_turbine_graph(array_graph,Data,cable_types=cable_types,cable_types_allowed=ct,curtailment_allowed=0 ,LCoE=LCoE,MIP_check=False,MIP_solver=MIP_solver,MIP_time=tl,MIP_tee=False,name=case)
+    grid, res = pyf.Create_grid_from_turbine_graph(array_graph,Data,cable_types=cable_types,cable_types_allowed=ct,curtailment_allowed=0 ,LCoE=LCoE,MIP_time=tl,name=case)
     #model, model_results , timing_info, solver_stats= pyf.Optimal_L_CSS_gurobi(grid,OPEX=True,NPV=True,n_years=25,Hy=FLH,discount_rate=WACC,tee=False,time_limit=tl)
     
 
