@@ -1782,7 +1782,8 @@ class Line_AC:
             if cable_database is not None:
                 # Use provided DataFrame, but filter for AC cables if Type column exists
                 if 'Type' in cable_database.columns:
-                    cls._cable_database = cable_database[cable_database['Type'] == 'AC'].copy()
+                    type_norm = cable_database['Type'].astype(str).str.upper().replace({'HVAC': 'AC', 'HVDC': 'DC'})
+                    cls._cable_database = cable_database[type_norm == 'AC'].copy()
                 else:
                     # Assume all are AC if no Type column
                     cls._cable_database = cable_database.copy()
@@ -1803,7 +1804,8 @@ class Line_AC:
                             specs = cable_data[cable_name]
                             
                             # Only include AC cables
-                            if specs.get('Type', 'AC') == 'AC':
+                            typ = str(specs.get('Type', 'AC')).upper()
+                            if typ in ('HVAC', 'AC'):
                                 data_dict[cable_name] = specs
                 
                 if data_dict:
@@ -2564,7 +2566,8 @@ class Line_DC:
             if cable_database is not None:
                 # Use provided DataFrame, but filter for DC cables if Type column exists
                 if 'Type' in cable_database.columns:
-                    cls._cable_database = cable_database[cable_database['Type'] == 'DC'].copy()
+                    type_norm = cable_database['Type'].astype(str).str.upper().replace({'HVAC': 'AC', 'HVDC': 'DC'})
+                    cls._cable_database = cable_database[type_norm == 'DC'].copy()
                 else:
                     # Assume all are DC if no Type column
                     cls._cable_database = cable_database.copy()
@@ -2585,7 +2588,8 @@ class Line_DC:
                             specs = cable_data[cable_name]
                             
                             # Only include DC cables
-                            if specs.get('Type', 'DC') == 'DC':
+                            typ = str(specs.get('Type', 'DC')).upper()
+                            if typ in ('HVDC', 'DC'):
                                 data_dict[cable_name] = specs
                 
                 if data_dict:

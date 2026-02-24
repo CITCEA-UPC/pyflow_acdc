@@ -1646,7 +1646,6 @@ def plot_3D(grid, show=True, save_path=None, coloring='cable_type',
             elevation_grid=None, show_elevation_surface=True,
             show_elevation_points=False, elevation_opacity=0.35,
             elevation_colorscale='Viridis',
-            surface_z_margin=None,
             show_verticals=1.0,
             dev_area=None):
     """Plot the grid network in 3D using plotly.
@@ -1932,10 +1931,12 @@ def plot_3D(grid, show=True, save_path=None, coloring='cable_type',
         if coords and len(coords[0]) >= 3:
             fn = getattr(line.fromNode, 'name', None)
             tn = getattr(line.toNode, 'name', None)
+            start_z = coords[0][2]
+            end_z = coords[-1][2]
             if fn is not None and fn not in node_z_lookup:
-                node_z_lookup[fn] = coords[0][2]
+                node_z_lookup[fn] = start_z
             if tn is not None and tn not in node_z_lookup:
-                node_z_lookup[tn] = coords[-1][2]
+                node_z_lookup[tn] = end_z
 
     # -- Draw nodes -----------------------------------------------------------
     turbine_x, turbine_y, turbine_z, turbine_text = [], [], [], []

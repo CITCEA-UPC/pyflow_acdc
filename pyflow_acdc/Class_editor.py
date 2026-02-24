@@ -8,6 +8,10 @@ import pandas as pd
 import numpy as np
 import sys
 import yaml
+import re
+import json
+from urllib.parse import urlparse
+from urllib.request import Request, urlopen
 from shapely.wkt import loads
 
 from .Classes import*
@@ -70,6 +74,7 @@ __all__ = [
     # Analysis
     'analyse_grid',
     'grid_state',
+    'import_orbit_cables',
 ]
 
 def pol2cart(r, theta):
@@ -1235,7 +1240,8 @@ def expand_cable_database(data, format='yaml', save_yalm=False):
     new_cables_ac = {}
     new_cables_dc = {}
     for key, value in new_cables.items():
-        if value['Type'] == 'AC':
+        tval = str(value.get('Type', 'AC')).upper()
+        if tval in ('HVAC', 'AC'):
             new_cables_ac[key] = value
         else:
             new_cables_dc[key] = value
@@ -1257,6 +1263,204 @@ def expand_cable_database(data, format='yaml', save_yalm=False):
 
 
     print(f"Added {len(new_cables_ac)} new cables to AC and {len(new_cables_dc)} new cables to DC database")
+
+
+def import_orbit_cables(
+    data=None,
+    column_map=None,
+    default_type='AC',
+    name_prefix='NREL',
+    save_yaml=False,
+    source_url='https://github.com/NLRWindSystems/ORBIT/tree/dev/library/cables',
+):
+    """
+    Import ORBIT-style cable library data into pyflow cable database.
+
+    Args:
+        data: pandas DataFrame, CSV path, directory containing CSV files, or URL.
+              If None, source_url is used.
+        column_map: optional dict mapping pyflow field names to source columns.
+                    pyflow fields:
+                      ['name', 'R_Ohm_km', 'L_mH_km', 'C_uF_km', 'G_uS_km',
+                       'A_rating', 'Nominal_voltage_kV', 'conductor_size',
+                       'Type', 'Cost_per_km', 'Reference']
+        default_type: fallback cable type when not provided ('AC' or 'DC').
+        name_prefix: prefix used if a source row has no usable name.
+        save_yaml: if True, also save imported entries as YAML files.
+        source_url: ORBIT GitHub directory URL used when data is None.
+
+    Returns:
+        DataFrame with pyflow-standard cable schema, indexed by cable name.
+    """
+
+    def _read_text(url):
+        req = Request(url, headers={'User-Agent': 'pyflow-acdc'})
+        with urlopen(req) as resp:
+            return resp.read().decode('utf-8')
+
+    def _github_dir_to_rows(url):
+        parsed = urlparse(url)
+        parts = [p for p in parsed.path.split('/') if p]
+        if len(parts) < 5 or parts[2] not in ('tree', 'blob'):
+            raise ValueError(
+                'Expected GitHub URL like: https://github.com/<owner>/<repo>/tree/<ref>/<path>'
+            )
+        owner, repo = parts[0], parts[1]
+        ref = parts[3]
+        dir_path = '/'.join(parts[4:])
+        api_url = f'https://api.github.com/repos/{owner}/{repo}/contents/{dir_path}?ref={ref}'
+        listing = json.loads(_read_text(api_url))
+        if isinstance(listing, dict):
+            listing = [listing]
+
+        rows = []
+        for item in listing:
+            if item.get('type') != 'file':
+                continue
+            name = str(item.get('name', ''))
+            dl = item.get('download_url')
+            if not dl:
+                continue
+
+            if name.lower().endswith(('.yaml', '.yml')):
+                y = yaml.safe_load(_read_text(dl))
+                if not isinstance(y, dict):
+                    continue
+                # Handle nested {CableName: {...}} and flat {field: value}
+                if len(y) == 1 and isinstance(next(iter(y.values())), dict):
+                    cable_name = next(iter(y.keys()))
+                    spec = next(iter(y.values()))
+                    spec = dict(spec)
+                    spec.setdefault('name', cable_name)
+                    rows.append(spec)
+                else:
+                    rows.append(dict(y))
+            elif name.lower().endswith('.csv'):
+                rows.extend(pd.read_csv(dl).to_dict(orient='records'))
+        return rows
+
+    def _as_dataframe(obj):
+        if obj is None:
+            obj = source_url
+        if isinstance(obj, pd.DataFrame):
+            return obj.copy()
+        if isinstance(obj, str) and obj.startswith(('http://', 'https://')):
+            rows = _github_dir_to_rows(obj)
+            if not rows:
+                raise ValueError(f'No cable files found at URL: {obj}')
+            return pd.DataFrame(rows)
+        p = Path(obj)
+        if p.is_dir():
+            csv_files = sorted(p.glob('*.csv'))
+            if not csv_files:
+                raise ValueError(f'No CSV files found in directory: {p}')
+            frames = [pd.read_csv(fp) for fp in csv_files]
+            return pd.concat(frames, ignore_index=True)
+        if p.is_file():
+            return pd.read_csv(p)
+        raise ValueError('data must be DataFrame, CSV file path, or directory with CSV files')
+
+    def _slug(text):
+        s = re.sub(r'[^A-Za-z0-9]+', '_', str(text)).strip('_')
+        return s or 'Cable'
+
+    def _pick_col(df, explicit, candidates, required=False):
+        if explicit is not None:
+            if explicit not in df.columns:
+                raise KeyError(f"Mapped column '{explicit}' not found in source data")
+            return explicit
+        for c in candidates:
+            if c in df.columns:
+                return c
+        if required:
+            raise KeyError(f"Missing required source column. Tried: {candidates}")
+        return None
+
+    src = _as_dataframe(data)
+    cmap = column_map or {}
+
+    c_name = _pick_col(src, cmap.get('name'),
+                       ['name', 'cable_name', 'Cable Name', 'id', 'ID'])
+    c_r = _pick_col(src, cmap.get('R_Ohm_km'),
+                    ['R_Ohm_km', 'r_ohm_km', 'resistance_ohm_km', 'ac_resistance', 'dc_resistance', 'Resistance (ohm/km)'],
+                    required=True)
+    c_l = _pick_col(src, cmap.get('L_mH_km'),
+                    ['L_mH_km', 'l_mh_km', 'inductance_mh_km', 'Inductance (mH/km)'])
+    c_c = _pick_col(src, cmap.get('C_uF_km'),
+                    ['C_uF_km', 'c_uf_km', 'capacitance_uf_km', 'capacitance', 'Capacitance (uF/km)', 'Capacitance (nF/km)'])
+    c_g = _pick_col(src, cmap.get('G_uS_km'),
+                    ['G_uS_km', 'g_us_km', 'conductance_us_km', 'Conductance (uS/km)'])
+    c_a = _pick_col(src, cmap.get('A_rating'),
+                    ['A_rating', 'ampacity_a', 'ampacity', 'current_rating_a', 'current_capacity', 'Current (A)'],
+                    required=True)
+    c_kv = _pick_col(src, cmap.get('Nominal_voltage_kV'),
+                     ['Nominal_voltage_kV', 'voltage_kv', 'rated_voltage_kv', 'rated_voltage', 'Voltage (kV)'],
+                     required=True)
+    c_cs = _pick_col(src, cmap.get('conductor_size'),
+                     ['conductor_size', 'cross_section_mm2', 'area_mm2', 'size_mm2'])
+    c_type = _pick_col(src, cmap.get('Type'),
+                       ['Type', 'type', 'current_type', 'cable_type'])
+    c_cost = _pick_col(src, cmap.get('Cost_per_km'),
+                       ['Cost_per_km', 'cost_per_km', 'cost_eur_per_km', 'Cost (per km)'])
+    c_ref = _pick_col(src, cmap.get('Reference'),
+                      ['Reference', 'reference', 'source'])
+
+    out_rows = []
+    skipped_rows = 0
+    for i, row in src.iterrows():
+        nm = row[c_name] if c_name is not None else f'{name_prefix}_{i+1}'
+        typ = row[c_type] if c_type is not None and pd.notna(row[c_type]) else default_type
+        typ = str(typ).upper()
+        if typ.startswith('HVAC') or typ == 'AC':
+            typ = 'AC'
+        elif typ.startswith('HVDC') or typ == 'DC':
+            typ = 'DC'
+        if typ not in ('AC', 'DC'):
+            typ = default_type
+
+        if pd.isna(row[c_kv]) or pd.isna(row[c_a]) or pd.isna(row[c_r]):
+            skipped_rows += 1
+            continue
+
+        kv = float(row[c_kv])
+        a_rating = float(row[c_a])
+        if not np.isfinite(kv) or not np.isfinite(a_rating) or kv <= 0 or a_rating <= 0:
+            skipped_rows += 1
+            continue
+
+        c_val = float(row[c_c]) if c_c is not None and pd.notna(row[c_c]) else 0.0
+        # NREL/ORBIT exports often use nF/km for capacitance.
+        # Convert to pyflow's expected uF/km when values look like nF/km scale.
+        if c_val > 50:
+            c_val = c_val / 1000.0
+        size_val = float(row[c_cs]) if c_cs is not None and pd.notna(row[c_cs]) else np.nan
+        name = f"{name_prefix}_{_slug(nm)}"
+
+        out_rows.append({
+            'name': name,
+            'R_Ohm_km': float(row[c_r]),
+            'L_mH_km': float(row[c_l]) if c_l is not None and pd.notna(row[c_l]) else 0.0,
+            'C_uF_km': c_val,
+            'G_uS_km': float(row[c_g]) if c_g is not None and pd.notna(row[c_g]) else 0.0,
+            'A_rating': a_rating,
+            'Nominal_voltage_kV': kv,
+            'MVA_rating': np.sqrt(3.0) * kv * a_rating / 1000.0,
+            'conductor_size': size_val,
+            'Type': typ,
+            'Cost_per_km': float(row[c_cost]) if c_cost is not None and pd.notna(row[c_cost]) else 1.0,
+            'Reference': row[c_ref] if c_ref is not None and pd.notna(row[c_ref]) else 'ORBIT',
+        })
+
+    if not out_rows:
+        raise ValueError('No valid cable rows were found after parsing ORBIT data.')
+
+    out_df = pd.DataFrame(out_rows).set_index('name')
+    out_df = out_df[~out_df.index.duplicated(keep='first')]
+
+    expand_cable_database(out_df, format='pandas', save_yalm=save_yaml)
+    if skipped_rows:
+        print(f"Skipped {skipped_rows} cable rows with missing/invalid key fields.")
+    return out_df
 
 
 def grid_state(grid):
