@@ -9,7 +9,7 @@ import os
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables,ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,calculate_objective_from_model
 from .ACDC_Static_TEP import get_TEP_variables,_initialize_MS_STEP_sets_model,create_scenarios
-from .Class_editor import analyse_grid
+from .Class_editor import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters
 from .Graph_and_plot import save_network_svg, create_geometries
 
@@ -192,6 +192,53 @@ def _MP_TEP_constraints(model,grid):
                 return model.ConvMP[c,i] == model.installed_Conv[c,i] + model.ConvMP[c,i-1] - model.decomision_Conv[c,i]
         model.MP_Conv_installed_constraint = pyo.Constraint(model.conv, model.inv_periods, rule=MP_Conv_installed)
 
+def _MP_GEN_balance_constraints(model, grid):
+    # Same logic as static GEN balance, indexed by investment period.
+    if all(v == 1 for v in grid.generation_type_limits.values()):
+        return
+
+    gen_type_limits = {k.lower(): v for k, v in grid.generation_type_limits.items()}
+    model.gen_types = pyo.Set(initialize=list(gen_type_limits.keys()))
+    model.gen_type_limits = pyo.Param(model.gen_types, initialize=gen_type_limits)
+
+    def normalize_type(type_name):
+        return type_name.lower() if type_name else None
+
+    def gen_type_max_capacity_rule(model, gen_type, i):
+        gen_capacity = 0
+        for gen in grid.Generators:
+            if normalize_type(gen.gen_type) != gen_type:
+                continue
+            g = gen.genNumber
+            if grid.GPR:
+                gen_capacity += gen.Max_pow_gen * model.np_gen[g, i]
+            else:
+                gen_capacity += gen.Max_pow_gen * gen.np_gen
+
+        ren_capacity = 0
+        for rs in grid.RenSources:
+            if normalize_type(rs.rs_type) != gen_type:
+                continue
+            r = rs.rsNumber
+            if grid.rs_GPR:
+                ren_capacity += rs.PGi_ren_base * model.np_rsgen[r, i]
+            else:
+                ren_capacity += rs.PGi_ren_base * rs.np_rsgen
+
+        return gen_capacity + ren_capacity
+
+    model.gen_type_max_capacity = pyo.Expression(model.gen_types, model.inv_periods, rule=gen_type_max_capacity_rule)
+
+    def total_max_capacity_rule(model, i):
+        return sum(model.gen_type_max_capacity[gt, i] for gt in model.gen_types)
+
+    model.total_max_capacity = pyo.Expression(model.inv_periods, rule=total_max_capacity_rule)
+
+    def gen_type_balance_rule(model, gen_type, i):
+        return model.gen_type_max_capacity[gen_type, i] <= model.total_max_capacity[i] * model.gen_type_limits[gen_type]
+
+    model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, model.inv_periods, rule=gen_type_balance_rule)
+
 
 def _MP_TEP_variables(model,grid):
     
@@ -227,7 +274,7 @@ def _MP_TEP_variables(model,grid):
         def np_rsgen_bounds_install_opt(model,rs,i):
             ren_source = grid.RenSources[rs]
             if ren_source.np_rsgen_opf:
-                return (0,np_rsgen_max_install[rs])
+                return (-model.planned_installation_rsgen[rs, i], np_rsgen_max_install[rs])
             else:
                 return (0,0)  
         def np_rsgen_i(model, rs, i):
@@ -235,7 +282,7 @@ def _MP_TEP_variables(model,grid):
         model.np_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen_i)
         model.installed_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=np_rsgen_bounds_install)
         model.planned_installation_rsgen = pyo.Param(model.ren_sources,model.inv_periods,initialize=planned_installation_rsgen_init)
-        model.opt_installation_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=np_rsgen_bounds_install_opt)
+        model.opt_installation_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.Integers,initialize=0,bounds=np_rsgen_bounds_install_opt)
         
         model.decomision_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
     
@@ -253,7 +300,7 @@ def _MP_TEP_variables(model,grid):
         def np_gen_bounds_install_opt(model,g,i):
             gen = grid.Generators[g]
             if gen.np_gen_opf:
-                return (0,np_gen_max_install[g])
+                return (-model.planned_installation_gen[g, i], np_gen_max_install[g])
             else:
                 return (0,0)
         def np_gen_i(model, g, i):
@@ -261,7 +308,7 @@ def _MP_TEP_variables(model,grid):
         model.np_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_i)
         model.installed_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=np_gen_bounds_install)
         model.planned_installation_gen = pyo.Param(model.gen_AC,model.inv_periods,initialize=planned_installation_gen_init)
-        model.opt_installation_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=np_gen_bounds_install_opt)
+        model.opt_installation_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.Integers,initialize=0,bounds=np_gen_bounds_install_opt)
         
         model.decomision_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
 
@@ -277,7 +324,7 @@ def _MP_TEP_variables(model,grid):
             def MP_AC_line_bounds_install_opt(model,l,i):
                 line = grid.lines_AC_exp[l]
                 if line.np_line_opf:
-                    return (0,NP_lineAC_max[l])
+                    return (-model.planned_installation_ACline[l, i], NP_lineAC_max[l])
                 else:
                     return (0,0)
             def NP_lineAC_i(model, l, i):
@@ -285,7 +332,7 @@ def _MP_TEP_variables(model,grid):
             model.ACLinesMP = pyo.Var(model.lines_AC_exp,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_AC_line_bounds,initialize=NP_lineAC_i)
             model.installed_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_AC_line_bounds_install)
             model.planned_installation_ACline = pyo.Param(model.lines_AC_exp,model.inv_periods,initialize=planned_installation_ACline_init)
-            model.opt_installation_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_AC_line_bounds_install_opt)
+            model.opt_installation_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_AC_line_bounds_install_opt)
             model.decomision_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
     if grid.DCmode:
         NP_lineDC = tep_vars['dc_lines']['NP_lineDC']
@@ -299,7 +346,7 @@ def _MP_TEP_variables(model,grid):
         def MP_DC_line_bounds_install_opt(model,l,i):
             line = grid.lines_DC[l]
             if line.np_line_opf:
-                return (0,NP_lineDC_max[l])
+                return (-model.planned_installation_DCline[l, i], NP_lineDC_max[l])
             else:
                 return (0,0)
         def NP_lineDC_i(model, l, i):
@@ -307,7 +354,7 @@ def _MP_TEP_variables(model,grid):
         model.DCLinesMP = pyo.Var(model.lines_DC,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_DC_line_bounds,initialize=NP_lineDC_i)
         model.installed_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_DC_line_bounds_install)
         model.planned_installation_DCline = pyo.Param(model.lines_DC,model.inv_periods,initialize=planned_installation_DCline_init)
-        model.opt_installation_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_DC_line_bounds_install_opt)
+        model.opt_installation_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_DC_line_bounds_install_opt)
         model.decomision_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
 
     if grid.ACmode and grid.DCmode:
@@ -321,7 +368,7 @@ def _MP_TEP_variables(model,grid):
         def MP_Conv_bounds_install_opt(model,c,i):
             conv = grid.Converters_ACDC[c]
             if conv.NUmConvP_opf:
-                return (0,NumConvP_max[c])
+                return (-model.planned_installation_Conv[c, i], NumConvP_max[c])
             else:
                 return (0,0)
         def NumConvP_i(model, c, i):
@@ -329,10 +376,10 @@ def _MP_TEP_variables(model,grid):
         model.ConvMP = pyo.Var(model.conv,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_Conv_bounds,initialize=NumConvP_i)
         model.installed_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_Conv_bounds_install)
         model.planned_installation_Conv = pyo.Param(model.conv,model.inv_periods,initialize=planned_installation_Conv_init)
-        model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_Conv_bounds_install_opt)
+        model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_Conv_bounds_install_opt)
         model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
         
-def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,callback=False,solver_options=None,obj_scaling=1.0):
+def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,callback=False,solver_options=None,obj_scaling=1.0,capex_budget=None):
     grid.reset_run_flags()
     analyse_grid(grid)
     weights_def, PZ = obj_w_rule(grid,ObjRule,True)
@@ -418,6 +465,8 @@ def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,d
     _initialize_DTEP_sets_model(model,grid)
     _MP_TEP_variables(model,grid)
     _MP_TEP_constraints(model,grid)
+    _MP_GEN_balance_constraints(model,grid)
+    _MP_TEP_capex_budget_constraint(model,grid,capex_budget=capex_budget)
     
 
     net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate)
@@ -528,6 +577,39 @@ def _inv_model_obj(model,grid,i):
 
     inv_cost=inv_gen+AC_Inv_lines+DC_Inv_lines+Conv_Inv+inv_rs
     return inv_cost
+
+def _MP_TEP_capex_budget_constraint(model,grid,capex_budget=None):
+    # Optional period CAPEX budget (Eq. 15): Psi_x <= Psi_budget,x
+    if capex_budget is None:
+        capex_budget = getattr(grid, 'MP_TEP_CAPEX_budget', None)
+    if capex_budget is None:
+        return
+
+    period_list = list(model.inv_periods)
+    n_periods = len(period_list)
+
+    if np.isscalar(capex_budget):
+        budget_dict = {i: float(capex_budget) for i in period_list}
+    elif isinstance(capex_budget, dict):
+        budget_dict = {}
+        for i in period_list:
+            if i not in capex_budget:
+                raise ValueError(f"Missing CAPEX budget for period {i}")
+            budget_dict[i] = float(capex_budget[i])
+    else:
+        budget_arr = np.array(capex_budget, dtype=float).reshape(-1)
+        if len(budget_arr) != n_periods:
+            raise ValueError(
+                f"CAPEX budget length ({len(budget_arr)}) does not match number of investment periods ({n_periods})"
+            )
+        budget_dict = {i: float(budget_arr[i]) for i in period_list}
+
+    model.capex_budget = pyo.Param(model.inv_periods, initialize=budget_dict)
+
+    def MP_CAPEX_budget_rule(model, i):
+        return _inv_model_obj(model, grid, i) <= model.capex_budget[i]
+
+    model.MP_CAPEX_budget_constraint = pyo.Constraint(model.inv_periods, rule=MP_CAPEX_budget_rule)
 
 def _MP_TEP_obj(model,grid,n_years,discount_rate):
     
@@ -743,7 +825,16 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
             total_row[col] = ""
     df = pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
     
+    # Capture fuel-type distribution for each investment period based on solved dynamic states.
+    fuel_type_dist_by_period = {}
+    for i in model.inv_periods:
+        _set_grid_to_dynamic_state(grid, i)
+        fuel_type_dist_by_period[int(i) + 1] = current_fuel_type_distribution(grid, output='df')
+
+    grid.MP_TEP_fuel_type_distribution = fuel_type_dist_by_period
+
     last_i = max(model.inv_periods)
+    _set_grid_to_dynamic_state(grid, last_i)
      
     ExportACDC_NLmodel_toPyflowACDC(model.inv_model[last_i],grid,Price_Zones,TEP=True)
 
@@ -799,6 +890,7 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
 
     _initialize_MS_STEP_sets_model(model,grid)
     _MP_TEP_variables(model,grid)
+    _MP_GEN_balance_constraints(model,grid)
 
     
     net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate)

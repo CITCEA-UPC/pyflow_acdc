@@ -110,6 +110,7 @@ class Results:
         if self.Grid.MP_TEP_run:
             self.MP_TEP_results(print_table=print_table)
             self.MP_TEP_obj_res(print_table=print_table)
+            self.MP_TEP_fuel_type_distribution(print_table=print_table)
         # Final separator for All() run
         print('------')
 
@@ -1950,6 +1951,82 @@ class Results:
             print('')
 
         return df
+
+    def MP_TEP_fuel_type_distribution(self, print_table=True):
+        dist = getattr(self.Grid, "MP_TEP_fuel_type_distribution", None)
+
+        if not isinstance(dist, dict):
+            if print_table:
+                print("No MP_TEP_fuel_type_distribution found")
+            return dist
+
+        # Keep the raw period->DataFrame mapping available on Results
+        self.MP_TEP_fuel_type_distribution_dict = dist
+
+        # Build a single horizontal table:
+        # Type | number of gen_1 | total install cap_1 | percentage_1 | ...period N
+        periods = sorted(dist.keys())
+        normalized_by_period = {}
+        all_types = set()
+
+        for period in periods:
+            df = dist[period]
+            if not isinstance(df, pd.DataFrame) or "Type" not in df.columns:
+                continue
+            tmp = df.copy()
+            for col in ["number of gen", "total install cap", "percentage"]:
+                if col not in tmp.columns:
+                    tmp[col] = np.nan
+            tmp = tmp[["Type", "number of gen", "total install cap", "percentage"]]
+            normalized_by_period[period] = tmp
+            all_types.update(tmp["Type"].dropna().astype(str).tolist())
+
+        type_order = [t for t in sorted(all_types) if t != "All"]
+        if "All" in all_types:
+            type_order.append("All")
+
+        wide_df = pd.DataFrame({"Type": type_order})
+        for period in periods:
+            if period not in normalized_by_period:
+                wide_df[f"number of gen_{period}"] = np.nan
+                wide_df[f"total install cap_{period}"] = np.nan
+                wide_df[f"percentage_{period}"] = np.nan
+                continue
+            tmp = normalized_by_period[period].rename(columns={
+                "number of gen": f"number of gen_{period}",
+                "total install cap": f"total install cap_{period}",
+                "percentage": f"percentage_{period}",
+            })
+            wide_df = wide_df.merge(tmp, on="Type", how="left")
+
+        self.tables["MP_TEP_fuel_type_distribution"] = wide_df
+
+        if print_table:
+            print('--------------')
+            print('Dynamic Transmission Expansion Problem')
+            print('')
+            print('Fuel type distribution by investment period')
+            table = pt()
+            table.field_names = list(wide_df.columns)
+            for row in wide_df.itertuples(index=False):
+                row_list = list(row)
+                formatted_row = []
+                for col_name, val in zip(wide_df.columns, row_list):
+                    if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
+                        formatted_row.append(' ')
+                    elif isinstance(val, (int, float)):
+                        if str(col_name).startswith("percentage_"):
+                            formatted_row.append(f"{val:,.{self.dec}f}".replace(',', ' '))
+                        else:
+                            rounded_val = int(round(val))
+                            formatted_row.append(f"{rounded_val:,}".replace(',', ' '))
+                    else:
+                        formatted_row.append(val)
+                table.add_row(formatted_row)
+            print(table)
+            print('')
+
+        return wide_df
 
     def Price_Zone(self, print_table=True):
         rows = []
