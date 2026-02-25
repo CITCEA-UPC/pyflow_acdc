@@ -1,0 +1,27 @@
+# Cable specifications
+# These cables are meerly for academic and testing purposes    
+# Units:
+#   - Resistance: ohm/km
+#   - Inductance: mH/km
+#   - Capacitance: µF/km
+#   - Conductance: µS/km
+#   - Current rating: A
+#   - Power rating: MVA
+#   - Nominal voltage: kV
+#   - conductor_size: mm^2
+#   - Cost_per_km: EUR/km
+#   Cost are only to be used for academic purposes as they do not reflect the real cost of the cables
+#   - Type: AC or DC
+ABB_XLPE_Cu_20kV_sub_400mm2:
+  R_Ohm_km: 0.058754097415353285
+  L_mH_km: 0.33
+  C_uF_km: 0.39
+  G_uS_km: 0
+  A_rating: 590.0
+  MVA_rating: 20.43819952931275
+  Nominal_voltage_kV: 20.0
+  conductor_size: 400
+  Cost_per_km: 291873.0
+  Type: AC
+  Reference: XLPE Submarine Cable Systems Attachment to XLPE Land Cable Systems -
+    User's Guide

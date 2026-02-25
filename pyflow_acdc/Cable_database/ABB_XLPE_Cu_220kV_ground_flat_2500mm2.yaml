@@ -1,0 +1,26 @@
+# Cable specifications
+# These cables are meerly for academic and testing purposes    
+# Units:
+#   - Resistance: ohm/km
+#   - Inductance: mH/km
+#   - Capacitance: µF/km
+#   - Conductance: µS/km
+#   - Current rating: A
+#   - Power rating: MVA
+#   - Nominal voltage: kV
+#   - conductor_size: mm^2
+#   - Cost_per_km: EUR/km
+#   Cost are only to be used for academic purposes as they do not reflect the real cost of the cables
+#   - Type: AC or DC
+ABB_XLPE_Cu_220kV_ground_flat_2500mm2:
+  R_Ohm_km: 0.012000013525148857
+  L_mH_km: 0.47
+  C_uF_km: 0.27
+  G_uS_km: 0
+  A_rating: 1041.1918304033093
+  MVA_rating: 396.7473731505172
+  Nominal_voltage_kV: 220.0
+  conductor_size: 2500
+  Cost_per_km: 1303653.0
+  Type: AC
+  Reference: XLPE Land Cable Systems User's Guide
