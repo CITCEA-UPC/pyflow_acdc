@@ -89,17 +89,17 @@ def array_sizing(combinations):
 
 
         cable_option = pyf.add_cable_option(grid,[
-            '66kV_95mm2_sub_CU_ABB_XLPE',
-            '66kV_120mm2_sub_CU_ABB_XLPE',
-            '66kV_150mm2_sub_CU_ABB_XLPE',
-            '66kV_185mm2_sub_CU_ABB_XLPE',
-            '66kV_240mm2_sub_CU_ABB_XLPE',
-            '66kV_300mm2_sub_CU_ABB_XLPE',
-            '66kV_400mm2_sub_CU_ABB_XLPE',
-            '66kV_500mm2_sub_CU_ABB_XLPE',
-            '66kV_630mm2_sub_CU_ABB_XLPE',
-            '66kV_800mm2_sub_CU_ABB_XLPE',
-            '66kV_1000mm2_sub_CU_ABB_XLPE'],'PEI')
+            'ABB_XLPE_Cu_66kV_sub_95mm2',
+            'ABB_XLPE_Cu_66kV_sub_120mm2',
+            'ABB_XLPE_Cu_66kV_sub_150mm2',
+            'ABB_XLPE_Cu_66kV_sub_185mm2',
+            'ABB_XLPE_Cu_66kV_sub_240mm2',
+            'ABB_XLPE_Cu_66kV_sub_300mm2',
+            'ABB_XLPE_Cu_66kV_sub_400mm2',
+            'ABB_XLPE_Cu_66kV_sub_500mm2',
+            'ABB_XLPE_Cu_66kV_sub_630mm2',
+            'ABB_XLPE_Cu_66kV_sub_800mm2',
+            'ABB_XLPE_Cu_66kV_sub_1000mm2'],'PEI')
 
         pyf.add_line_sizing(grid,T8,T7,cable_option=cable_option.name,active_config=0,Length_km=LT8_T7,name='T8_T7',update_grid=False)
         pyf.add_line_sizing(grid,T7,T6,cable_option=cable_option.name,active_config=0,Length_km=LT7_T6,name='T7_T6',update_grid=False)
