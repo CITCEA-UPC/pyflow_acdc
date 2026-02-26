@@ -433,6 +433,7 @@ def update_gen_hovertext(gen,S_base,text):
          name= gen.name
          node = gen.Node_AC 
          n_gens = gen.np_gen
+         installation_cost = gen.base_cost
          P_max = gen.Max_pow_gen * S_base * gen.np_gen
          P_min = gen.Min_pow_gen * S_base * gen.np_gen
          Q_max = gen.Max_pow_genR * S_base * gen.np_gen
@@ -440,7 +441,7 @@ def update_gen_hovertext(gen,S_base,text):
          rating = gen.capacity_MVA
          rating = np.round(rating,decimals=1)
          
-         gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br>Rating: {rating}MVA<br>Fuel: {gen.gen_type}<br>P max: {P_max}MW<br>Q max: {Q_max}MVAR<br>P min: {P_min}MW<br>Q min: {Q_min}MVAR"    
+         gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br>Rating: {rating}MVA<br>Installation cost: {installation_cost}<br>Fuel: {gen.gen_type}<br>P max: {P_max}MW<br>Q max: {Q_max}MVAR<br>P min: {P_min}MW<br>Q min: {Q_min}MVAR"    
          
      elif text =='inPu':
          name= gen.name
@@ -466,11 +467,12 @@ def update_renSource_hovertext(renSource,S_base,text):
          name= renSource.name
          node = renSource.Node
          n_rs = renSource.np_rsgen
+         installation_cost = renSource.base_cost
          rating = renSource.capacity_MVA
          Pmin = renSource.PGi_ren_base*renSource.min_gamma*renSource.np_rsgen*S_base
          Pmax = renSource.PGi_ren_base*renSource.np_rsgen*S_base
          rating = np.round(rating,decimals=0)
-         renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>Rating: {rating}<br>Tech: {renSource.rs_type}<br>P min: {Pmin}MW<br>P max: {Pmax}MW"    
+         renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>Rating: {rating}<br>Installation cost: {installation_cost}<br>Tech: {renSource.rs_type}<br>P min: {Pmin}MW<br>P max: {Pmax}MW"    
          
      elif text=='inPu':
          name= renSource.name

@@ -625,7 +625,11 @@ def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,
     for node in grid.nodes_AC:
    
         if node_name == node.name:
-             gen = Gen_AC(gen_name, node,Max_pow_gen,Min_pow_gen,Max_pow_genR,Min_pow_genR,qf,lf,fc,Pset,Qset,Smax,installation_cost,S_base=grid.S_base)
+             gen = Gen_AC(
+                 gen_name, node, Max_pow_gen, Min_pow_gen, Max_pow_genR, Min_pow_genR,
+                 qf, lf, fc, Pset, Qset, Smax,
+                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base
+             )
              node.PGi = 0
              node.QGi = 0
              available_types = getattr(grid, 'gen_ac_types', ['other'])
@@ -665,7 +669,10 @@ def add_gen_DC(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc
     for node in grid.nodes_DC:
    
         if node_name == node.name:
-             gen = Gen_DC(gen_name, node,Max_pow_gen,Min_pow_gen,qf,lf,fc,Pset,installation_cost,S_base=grid.S_base)
+             gen = Gen_DC(
+                 gen_name, node, Max_pow_gen, Min_pow_gen, qf, lf, fc, Pset,
+                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base
+             )
              node.PGi = 0
              available_types = getattr(grid, 'gen_dc_types', ['other'])
              gen_type_lookup = {str(t).lower(): str(t) for t in available_types}
