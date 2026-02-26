@@ -1030,7 +1030,7 @@ def run_opf_for_investment_period(
     limit_flow_rate=True,
     obj_scaling=1.0,
     export_excel=True,
-    export_location=None,
+    export_location='MP_investment_periods',
     file_name=None,
     print_table=False,
     decimals=3,
@@ -1043,6 +1043,7 @@ def run_opf_for_investment_period(
     `_set_grid_to_dynamic_state(grid, investment_period)`.
     """
     period_idx = int(investment_period)
+    export_location = export_location or 'MP_investment_periods'
     n_periods = int(getattr(grid, 'TEP_n_periods', 0) or 0)
     if n_periods > 0 and (period_idx < 0 or period_idx >= n_periods):
         raise ValueError(
@@ -1059,25 +1060,22 @@ def run_opf_for_investment_period(
         limit_flow_rate=limit_flow_rate,
         obj_scaling=obj_scaling,
     )
-    if export_location is not None:
-        os.makedirs(export_location, exist_ok=True)
+    os.makedirs(export_location, exist_ok=True)
     res = Results(grid, decimals=decimals)
     if export_excel:
         all_kwargs = {
             'export_type': 'excel',
             'print_table': print_table,
             'file_name': file_name or f"{getattr(grid, 'name', 'grid')}_period_{period_idx}",
+            'export_location': export_location,
         }
-        if export_location is not None:
-            all_kwargs['export_location'] = export_location
         res.All(**all_kwargs)
 
     if plot_folium:
         try:
             from .Mapping import plot_folium as plot_folium_fn
             default_map_name = f"{grid.name}_period_{period_idx}"
-            if export_location is not None:
-                default_map_name = os.path.join(export_location, default_map_name)
+            default_map_name = os.path.join(export_location, default_map_name)
 
             folium_kwargs = {
                 'planar': False,
@@ -1088,10 +1086,22 @@ def run_opf_for_investment_period(
             if isinstance(plot_folium, dict):
                 folium_kwargs.update(plot_folium)
 
-            if export_location is not None:
-                map_name = str(folium_kwargs.get('name', default_map_name))
-                if not os.path.isabs(map_name):
-                    folium_kwargs['name'] = os.path.join(export_location, map_name)
+            map_name = str(folium_kwargs.get('name', default_map_name))
+            export_norm = os.path.normpath(export_location)
+            map_norm = os.path.normpath(map_name)
+            # If relative and not already rooted under export_location, place it there.
+            already_under_export = (
+                map_norm == export_norm or
+                map_norm.startswith(export_norm + os.sep)
+            )
+            if not os.path.isabs(map_name) and not already_under_export:
+                map_name = os.path.join(export_location, map_name)
+            folium_kwargs['name'] = map_name
+
+            # Ensure output directory exists for custom map name paths.
+            map_parent = os.path.dirname(str(folium_kwargs.get('name', "")))
+            if map_parent:
+                os.makedirs(map_parent, exist_ok=True)
 
             plot_folium_fn(grid, **folium_kwargs)
         except Exception as exc:
