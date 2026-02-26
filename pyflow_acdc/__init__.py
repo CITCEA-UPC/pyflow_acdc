@@ -38,7 +38,7 @@ __all__ = [
     'add_DCDC_converter',
     'add_gen',
     'add_gen_DC',
-    'add_extGrid',
+    'add_extgrid',
     'add_RenSource',
     'add_generators',
     
@@ -53,6 +53,7 @@ __all__ = [
     
     #Add investment series
     'add_inv_series',
+    'add_gen_mix_limits',
     
     # Grid Creation and Import
     'Create_grid_from_data',
@@ -82,6 +83,8 @@ __all__ = [
     'import_orbit_cables',
     'current_fuel_type_distribution',
     'initialize_pyflowacdc',
+    'create_inv_csv_template',
+    'create_gen_limit_csv_template',
     
     # Power Flow
     'AC_PowerFlow',

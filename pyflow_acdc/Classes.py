@@ -39,6 +39,30 @@ def cartz2pol(z):
     return r, theta
 
 class Grid:
+    DEFAULT_GENERATION_TYPES = [
+        "nuclear",
+        "hard coal",
+        "hydro",
+        "oil",
+        "lignite",
+        "natural gas",
+        "solid biomass",
+        "other",
+        "waste",
+        "biogas",
+        "geothermal",
+        "ccgt",
+        "diesel",
+        "shunt reactor",
+        ]
+
+    DEFAULT_RENEWABLE_TYPES = [
+        "wind",
+        "solar",
+        "offshore wind",
+        "onshore wind",
+    ]
+
     def __init__(self, S_base: float, nodes_AC: list = None, lines_AC: list = None, Converters: list = None, nodes_DC: list = None, lines_DC: list = None):
         
         self.Graph_toPlot= nx.MultiGraph()
@@ -182,10 +206,17 @@ class Grid:
         self.RenSources =[]
         self.rs2node = {'DC': {},
                         'AC': {}}
-        
-        self.generation_type_limits = {
-             "nuclear":1, "hard coal":1, "hydro":1, "oil":1, "lignite":1, "natural gas":1,
-             "solid biomass":1,  "other":1, "waste":1, "biogas":1, "geothermal":1,"ccgt":1,"wind":1,"solar":1,"offshore wind":1,"onshore wind":1}
+
+        self.renewable_types = list(Grid.DEFAULT_RENEWABLE_TYPES)
+        self.gen_ac_types = list(Grid.DEFAULT_GENERATION_TYPES)
+        self.gen_dc_types = list(Grid.DEFAULT_GENERATION_TYPES) #currently there is no difference between AC and DC generation types
+        # Single source of truth for generation types.
+        self.generation_types = list(dict.fromkeys(
+                list(self.gen_ac_types) + list(self.renewable_types) + list(self.gen_dc_types)
+                ))
+        # Default per-type limits are derived from the type list.
+        self.generation_type_limits = {gen_type: 1 for gen_type in self.generation_types}
+        self.TEP_n_periods = None
                 
 
 
@@ -1082,12 +1113,14 @@ class Gen_AC:
         self.np_gen = 1
         self.np_gen_max=3   # maximum number of generators to be present at the same time
         
-        #used in multi period TEP
-        self.np_gen_max_install = self.np_gen_max #For multi period TEP, maximum number of generators to install in each period
-        self.np_gen_multi_period = [self.np_gen]
-        self.planned_decomision = [0]  #Used only for Multi Period TEP
-        self.planned_installation = [0]  #Used only for Multi Period TEP
-        self.np_dynamic = [self.np_gen]  #Used only for Multi Period TEP
+        # Used in multi period TEP
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_gen_max],
+            'np_dynamic': [self.np_gen]
+        }
+        
 
         self.lf=linear_cost_factor
         self.qf=quadratic_cost_factor
@@ -1317,12 +1350,13 @@ class Ren_Source:
         self.np_rsgen = 1
         self.np_rsgen_max=3   # maximum number of generators to be present at the same time
 
-        self.np_rsgen_max_install = self.np_rsgen_max #For multi period TEP, maximum number of generators to install in each period
-        self.np_rsgen_multi_period = [self.np_rsgen]
-        self.planned_decomision = [0]  #Used only for Multi Period TEP
-        self.planned_installation = [0]  #Used only for Multi Period TEP
-
-        self.np_dynamic = [self.np_rsgen]  #Used only for Multi Period TEP
+        # Used in multi period TEP
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_rsgen_max],
+            'np_dynamic': [self.np_rsgen]
+        }
 
         self.base_cost = installation_cost
 
@@ -1485,6 +1519,9 @@ class Node_AC:
         
         self.inv_dic ={
             'Load' : None
+        }
+        self.investment_decisions = {
+            'Load': []
         }
         
         self.QGi = Reactive_Gained
@@ -1650,6 +1687,9 @@ class Node_DC:
         
         self.inv_dic ={
             'Load' : None
+        }
+        self.investment_decisions = {
+            'Load': []
         }
         
         self.V = np.copy(self.V_ini)
@@ -2000,11 +2040,13 @@ class Exp_Line_AC(Line_AC):
         self.np_line_b=0  #N_b base attribute
         self.np_line_i= 0 #N_i initial guess
         self.np_line_max = 1 #N_max max number of lines
-        self.np_dynamic = [self.np_line]   
-
         self.np_line_opf=True
-        self.planned_decomision = [0]  #Used only for Multi Period TEP
-        self.planned_installation = [0]  #Used only for Multi Period TEP
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_line_max],
+            'np_dynamic': [self.np_line]
+        }
         self.hover_text = None
 
         self.ts_max_loading = 0
@@ -2672,9 +2714,12 @@ class Line_DC:
         self.np_line_i= N_cables
         self.np_line_max = N_cables
         self.np_line_opf=False
-        self.planned_decomision = [0]  #Used only for Multi Period TEP
-        self.planned_installation = [0]  #Used only for Multi Period TEP
-        self.np_dynamic = [self.np_line]   
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_line_max],
+            'np_dynamic': [self.np_line]
+        }
 
         self.R = r
         self.MW_rating = MW_rating
@@ -2929,11 +2974,14 @@ class AC_DC_converter:
         self.NumConvP_b= nConvP
         self.NumConvP_i= nConvP
         self.NumConvP_max = nConvP
-        self.np_dynamic = [self.NumConvP]
         
         self.NUmConvP_opf=False
-        self.planned_decomision = [0]  #Used only for Multi Period TEP
-        self.planned_installation = [0]  #Used only for Multi Period TEP
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.NumConvP_max],
+            'np_dynamic': [self.NumConvP]
+        }
         self.base_cost = 0
         self.life_time = 25
         self.exp_inv=1
@@ -3329,6 +3377,11 @@ class Price_Zone:
             'PGL_min': None,
             'PGL_max': None
         }
+        self.investment_decisions = {
+            'Load': [],
+            'elasticity': [],
+            'import_expand': []
+        }
         
         self.df= pd.DataFrame(columns=['time','a', 'b', 'c','price','PGL_min','PGL_max'])        
         self.df.set_index('time', inplace=True)
@@ -3471,32 +3524,5 @@ class TimeSeries:
 
         TimeSeries.names.add(self.name)
 
-class investment_periods:
-    inv_periods_num = 0
-    names = set()
-    
-    @classmethod
-    def reset_class(cls):
-        cls.inv_periods_num = 0
-        cls.names = set()
-    
-    @property
-    def name(self):
-        return self._name
-
-    def __init__(self, element_type: str, element_name:str, data: float, name=None):
-        self.inv_periods_num = investment_periods.inv_periods_num
-        investment_periods.inv_periods_num += 1
-        
-        
-        self.type = element_type
-        self.element_name=element_name
-        self.data = data
-        
-        s = 1
-        if name is None:
-            self._name = str(self.inv_periods_num)
-        else:
-            self._name = name
-
-        investment_periods.names.add(self.name)
+# Investment periods are stored as dict records in grid.inv_series:
+# {'id', 'type', 'element_name', 'data', 'name'}

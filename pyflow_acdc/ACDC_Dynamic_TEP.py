@@ -25,38 +25,113 @@ __all__ = [
 def pack_variables(*args):
     return args
 
-def _update_grid_investment_period(grid,inv,i):
+def _inv_decision(element, key):
+    return element.investment_decisions[key]
+
+def _fill_investment_decisions(grid):
+    """
+    Harmonize all MP investment arrays to one period length.
+
+    Rules:
+    - If one or more series have length > 1, they must all have the same length.
+    - Length-1 series are treated as defaults and broadcast to the target length.
+    - Empty series are invalid and raise an error.
+    """
+    
+    def _iter_elements():
+        for element in grid.Price_Zones:
+            yield element
+        for element in grid.nodes_AC:
+            yield element
+        for element in grid.nodes_DC:
+            yield element
+        for element in grid.Generators:
+            if element.np_gen_opf:
+                yield element
+        for element in grid.RenSources:
+            if element.np_rsgen_opf:
+                yield element
+        for element in grid.lines_AC_exp:
+            if element.np_line_opf:
+                yield element
+        for element in grid.lines_DC:
+            if element.np_line_opf:
+                yield element
+        for element in grid.Converters_ACDC:
+            if element.NUmConvP_opf:
+                yield element
+
+    def _as_list(values):
+        if values is None:
+            return None
+        return np.atleast_1d(values).tolist()
+
+    def _series_length(values):
+        values_list = _as_list(values)
+        if values_list is None:
+            return 0
+        return len(values_list)
+
+    # Collect all non-default lengths (>1) to determine target period length.
+    lengths_gt1 = []
+    for element in _iter_elements():
+        for values in element.investment_decisions.values():
+            length = _series_length(values)
+            if length > 1:
+                lengths_gt1.append(length)
+
+    unique_lengths = sorted(set(lengths_gt1))
+    if len(unique_lengths) > 1:
+        raise ValueError(
+            f"Inconsistent investment period lengths found: {unique_lengths}. "
+            "Only length-1 defaults may differ; all other lengths must match."
+        )
+    target_len = unique_lengths[0] if unique_lengths else 1
+
+    def _normalize(values, context):
+        values_list = _as_list(values)
+        if values_list is None:
+            return None
+        if len(values_list) == 0:
+            raise ValueError(f"{context} has no period values")
+        if len(values_list) == 1 and target_len > 1:
+            return [values_list[0]] * target_len
+        if len(values_list) != target_len:
+            raise ValueError(
+                f"{context} has length {len(values_list)} but expected {target_len}. "
+                "Only length-1 defaults are auto-expanded."
+            )
+        return values_list
+
+    # Normalize object-owned investment decisions.
+    for element in _iter_elements():
+        for key, values in list(element.investment_decisions.items()):
+            element.investment_decisions[key] = _normalize(
+                values,
+                f"{element.name}:{key}"
+            )
+    return target_len
+
+def _update_grid_investment_period(grid, i,PZ=False):
     idx = i
-    typ = inv.type
-    if typ == 'Load':
+    if PZ:
         for price_zone in grid.Price_Zones:
-            if inv.element_name == price_zone.name:
-                price_zone.PLi_inv_factor = inv.data[idx]
-                break
-        for node in grid.nodes_AC:
-            if inv.element_name == node.name:
-                node.PLi_inv_factor=inv.data[idx]
-                break
-        for node in grid.nodes_DC:
-            if inv.element_name == node.name:
-                node.PLi_inv_factor=inv.data[idx]
-                break
+            inv = price_zone.investment_decisions
+            price_zone.PLi_inv_factor = inv['Load'][idx]
+            price_zone.elasticity = inv['elasticity'][idx]
+            price_zone.import_expand = inv['import_expand'][idx]
 
-    if typ == 'elasticity':
-        for price_zone in grid.Price_Zones:
-            if inv.element_name == price_zone.name:
-                price_zone.elasticity = inv.data[idx]
-                break
+    for node in grid.nodes_AC:
+        if node.PLi_linked == True:
+            continue
+        inv = node.investment_decisions
+        node.PLi_inv_factor = inv['Load'][idx]
 
-    if typ == 'import_expand':
-        for price_zone in grid.Price_Zones:
-            if inv.element_name == price_zone.name:
-                price_zone.import_expand = inv.data[idx]
-                break
-
-    # WPP/OWPP/SF/REN: renewable capacity is driven by the MP model (np_rsgen, planned_installation_rsgen, opt_installation_rsgen)
-    # and linked to each period submodel. No grid-class update here; inv_series of these types are reserved for future use
-    # (e.g. period-dependent power-per-unit scaling if needed).
+    for node in grid.nodes_DC:
+        if node.PLi_linked == True:
+            continue
+        inv = node.investment_decisions
+        node.PLi_inv_factor = inv['Load'][idx]
 
 
 def _MP_TEP_constraints(model,grid):
@@ -67,7 +142,7 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_rsgen_decomision(model,rs,i):
             ren_source = grid.RenSources[rs]
-            planned_decomision = ren_source.planned_decomision[i]
+            planned_decomision = _inv_decision(ren_source, 'planned_decomision')[i]
             decomision_period = ren_source.decomision_period
             if i < decomision_period:
                 return model.decomision_rsgen[rs,i] == planned_decomision
@@ -93,7 +168,7 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_gen_decomision(model,g,i):
             gen = grid.Generators[g]
-            planned_decomision = gen.planned_decomision[i]
+            planned_decomision = _inv_decision(gen, 'planned_decomision')[i]
             decomision_period = gen.decomision_period
             if i < decomision_period:
                 return model.decomision_gen[g,i] == planned_decomision
@@ -121,7 +196,7 @@ def _MP_TEP_constraints(model,grid):
 
             def MP_AC_line_decomision(model, l, i):
                 line = grid.lines_AC_exp[l]
-                planned_decomision = line.planned_decomision[i]
+                planned_decomision = _inv_decision(line, 'planned_decomision')[i]
                 decomision_period = line.decomision_period
                 if i < decomision_period:
                     return model.decomision_ACline[l,i] == planned_decomision
@@ -147,7 +222,7 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_DC_line_decomision(model, l, i):
             line = grid.lines_DC[l]
-            planned_decomision = line.planned_decomision[i]
+            planned_decomision = _inv_decision(line, 'planned_decomision')[i]
             decomision_period = line.decomision_period
             if i < decomision_period:
                 return model.decomision_DCline[l,i] == planned_decomision
@@ -173,7 +248,7 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_Conv_decomision(model, c, i):
             conv = grid.Converters_ACDC[c]
-            planned_decomision = conv.planned_decomision[i]
+            planned_decomision = _inv_decision(conv, 'planned_decomision')[i]
             decomision_period = conv.decomision_period
             if i < decomision_period:
                 return model.decomision_Conv[c,i] == planned_decomision
@@ -245,21 +320,23 @@ def _MP_TEP_variables(model,grid):
     tep_vars = get_TEP_variables(grid)
     np_gen_max_install={}
     for gen in grid.Generators:
-        np_gen_max_install[gen.genNumber] = gen.np_gen_max_install if gen.np_gen_max_install else gen.np_gen_max
+        max_inv = _inv_decision(gen, 'max_inv')
+        np_gen_max_install[gen.genNumber] = max(max_inv) if len(max_inv) > 0 else gen.np_gen_max
     np_rsgen_max_install={}
     for rs in grid.RenSources:
-        np_rsgen_max_install[rs.rsNumber] = rs.np_rsgen_max_install if rs.np_rsgen_max_install else rs.np_rsgen_max
+        max_inv = _inv_decision(rs, 'max_inv')
+        np_rsgen_max_install[rs.rsNumber] = max(max_inv) if len(max_inv) > 0 else rs.np_rsgen_max
 
     def planned_installation_rsgen_init(model, rs, i):
-        return grid.RenSources[rs].planned_installation[i]
+        return _inv_decision(grid.RenSources[rs], 'planned_installation')[i]
     def planned_installation_gen_init(model, g, i):
-        return grid.Generators[g].planned_installation[i]
+        return _inv_decision(grid.Generators[g], 'planned_installation')[i]
     def planned_installation_ACline_init(model, l, i):
-        return grid.lines_AC_exp[l].planned_installation[i]
+        return _inv_decision(grid.lines_AC_exp[l], 'planned_installation')[i]
     def planned_installation_DCline_init(model, l, i):
-        return grid.lines_DC[l].planned_installation[i]
+        return _inv_decision(grid.lines_DC[l], 'planned_installation')[i]
     def planned_installation_Conv_init(model, c, i):
-        return grid.Converters_ACDC[c].planned_installation[i]
+        return _inv_decision(grid.Converters_ACDC[c], 'planned_installation')[i]
 
     if grid.rs_GPR:
         np_rsgen = tep_vars['ren_sources']['np_rsgen']
@@ -387,56 +464,33 @@ def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,d
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate =discount_rate
     
-    # If inv_periods is provided, create load investment series for all loads
+    # If inv_periods is provided, set default load multipliers directly on objects.
     if inv_periods:
-        from .Classes import investment_periods
         load_factors = np.array(inv_periods, dtype=float)
-        n_periods_inv = len(load_factors)
-        
-        # Create investment series for all AC nodes
+        # Keep behavior consistent with prior shorthand by setting node loads too.
         for node in grid.nodes_AC:
-            inv_obj = investment_periods('Load', node.name, load_factors, name=f'Load_{node.name}')
-            grid.inv_series.append(inv_obj)
-            grid.inv_series_dic[inv_obj.name] = inv_obj.inv_periods_num
-        
-        # Create investment series for all DC nodes
+            node.investment_decisions['Load'] = load_factors.copy().tolist()
+
         for node in grid.nodes_DC:
-            inv_obj = investment_periods('Load', node.name, load_factors, name=f'Load_{node.name}')
-            grid.inv_series.append(inv_obj)
-            grid.inv_series_dic[inv_obj.name] = inv_obj.inv_periods_num
-        for gen in grid.Generators:
-            gen.planned_decomision = [0] * n_periods_inv
-            gen.planned_installation = [0] * n_periods_inv
-        for ren_source in grid.RenSources:
-            ren_source.planned_decomision = [0] * n_periods_inv
-            ren_source.planned_installation = [0] * n_periods_inv
-        for line in grid.lines_AC_exp:
-            line.planned_decomision = [0] * n_periods_inv
-            line.planned_installation = [0] * n_periods_inv
-        for line in grid.lines_DC:
-            line.planned_decomision = [0] * n_periods_inv
-            line.planned_installation = [0] * n_periods_inv
-        for conv in grid.Converters_ACDC:
-            conv.planned_decomision = [0] * n_periods_inv
-            conv.planned_installation = [0] * n_periods_inv
-      
-    grid.GPR = True if any(any(x != 0 for x in gen.planned_installation) for gen in grid.Generators) else grid.GPR
-    grid.rs_GPR = True if any(any(x != 0 for x in ren_source.planned_installation) for ren_source in grid.RenSources) else grid.rs_GPR
+            node.investment_decisions['Load'] = load_factors.copy().tolist()
+    
+    n_periods = _fill_investment_decisions(grid)
+
+    grid.GPR = True if any(any(x != 0 for x in _inv_decision(gen, 'planned_installation')) for gen in grid.Generators) else grid.GPR
+    grid.rs_GPR = True if any(any(x != 0 for x in _inv_decision(ren_source, 'planned_installation')) for ren_source in grid.RenSources) else grid.rs_GPR
     
     for gen in grid.Generators:
-        gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in gen.planned_installation)
+        gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in _inv_decision(gen, 'planned_installation'))
     for rs in grid.RenSources:
-        rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in rs.planned_installation)
+        rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in _inv_decision(rs, 'planned_installation'))
     
     t1=time.time()
 
     model = pyo.ConcreteModel()
     model.name        ="Dynamic TEP MTDC AC/DC hybrid OPF"
 
-    n_periods = len(grid.inv_series[0].data)
-
     model.inv_periods = pyo.Set(initialize=list(range(0,n_periods)))
-
+    grid.TEP_n_periods = n_periods
     model.inv_model = pyo.Block(model.inv_periods)
 
     base_model = pyo.ConcreteModel()
@@ -449,9 +503,8 @@ def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,d
     for i in model.inv_periods:
         base_model_copy = base_model.clone()
         model.inv_model[i].transfer_attributes_from(base_model_copy)
-       
-        for inv in grid.inv_series:    
-            _update_grid_investment_period(grid,inv,i)
+
+        _update_grid_investment_period(grid, i,PZ)
 
         _modify_parameters(grid,model.inv_model[i],PZ)
 
@@ -653,7 +706,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
 
     grid.MP_TEP_run=True
     
-    n_periods = len(grid.inv_series[0].data)
+    n_periods = grid.TEP_n_periods
     
     rows = []
     
@@ -669,7 +722,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
             
         for gen in grid.Generators:
             g = gen.genNumber
-            gen.np_dynamic = [gen_mp_values[g, i] for i in range(n_periods)]
+            gen.investment_decisions['np_dynamic'] = [gen_mp_values[g, i] for i in range(n_periods)]
             row = {'Element': str(gen.name)}
             row['Type'] = 'Generator'
             row['Pre Existing'] = pyo.value(model.np_gen_base[g])
@@ -699,7 +752,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
             
         for ren_source in grid.RenSources:
             rs = ren_source.rsNumber
-            ren_source.np_dynamic = [rs_mp_values[rs, i] for i in range(n_periods)]
+            ren_source.investment_decisions['np_dynamic'] = [rs_mp_values[rs, i] for i in range(n_periods)]
             row = {'Element': str(ren_source.name)}
             row['Type'] = 'Renewable Source'
             row['Pre Existing'] = pyo.value(model.np_rsgen_base[rs])
@@ -730,7 +783,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
                 ac_line_decomision_values = {(l, i): round(pyo.value(model.decomision_ACline[l, i]),2) for (l, i) in model.decomision_ACline}
             for line in grid.lines_AC_exp:
                 l = line.lineNumber
-                line.np_dynamic = [ac_lines_mp_values[l, i] for i in range(n_periods)]
+                line.investment_decisions['np_dynamic'] = [ac_lines_mp_values[l, i] for i in range(n_periods)]
                 row = {'Element': str(line.name)}
                 row['Type'] = 'AC Line'
                 row['Pre Existing'] = pyo.value(model.NumLinesACP_base[l])
@@ -765,7 +818,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
         for line in grid.lines_DC:  
             if line.np_line_opf:
                 l = line.lineNumber
-                line.np_dynamic = [dc_lines_mp_values[l, i] for i in range(n_periods)]
+                line.investment_decisions['np_dynamic'] = [dc_lines_mp_values[l, i] for i in range(n_periods)]
                 row = {'Element': str(line.name)}
                 row['Type'] = 'DC Line'
                 row['Pre Existing'] = pyo.value(model.NumLinesDCP_base[l])
@@ -795,7 +848,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
             conv_decomision_values = {(c, i): round(pyo.value(model.decomision_Conv[c, i]),2) for (c, i) in model.decomision_Conv}
         for conv in grid.Converters_ACDC:
             c = conv.ConvNumber
-            conv.np_dynamic = [acdc_conv_mp_values[c, i] for i in range(n_periods)]
+            conv.investment_decisions['np_dynamic'] = [acdc_conv_mp_values[c, i] for i in range(n_periods)]
             row = {'Element': str(conv.name)}
             row['Type'] = 'ACDC Conv'
             row['Pre Existing'] = pyo.value(model.NumConvP_base[c])
@@ -857,6 +910,7 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
     # 2. Set grid parameters
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate = discount_rate
+    n_periods = _fill_investment_decisions(grid)
 
     # 3. Handle time series clustering
     try:
@@ -872,7 +926,6 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
     model.name = "MP TEP MS MTDC AC/DC hybrid OPF"
     
     # Investment periods
-    n_periods = len(grid.inv_series[0].data)
     model.inv_periods = pyo.Set(initialize=list(range(0, n_periods)))
     
     # Create hierarchical model structure
@@ -923,7 +976,7 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
 
 def save_MP_TEP_period_svgs(grid, name_prefix='grid_MP_TEP', journal=True, legend=True, square_ratio=False, poly=None, linestrings=None):
     
-    periods = len(grid.inv_series[0].data)
+    periods = grid.TEP_n_periods
    
     for i in range(periods):
             # From DataFrame by names
@@ -948,15 +1001,15 @@ def save_MP_TEP_period_svgs(grid, name_prefix='grid_MP_TEP', journal=True, legen
 
 def _set_grid_to_dynamic_state(grid, investment_period):    
     for line in grid.lines_AC_exp:
-        line.np_line = line.np_dynamic[investment_period]
+        line.np_line = line.investment_decisions['np_dynamic'][investment_period]
     for line in grid.lines_DC:
-        line.np_line = line.np_dynamic[investment_period]
+        line.np_line = line.investment_decisions['np_dynamic'][investment_period]
     for conv in grid.Converters_ACDC:
-        conv.NumConvP = conv.np_dynamic[investment_period]
+        conv.NumConvP = conv.investment_decisions['np_dynamic'][investment_period]
     for rs in grid.RenSources:
-        rs.np_rsgen = rs.np_dynamic[investment_period]
+        rs.np_rsgen = rs.investment_decisions['np_dynamic'][investment_period]
     for gen in grid.Generators:
-        gen.np_gen = gen.np_dynamic[investment_period]
+        gen.np_gen = gen.investment_decisions['np_dynamic'][investment_period]
 
 def _calculate_decomision_period(element,n_years):
 

@@ -432,47 +432,59 @@ def update_gen_hovertext(gen,S_base,text):
      if text =='data':
          name= gen.name
          node = gen.Node_AC 
-         rating = gen.capacity_MVA*gen.np_gen
-         rating = np.round(rating,decimals=0)
+         n_gens = gen.np_gen
+         P_max = gen.Max_pow_gen * S_base * gen.np_gen
+         P_min = gen.Min_pow_gen * S_base * gen.np_gen
+         Q_max = gen.Max_pow_genR * S_base * gen.np_gen
+         Q_min = gen.Min_pow_genR * S_base * gen.np_gen
+         rating = gen.capacity_MVA
+         rating = np.round(rating,decimals=1)
          
-         gen.hover_text = f"Generator: {name}<br>AC node: {node}<br>Rating: {rating}MVA<br>Fuel: {gen.gen_type}"    
+         gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br>Rating: {rating}MVA<br>Fuel: {gen.gen_type}<br>P max: {P_max}MW<br>Q max: {Q_max}MVAR<br>P min: {P_min}MW<br>Q min: {Q_min}MVAR"    
          
      elif text =='inPu':
          name= gen.name
-         Pto = np.round(gen.PGen, decimals=0)
-         Qto = np.round(gen.QGen, decimals=0)
+         n_gens = gen.np_gen
+         Pto = np.round(gen.PGen, decimals=2)
+         Qto = np.round(gen.QGen, decimals=2)
          load = gen.loading
          Loading = np.round(load, decimals=0).astype(int)
          
-         gen.hover_text = f"Generator: {name}<br> P gen: {Pto}<br>Q Gen: {Qto}<br>Loading: {Loading}%"   
+         gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br> P gen: {Pto}<br>Q Gen: {Qto}<br>Loading: {Loading}%"   
      else:
         name= gen.name
-        Pto = np.round(gen.PGen*S_base, decimals=0)
-        Qto = np.round(gen.QGen*S_base, decimals=0)
+        n_gens = gen.np_gen
+        Pto = np.round(gen.PGen*S_base, decimals=1)
+        Qto = np.round(gen.QGen*S_base, decimals=1)
         load = gen.loading
         Loading = np.round(load, decimals=0).astype(int)
         
-        gen.hover_text = f"Generator: {name}<br> P gen: {Pto*S_base}MW<br>Q Gen: {Qto*S_base}MVAR<br>Loading: {Loading}%"    
+        gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br> P gen: {Pto*S_base}MW<br>Q Gen: {Qto*S_base}MVAR<br>Loading: {Loading}%"    
         
 def update_renSource_hovertext(renSource,S_base,text):            
      if text =='data':
          name= renSource.name
          node = renSource.Node
+         n_rs = renSource.np_rsgen
          rating = renSource.capacity_MVA
+         Pmin = renSource.PGi_ren_base*renSource.min_gamma*renSource.np_rsgen*S_base
+         Pmax = renSource.PGi_ren_base*renSource.np_rsgen*S_base
          rating = np.round(rating,decimals=0)
-         renSource.hover_text = f"Ren Source: {name}<br>AC node: {node}<br>Rating: {rating}<br>Tech: {renSource.rs_type}"    
+         renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>Rating: {rating}<br>Tech: {renSource.rs_type}<br>P min: {Pmin}MW<br>P max: {Pmax}MW"    
          
      elif text=='inPu':
          name= renSource.name
+         n_rs = renSource.np_rsgen
          Pto= np.round(renSource.PGi_ren, decimals=0)
          Curt = np.round((1-renSource.gamma)*100, decimals=0)
-         renSource.hover_text = f"Ren Source: {name}<br>  P : {Pto}<br>Curtailment: {Curt}%"    
+         renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>  P : {Pto}<br>Curtailment: {Curt}%"    
      else:
          
         name= renSource.name
+        n_rs = renSource.np_rsgen
         Pto= np.round(renSource.PGi_ren*S_base, decimals=0)
         Curt = np.round((1-renSource.gamma)*100, decimals=0)
-        renSource.hover_text = f"Ren Source: {name}<br>  P : {Pto}MW<br>Curtailment: {Curt}%"    
+        renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>  P : {Pto}MW<br>Curtailment: {Curt}%"    
         
     
                             

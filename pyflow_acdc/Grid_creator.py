@@ -42,7 +42,6 @@ def initialize_pyflowacdc():
     AC_DC_converter.reset_class()
 
     TimeSeries.reset_class()
-    investment_periods.reset_class()
       
     Ren_source_zone.reset_class()
     Price_Zone.reset_class()

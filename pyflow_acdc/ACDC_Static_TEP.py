@@ -487,9 +487,9 @@ def GEN_balance_constraints(model,grid):
     if all(v == 1 for v in grid.generation_type_limits.values()):
         return  # All limits are 1, no constraints needed
     
-    grid.generation_type_limits = {k.lower(): v for k, v in grid.generation_type_limits.items()}
-    model.gen_types = pyo.Set(initialize=list(grid.generation_type_limits.keys()))
-    model.gen_type_limits = pyo.Param(model.gen_types,initialize=grid.generation_type_limits)
+    gen_type_limits = {k.lower(): v for k, v in grid.generation_type_limits.items()}
+    model.gen_types = pyo.Set(initialize=list(gen_type_limits.keys()))
+    model.gen_type_limits = pyo.Param(model.gen_types,initialize=gen_type_limits)
     
     # Helper function to normalize type names to lowercase
     def normalize_type(type_name):

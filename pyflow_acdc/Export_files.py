@@ -310,7 +310,7 @@ def create_dictionaries(grid):
                         "a":           price_zone.a,
                         "b":           price_zone.b,
                         "c":           price_zone.c,
-                        "import_expand_pu": price_zone.ImportExpand_og,
+                        "import_expand_pu": price_zone.import_expand,
                         "type":'main',
                     })
 

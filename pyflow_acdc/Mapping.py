@@ -1,6 +1,7 @@
 import networkx as nx
 import numpy as np
 import os
+from pathlib import Path
 from importlib import resources
 import colorsys
 
@@ -108,13 +109,14 @@ def create_geometries(grid):
         if gen.x_coord is not None and gen.y_coord is not None and gen.geometry is None:
             gen.geometry = Point(gen.x_coord, gen.y_coord)
 
-def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=None,linestrings=None,ant_path='None',clustering=True,coloring=None,show=True):
+def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=None,linestrings=None,ant_path='None',clustering=True,coloring=None,show=True,planar=False,scale_gen=False,base_icon_size=24,plot_load=True):
     # "OpenStreetMap",     "CartoDB Positron"     "Cartodb dark_matter" 
     if name is None:
         name = grid.name
     update_hovertexts(grid, text) 
 
     create_geometries(grid)
+  
     
     G = grid.Graph_toPlot  # Assuming this is your main graph object
     subgraph_colors= create_subgraph_color_dict(G)
@@ -346,6 +348,7 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
                     "VL" :VL,
                     "area":node.PZ,
                     "hover_text": getattr(node, 'hover_text', 'No info'),
+                    "load_mw": float(getattr(node, 'PLi', 0.0)) * float(grid.S_base),
                     "type": "AC" if isinstance(node, Node_AC) else "DC",
                     "color": subgraph_colors[VL].get(subgraph_idx, "black") if isinstance(node, Node_AC) else "blue"
                 })
@@ -371,6 +374,7 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
                  'EHV' if gen.kV_base < 500 else \
                  'UHV'
             if geometry and not geometry.is_empty:
+                mw_size = gen.Max_pow_gen * grid.S_base * gen.np_gen
                 gen_data.append({
                     "geometry": geometry,
                     "name": getattr(gen, 'name', 'Unknown'),
@@ -378,7 +382,8 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
                     "area":gen.PZ,
                     "hover_text": getattr(gen, 'hover_text', 'No info'),
                     "type": gen.gen_type,
-                    "color": subgraph_colors[VL].get(subgraph_idx, "black") 
+                    "color": subgraph_colors[VL].get(subgraph_idx, "black"),
+                    "mw_size": mw_size,
                 })
         return gpd.GeoDataFrame(gen_data, geometry="geometry")
     
@@ -398,6 +403,7 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
                  'EHV' if rs.kV_base < 500 else \
                  'UHV'
             if geometry and not geometry.is_empty:
+                mw_size = float(rs.PGi_ren_base) * float(grid.S_base) * float(rs.np_rsgen)
                 gen_data.append({
                     "geometry": geometry,
                     "name": getattr(rs, 'name', 'Unknown'),
@@ -405,7 +411,8 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
                     "area":rs.PZ,
                     "hover_text": getattr(rs, 'hover_text', 'No info'),
                     "type": rs.rs_type,
-                    "color": subgraph_colors[VL].get(subgraph_idx, "black") 
+                    "color": subgraph_colors[VL].get(subgraph_idx, "black"),
+                    "mw_size": mw_size,
                 })
         return gpd.GeoDataFrame(gen_data, geometry="geometry")
     
@@ -414,6 +421,45 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
         gdf_rsSources = extract_renSource_data(grid.RenSources)
     else:
         gdf_rsSources = gpd.GeoDataFrame(columns=["geometry", "name", "VL", "area","hover_text","type","color"])
+
+   
+    BASE_ICON_SIZE = float(base_icon_size)
+    MIN_ICON_SIZE = BASE_ICON_SIZE * 0.5
+    MAX_ICON_SIZE = BASE_ICON_SIZE * 2
+
+    mw_values = [
+        float(v)
+        for source_gdf in (gdf_gens, gdf_rsSources)
+        if 'mw_size' in source_gdf.columns
+        for v in source_gdf['mw_size'].tolist()
+        if float(v) > 0
+    ]
+    mw_min = min(mw_values) if mw_values else 0.0
+    mw_max = max(mw_values) if mw_values else 0.0
+    ref_mw_min = 0.5 * mw_min if mw_min > 0 else 0.0
+    ref_mw_max = 2.0 * mw_max if mw_max > 0 else 0.0
+
+    def _coord_key(geometry):
+        return (round(geometry.y, 10), round(geometry.x, 10))
+
+    # Count overlapping coordinates globally across all generation markers.
+    coord_counts_all = {}
+    for source_gdf in (gdf_gens, gdf_rsSources):
+        for _, row in source_gdf.iterrows():
+            geometry = row.get('geometry', None)
+            if geometry and not geometry.is_empty:
+                key = _coord_key(geometry)
+                coord_counts_all[key] = coord_counts_all.get(key, 0) + 1
+    coord_seen_all = {}
+
+    def _marker_size_px(mw_value):
+        if not scale_gen:
+            return BASE_ICON_SIZE
+        if ref_mw_max <= ref_mw_min:
+            return BASE_ICON_SIZE
+        norm = (mw_value - ref_mw_min) / (ref_mw_max - ref_mw_min)
+        norm = max(0.0, min(1.0, norm))
+        return int(round(MIN_ICON_SIZE + norm * (MAX_ICON_SIZE - MIN_ICON_SIZE)))
 
     
     # Function to add LineString geometries to the map
@@ -459,7 +505,12 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
         map_center = [56, 10]
     
     # Initialize the map, centred around the nodes
-    if tiles is not None and tiles.startswith('http'):
+    if planar:
+        # In planar coordinates, marker clustering can hide markers/layers unexpectedly.
+        clustering = False
+        # Planar x/y mode: do not interpret coordinates as geographic lon/lat.
+        m = folium.Map(location=map_center, tiles=None, zoom_start=5, crs='Simple')
+    elif tiles is not None and tiles.startswith('http'):
         # Custom tile layer with attribution
         m = folium.Map(location=map_center, zoom_start=5)
         folium.TileLayer(
@@ -483,7 +534,35 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
                 fill_opacity=0.9,
                 popup=row["hover_text"]
             ).add_to(tech_name)
+
+    def add_load_markers(gdf, tech_name):
+        try:
+            load_icon_path = str(resources.files('pyflow_acdc').joinpath('folium_images').joinpath('load.png'))
+        except Exception:
+            load_icon_path = os.path.join(os.path.dirname(__file__), 'folium_images', 'load.png')
+        load_icon_px = int(round(BASE_ICON_SIZE))
+        for _, row in gdf.iterrows():
+            if float(row.get("load_mw", 0.0)) <= 0:
+                continue
+            folium.Marker(
+                location=(row.geometry.y, row.geometry.x),
+                popup=row["hover_text"],
+                icon=folium.CustomIcon(
+                    icon_image=load_icon_path,
+                    icon_size=(load_icon_px, load_icon_px),
+                    icon_anchor=(0, 0),
+                ),
+            ).add_to(tech_name)
     
+    default_type_keys = _default_type_keys()
+
+    try:
+        base_icon_dir = resources.files('pyflow_acdc').joinpath('folium_images')
+        use_importlib_resources = True
+    except Exception:
+        base_icon_dir = os.path.join(os.path.dirname(__file__), 'folium_images')
+        use_importlib_resources = False
+
     def add_markers(gdf, tech_name):  
         
         if clustering == True:
@@ -491,23 +570,45 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
         else:
             cluster = tech_name
         for _, row in gdf.iterrows():
-            
-            typ = row['type']
-            # Ensure valid coordinates (lat, lon)
             if row['geometry'] and not row['geometry'].is_empty:
                 lat, lon = row['geometry'].y, row['geometry'].x
-                try:
-                    # For Python 3.9+
-                    icon_path = str(resources.files('pyflow_acdc').joinpath('folium_images').joinpath(f'{typ}.png'))
-                except Exception:
-                    # Fallback for older Python versions
-                    icon_path = os.path.join(os.path.dirname(__file__), 'folium_images', f'{typ}.png')
-                    
+                key = (round(lat, 10), round(lon, 10))
+                typ = str(row['type']).lower()
+                typ_icon = typ.replace(" ", "_") if typ in default_type_keys else "other"
+
+                total_at_coord = coord_counts_all.get(key, 1)
+                used_at_coord = coord_seen_all.get(key, 0)
+                coord_seen_all[key] = used_at_coord + 1
+
+                marker_size_px = _marker_size_px(float(row.get('mw_size', 0.0)))
+                icon_size = (marker_size_px, marker_size_px)
+                center = marker_size_px // 2
+                if total_at_coord > 1:
+                    ring_size = 8
+                    ring = used_at_coord // ring_size
+                    pos_in_ring = used_at_coord % ring_size
+                    points_this_ring = min(total_at_coord - ring * ring_size, ring_size)
+                    angle = (2 * np.pi * pos_in_ring) / max(points_this_ring, 1)
+                    radius_px = 14 + 8 * ring
+                    dx = int(round(radius_px * np.cos(angle)))
+                    dy = int(round(radius_px * np.sin(angle)))
+                    icon_anchor = (center + dx, center + dy)
+                else:
+                    # Match the previous visual behavior for single markers.
+                    icon_anchor = (marker_size_px, marker_size_px)
+
+                if use_importlib_resources:
+                    icon_path = str(base_icon_dir.joinpath(f'{typ_icon}.png'))
+                else:
+                    icon_path = os.path.join(base_icon_dir, f'{typ_icon}.png')
+
                 folium.Marker(
-                    location=(lat, lon),  # (lat, lon)
+                    location=(lat, lon),  # Keep marker on exact coordinate
                     popup=row["hover_text"],  # Display name on click
                     icon=folium.CustomIcon(
-                        icon_image=icon_path,  
+                        icon_image=icon_path,
+                        icon_size=icon_size,
+                        icon_anchor=icon_anchor,
                     )
                 ).add_to(cluster)
                 
@@ -523,6 +624,7 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
     ct_AC = folium.FeatureGroup(name="Conductor Size Selection")
     exp_lines = folium.FeatureGroup(name="Exp Lines")
     rec_lines = folium.FeatureGroup(name="Rec Lines")
+    loads_fg = folium.FeatureGroup(name="Loads", show=False)
     
     if ant_path == 'All' or ant_path == 'Reduced':
         ant = True
@@ -545,13 +647,14 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
     add_nodes(gdf_nodes_AC_ehv, ehv_AC)
     add_nodes(gdf_nodes_AC_uhv, uhv_AC)
     add_nodes(gdf_nodes_DC, hvdc)
+    if plot_load:
+        add_load_markers(gdf_nodes_AC, loads_fg)
+        add_load_markers(gdf_nodes_DC, loads_fg)
 
-    layer_names = [
-    "Nuclear", "Hard Coal", "Hydro", "Oil", "Lignite", "Natural Gas",
-    "Solid Biomass", "Wind", "Other", "Solar", "Waste", "Biogas", "Geothermal","CCGT"
-    ]
-    # Dictionary to store FeatureGroups for each generation type
-    layers = {name: folium.FeatureGroup(name=name, show=False) for name in layer_names}
+    
+    layer_names = grid.generation_types
+    # Dictionary to store FeatureGroups for each generation type (lowercase key for robust matching)
+    layers = {name.lower(): folium.FeatureGroup(name=name, show=False) for name in layer_names}
     
     
     # Add filtered layers to map
@@ -565,18 +668,27 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
     ct_AC.add_to(m) if len(ct_AC._children) > 0 else None
     exp_lines.add_to(m)    if len(exp_lines._children) > 0 else None
     rec_lines.add_to(m) if len(rec_lines._children) > 0 else None
+    loads_fg.add_to(m) if plot_load and len(loads_fg._children) > 0 else None
         
     # Split gdf_gens by type and add markers for each type
     for gen_type, subset in gdf_gens.groupby('type'):  # Split by 'type'
-        if gen_type in layers:
-            add_markers(subset, layers[gen_type])
+        key = str(gen_type).lower()
+        if key not in layers:
+            layers[key] = folium.FeatureGroup(name=str(gen_type), show=False)
+        add_markers(subset, layers[key])
     
     for gen_type, subset in gdf_rsSources.groupby('type'):  # Split by 'type'
-        if gen_type in layers:
-            add_markers(subset, layers[gen_type])
+        key = str(gen_type).lower()
+        if key not in layers:
+            layers[key] = folium.FeatureGroup(name=str(gen_type), show=False)
+        add_markers(subset, layers[key])
     for layer in layers.values():
         if len(layer._children) > 0:  # Check if the layer has children
             layer.add_to(m)
+
+    # Fit to data bounds for better initial framing (especially in planar mode).
+    if not gdf_nodes_AC.empty:
+        m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
 
     if polygon is not None:
         folium.GeoJson(
@@ -631,3 +743,10 @@ def plot_folium(grid, text='inPu', name=None,tiles="CartoDB Positron",polygon=No
     if show:
         webbrowser.open(f"file://{abs_map_filename}")
     return m
+
+def _default_type_keys():
+    from .Classes import Grid
+    return set(
+        [t.lower() for t in Grid.DEFAULT_GENERATION_TYPES] +
+        [t.lower() for t in Grid.DEFAULT_RENEWABLE_TYPES]
+    )
