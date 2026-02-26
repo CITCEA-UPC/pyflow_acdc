@@ -1069,6 +1069,7 @@ def run_opf_for_investment_period(
             'file_name': file_name or f"{getattr(grid, 'name', 'grid')}_period_{period_idx}",
             'export_location': export_location,
         }
+        res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
         res.All(**all_kwargs)
 
     if plot_folium:
