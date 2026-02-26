@@ -456,7 +456,7 @@ def _MP_TEP_variables(model,grid):
         model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_Conv_bounds_install_opt)
         model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
         
-def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,callback=False,solver_options=None,obj_scaling=1.0,capex_budget=None):
+def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=99999,tee=False,callback=False,solver_options=None,obj_scaling=1.0,capex_budget=None,nlp_warmstart=False):
     grid.reset_run_flags()
     analyse_grid(grid)
     weights_def, PZ = obj_w_rule(grid,ObjRule,True)
@@ -530,7 +530,10 @@ def multi_period_transmission_expansion(grid,inv_periods=[],n_years=10,Hy=8760,d
     
     t2 = time.time()
 
-    model_results,solver_stats = pyomo_model_solve(model,grid,solver,time_limit=time_limit,tee=tee,callback=callback,solver_options=solver_options)
+    model_results,solver_stats = pyomo_model_solve(
+        model, grid, solver, time_limit=time_limit, tee=tee,
+        callback=callback, solver_options=solver_options, nlp_warmstart=nlp_warmstart
+    )
     
     t3 = time.time()
     
