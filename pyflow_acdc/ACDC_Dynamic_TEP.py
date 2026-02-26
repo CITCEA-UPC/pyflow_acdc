@@ -7,11 +7,12 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables,ExportACDC_NLmodel_toPyflowACDC
-from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,calculate_objective_from_model
+from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,calculate_objective_from_model,Optimal_PF
 from .ACDC_Static_TEP import get_TEP_variables,_initialize_MS_STEP_sets_model,create_scenarios
 from .Class_editor import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters
 from .Graph_and_plot import save_network_svg, create_geometries
+from .Results_class import Results
 
 
 
@@ -19,7 +20,9 @@ __all__ = [
     'multi_period_transmission_expansion',
     'multi_period_MS_TEP',
     'save_MP_TEP_period_svgs',
-    'export_and_save_inv_period_svgs'
+    'export_and_save_inv_period_svgs',
+    'run_opf_for_investment_period',
+    'run_opf_for_all_investment_periods',
 ]
 
 def pack_variables(*args):
@@ -1016,6 +1019,141 @@ def save_MP_TEP_period_svgs(grid, name_prefix='grid_MP_TEP', journal=True, legen
         )
 
     return
+
+
+def run_opf_for_investment_period(
+    grid,
+    investment_period,
+    ObjRule=None,
+    solver='ipopt',
+    tee=False,
+    limit_flow_rate=True,
+    obj_scaling=1.0,
+    export_excel=True,
+    export_location=None,
+    file_name=None,
+    print_table=False,
+    decimals=3,
+    plot_folium={}
+):
+    """
+    Apply a dynamic investment state, run OPF, and optionally export Results.All to Excel.
+
+    This uses the same period-state loader as MP-TEP result post-processing:
+    `_set_grid_to_dynamic_state(grid, investment_period)`.
+    """
+    period_idx = int(investment_period)
+    n_periods = int(getattr(grid, 'TEP_n_periods', 0) or 0)
+    if n_periods > 0 and (period_idx < 0 or period_idx >= n_periods):
+        raise ValueError(
+            f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
+        )
+
+    _set_grid_to_dynamic_state(grid, period_idx)
+
+    model, model_res, timing_info, solver_stats = Optimal_PF(
+        grid,
+        ObjRule=ObjRule,
+        solver=solver,
+        tee=tee,
+        limit_flow_rate=limit_flow_rate,
+        obj_scaling=obj_scaling,
+    )
+    if export_location is not None:
+        os.makedirs(export_location, exist_ok=True)
+    res = Results(grid, decimals=decimals)
+    if export_excel:
+        all_kwargs = {
+            'export_type': 'excel',
+            'print_table': print_table,
+            'file_name': file_name or f"{getattr(grid, 'name', 'grid')}_period_{period_idx}",
+        }
+        if export_location is not None:
+            all_kwargs['export_location'] = export_location
+        res.All(**all_kwargs)
+
+    if plot_folium:
+        try:
+            from .Mapping import plot_folium as plot_folium_fn
+            default_map_name = f"{grid.name}_period_{period_idx}"
+            if export_location is not None:
+                default_map_name = os.path.join(export_location, default_map_name)
+
+            folium_kwargs = {
+                'planar': False,
+                'scale_gen': False,
+                'plot_load': True,
+                'name': default_map_name,
+            }
+            if isinstance(plot_folium, dict):
+                folium_kwargs.update(plot_folium)
+
+            if export_location is not None:
+                map_name = str(folium_kwargs.get('name', default_map_name))
+                if not os.path.isabs(map_name):
+                    folium_kwargs['name'] = os.path.join(export_location, map_name)
+
+            plot_folium_fn(grid, **folium_kwargs)
+        except Exception as exc:
+            print(f"Warning: folium plotting skipped ({exc})")
+    return model, model_res, timing_info, solver_stats, res
+
+
+def run_opf_for_all_investment_periods(
+    grid,
+    ObjRule=None,
+    solver='ipopt',
+    tee=False,
+    limit_flow_rate=True,
+    obj_scaling=1.0,
+    export_excel=True,
+    export_location=None,
+    file_name_prefix=None,
+    print_table=False,
+    decimals=3,
+    plot_folium=None,
+):
+    """
+    Run OPF for every dynamic investment period and export one Excel per period.
+
+    Default file naming:
+    - `<grid.name>_res_invperiod_0_results.xlsx`
+    - `<grid.name>_res_invperiod_1_results.xlsx`
+    - ...
+    """
+    n_periods = grid.TEP_n_periods
+
+
+    prefix = file_name_prefix or f"{grid.name}_res_invperiod"
+    period_results = {}
+
+    for i in range(n_periods):
+        run_out = run_opf_for_investment_period(
+            grid,
+            investment_period=i,
+            ObjRule=ObjRule,
+            solver=solver,
+            tee=tee,
+            limit_flow_rate=limit_flow_rate,
+            obj_scaling=obj_scaling,
+            export_excel=export_excel,
+            export_location=export_location,
+            file_name=f"{prefix}_{i}",
+            print_table=print_table,
+            decimals=decimals,
+            plot_folium=plot_folium
+        )
+        period_results[i] = {
+            'model': run_out[0],
+            'model_res': run_out[1],
+            'timing_info': run_out[2],
+            'solver_stats': run_out[3],
+            'results_obj': run_out[4],
+        }
+
+    
+
+    return period_results
 
 def _set_grid_to_dynamic_state(grid, investment_period):    
     for line in grid.lines_AC_exp:
