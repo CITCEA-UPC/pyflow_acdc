@@ -1508,7 +1508,7 @@ class Node_AC:
 
         self._PLi_base = Power_load
 
-        self.PLi_linked= True
+        self.PLi_linked= False
         self._PLi_factor =1
         self._PLi_inv_factor=1
         
@@ -1672,7 +1672,7 @@ class Node_DC:
         self.kV_base = kV_base
         
         self.PGi = Power_Gained
-        self.PLi_linked= True
+        self.PLi_linked= False
         self.PLi= Power_load
 
         self._PLi_base = Power_load

@@ -2001,6 +2001,7 @@ class Results:
             type_order.append("System load (all nodes)")
 
         metric_tables = {}
+        s_base = self.Grid.S_base
         for metric in metrics:
             metric_df = pd.DataFrame({"Type": type_order})
             for period in periods:
@@ -2010,6 +2011,10 @@ class Results:
                     continue
                 tmp = normalized_metric_by_period[metric][period].rename(columns={metric: col_name})
                 metric_df = metric_df.merge(tmp, on="Type", how="left")
+            if metric == "total install cap":
+                for col_name in period_cols:
+                    if col_name in metric_df.columns:
+                        metric_df[col_name] = pd.to_numeric(metric_df[col_name], errors="coerce") * s_base
             metric_tables[metric] = metric_df
 
         self.tables["MP_TEP_fuel_type_distribution_number_of_gen"] = metric_tables["number of gen"]
@@ -2019,7 +2024,8 @@ class Results:
         # Stacked export table (one metric section under another)
         stacked_blocks = []
         for metric in metrics:
-            section_title = pd.DataFrame([{"Variable": metric, "Type": "", **{c: "" for c in period_cols}}])
+            metric_title = "total install cap (MW)" if metric == "total install cap" else metric
+            section_title = pd.DataFrame([{"Variable": metric_title, "Type": "", **{c: "" for c in period_cols}}])
             section_data = metric_tables[metric].copy()
             section_data.insert(0, "Variable", "")
             section_spacer = pd.DataFrame([{"Variable": "", "Type": "", **{c: "" for c in period_cols}}])
@@ -2036,7 +2042,8 @@ class Results:
 
             for metric in metrics:
                 df_metric = metric_tables[metric]
-                print(metric)
+                metric_title = "total install cap (MW)" if metric == "total install cap" else metric
+                print(metric_title)
                 table = pt()
                 table.field_names = list(df_metric.columns)
                 for row in df_metric.itertuples(index=False):

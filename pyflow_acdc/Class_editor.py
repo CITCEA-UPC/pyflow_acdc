@@ -1414,7 +1414,7 @@ def assign_RenToZone(grid,ren_source_name,new_zone_name):
  
 "Assigning components to zones"
     
-def assign_nodeToPrice_Zone(grid,node_name, new_price_zone_name,ACDC='AC'):
+def assign_nodeToPrice_Zone(grid,node_name, new_price_zone_name,ACDC='AC',link_load=True):
         """ Assign node to a new price_zone and remove it from its previous price_zone """
         new_price_zone = None
         old_price_zone = None
@@ -1462,6 +1462,7 @@ def assign_nodeToPrice_Zone(grid,node_name, new_price_zone_name,ACDC='AC'):
             new_price_zone_nodes.append(node_to_reassign)
             node_to_reassign.PZ=new_price_zone.name
             node_to_reassign.price=new_price_zone.price
+            node_to_reassign.PLi_linked=link_load
 
 def assign_ConvToPrice_Zone(grid, conv_name, new_price_zone_name):
         """ Assign node to a new price_zone and remove it from its previous price_zone """
@@ -1928,10 +1929,11 @@ def current_fuel_type_distribution(grid, output='df'):
 
     total_cap = sum(type_capacity.values())
     total_units = sum(type_units.values())
-    total_system_load = (
-        sum(float(getattr(node, 'PLi', 0.0)) for node in getattr(grid, 'nodes_AC', [])) +
-        sum(float(getattr(node, 'PLi', 0.0)) for node in getattr(grid, 'nodes_DC', []))
-    )
+    load_nodes_count = sum(1 for node in grid.nodes_AC if node.PLi != 0.0)+sum(1 for node in grid.nodes_DC if node.PLi != 0.0)
+    
+    total_system_load =  sum(node.PLi for node in grid.nodes_AC)+ sum(node.PLi for node in grid.nodes_DC)
+    load_pct_of_total_cap = round((total_system_load / total_cap) * 100.0, 2) if total_cap > 0 else 0.0
+    
 
     rows = []
     for typ in sorted(type_capacity):
@@ -1956,9 +1958,9 @@ def current_fuel_type_distribution(grid, output='df'):
     })
     rows.append({
         'Type': 'System load (all nodes)',
-        'number of gen': '',
+        'number of gen': load_nodes_count,
         'total install cap': total_system_load,
-        'percentage': '',
+        'percentage': load_pct_of_total_cap,
         'current limit': None,
     })
 

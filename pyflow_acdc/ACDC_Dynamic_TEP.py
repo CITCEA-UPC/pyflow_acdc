@@ -115,14 +115,14 @@ def _fill_investment_decisions(grid):
             )
     return target_len
 
-def _update_grid_investment_period(grid, i,PZ=False):
+def _update_grid_investment_period(grid, i):
     idx = i
-    if PZ:
-        for price_zone in grid.Price_Zones:
-            inv = price_zone.investment_decisions
-            price_zone.PLi_inv_factor = inv['Load'][idx]
-            price_zone.elasticity = inv['elasticity'][idx]
-            price_zone.import_expand = inv['import_expand'][idx]
+
+    for price_zone in grid.Price_Zones:
+        inv = price_zone.investment_decisions
+        price_zone.PLi_inv_factor = inv['Load'][idx]
+        price_zone.elasticity = inv['elasticity'][idx]
+        price_zone.import_expand = inv['import_expand'][idx]
 
     for node in grid.nodes_AC:
         if node.PLi_linked == True:
@@ -522,7 +522,7 @@ def multi_period_transmission_expansion(
         base_model_copy = base_model.clone()
         model.inv_model[i].transfer_attributes_from(base_model_copy)
 
-        _update_grid_investment_period(grid, i,PZ)
+        _update_grid_investment_period(grid, i)
 
         _modify_parameters(grid,model.inv_model[i],PZ)
 
@@ -1179,7 +1179,7 @@ def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):
         rs.np_rsgen = rs.investment_decisions['np_dynamic'][investment_period]
     for gen in grid.Generators:
         gen.np_gen = gen.investment_decisions['np_dynamic'][investment_period]
-    _update_grid_investment_period(grid, investment_period,Price_Zones)
+    _update_grid_investment_period(grid, investment_period)
 def _calculate_decomision_period(element,n_years):
 
     element.decomision_period = math.ceil(element.life_time/n_years)
