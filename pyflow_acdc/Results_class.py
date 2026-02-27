@@ -1972,13 +1972,13 @@ class Results:
                 print("No MP_TEP_fuel_type_distribution found")
             return dist
 
-        # Keep the raw period->DataFrame mapping available on Results
         self.MP_TEP_fuel_type_distribution_dict = dist
 
-        # Build a single horizontal table:
-        # Type | number of gen_1 | total install cap_1 | percentage_1 | ...period N
         periods = sorted(dist.keys())
-        normalized_by_period = {}
+        period_cols = [str(p) for p in periods]
+        metrics = ["number of gen", "total install cap", "percentage"]
+
+        normalized_metric_by_period = {m: {} for m in metrics}
         all_types = set()
 
         for period in periods:
@@ -1986,59 +1986,79 @@ class Results:
             if not isinstance(df, pd.DataFrame) or "Type" not in df.columns:
                 continue
             tmp = df.copy()
-            for col in ["number of gen", "total install cap", "percentage"]:
+            for col in metrics:
                 if col not in tmp.columns:
                     tmp[col] = np.nan
-            tmp = tmp[["Type", "number of gen", "total install cap", "percentage"]]
-            normalized_by_period[period] = tmp
+            tmp = tmp[["Type"] + metrics]
             all_types.update(tmp["Type"].dropna().astype(str).tolist())
+            for metric in metrics:
+                normalized_metric_by_period[metric][period] = tmp[["Type", metric]].copy()
 
-        type_order = [t for t in sorted(all_types) if t != "All"]
+        type_order = [t for t in sorted(all_types) if t not in ("All", "System load (all nodes)")]
         if "All" in all_types:
             type_order.append("All")
+        if "System load (all nodes)" in all_types:
+            type_order.append("System load (all nodes)")
 
-        wide_df = pd.DataFrame({"Type": type_order})
-        for period in periods:
-            if period not in normalized_by_period:
-                wide_df[f"number of gen_{period}"] = np.nan
-                wide_df[f"total install cap_{period}"] = np.nan
-                wide_df[f"percentage_{period}"] = np.nan
-                continue
-            tmp = normalized_by_period[period].rename(columns={
-                "number of gen": f"number of gen_{period}",
-                "total install cap": f"total install cap_{period}",
-                "percentage": f"percentage_{period}",
-            })
-            wide_df = wide_df.merge(tmp, on="Type", how="left")
+        metric_tables = {}
+        for metric in metrics:
+            metric_df = pd.DataFrame({"Type": type_order})
+            for period in periods:
+                col_name = str(period)
+                if period not in normalized_metric_by_period[metric]:
+                    metric_df[col_name] = np.nan
+                    continue
+                tmp = normalized_metric_by_period[metric][period].rename(columns={metric: col_name})
+                metric_df = metric_df.merge(tmp, on="Type", how="left")
+            metric_tables[metric] = metric_df
 
-        self.tables["MP_TEP_fuel_type_distribution"] = wide_df
+        self.tables["MP_TEP_fuel_type_distribution_number_of_gen"] = metric_tables["number of gen"]
+        self.tables["MP_TEP_fuel_type_distribution_total_install_cap"] = metric_tables["total install cap"]
+        self.tables["MP_TEP_fuel_type_distribution_percentage"] = metric_tables["percentage"]
+
+        # Stacked export table (one metric section under another)
+        stacked_blocks = []
+        for metric in metrics:
+            section_title = pd.DataFrame([{"Variable": metric, "Type": "", **{c: "" for c in period_cols}}])
+            section_data = metric_tables[metric].copy()
+            section_data.insert(0, "Variable", "")
+            section_spacer = pd.DataFrame([{"Variable": "", "Type": "", **{c: "" for c in period_cols}}])
+            stacked_blocks.extend([section_title, section_data, section_spacer])
+        stacked_df = pd.concat(stacked_blocks, ignore_index=True) if stacked_blocks else pd.DataFrame()
+        self.tables["MP_TEP_fuel_type_distribution"] = stacked_df
 
         if print_table:
             print('--------------')
             print('Dynamic Transmission Expansion Problem')
             print('')
             print('Fuel type distribution by investment period')
-            table = pt()
-            table.field_names = list(wide_df.columns)
-            for row in wide_df.itertuples(index=False):
-                row_list = list(row)
-                formatted_row = []
-                for col_name, val in zip(wide_df.columns, row_list):
-                    if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
-                        formatted_row.append(' ')
-                    elif isinstance(val, (int, float)):
-                        if str(col_name).startswith("percentage_"):
-                            formatted_row.append(f"{val:,.{self.dec}f}".replace(',', ' '))
-                        else:
-                            rounded_val = int(round(val))
-                            formatted_row.append(f"{rounded_val:,}".replace(',', ' '))
-                    else:
-                        formatted_row.append(val)
-                table.add_row(formatted_row)
-            print(table)
             print('')
 
-        return wide_df
+            for metric in metrics:
+                df_metric = metric_tables[metric]
+                print(metric)
+                table = pt()
+                table.field_names = list(df_metric.columns)
+                for row in df_metric.itertuples(index=False):
+                    row_list = list(row)
+                    formatted_row = []
+                    for col_name, val in zip(df_metric.columns, row_list):
+                        if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
+                            formatted_row.append(' ')
+                        elif isinstance(val, (int, float)):
+                            if metric == "percentage":
+                                formatted_row.append(f"{val:,.{self.dec}f}".replace(',', ' '))
+                            else:
+                                rounded_val = int(round(val))
+                                formatted_row.append(f"{rounded_val:,}".replace(',', ' '))
+                        else:
+                            formatted_row.append(val)
+                    table.add_row(formatted_row)
+                print(table)
+                print('')
+            print('')
+
+        return stacked_df
 
     def Price_Zone(self, print_table=True):
         rows = []
