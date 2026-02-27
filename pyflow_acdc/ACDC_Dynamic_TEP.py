@@ -902,14 +902,15 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
     # Capture fuel-type distribution for each investment period based on solved dynamic states.
     fuel_type_dist_by_period = {}
     for i in model.inv_periods:
-        _set_grid_to_multiperiod_state(grid, i)
+        _set_grid_to_multiperiod_state(grid, i,Price_Zones)
+        
         fuel_type_dist_by_period[int(i) + 1] = current_fuel_type_distribution(grid, output='df')
 
     grid.MP_TEP_fuel_type_distribution = fuel_type_dist_by_period
 
     last_i = max(model.inv_periods)
-    _set_grid_to_multiperiod_state(grid, last_i)
-     
+    _set_grid_to_multiperiod_state(grid, last_i,Price_Zones)
+    
     ExportACDC_NLmodel_toPyflowACDC(model.inv_model[last_i],grid,Price_Zones,TEP=True)
 
     grid.MP_TEP_results = df  
@@ -1050,10 +1051,9 @@ def run_opf_for_investment_period(
             f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
         )
 
-    _set_grid_to_multiperiod_state(grid, period_idx)
+    
     _, PZ = obj_w_rule(grid,ObjRule,True)
-    _update_grid_investment_period(grid, investment_period,PZ)
-
+    _set_grid_to_multiperiod_state(grid, period_idx,PZ)
     model, model_res, timing_info, solver_stats = Optimal_PF(
         grid,
         ObjRule=ObjRule,
@@ -1168,7 +1168,7 @@ def run_opf_for_all_investment_periods(
 
     return period_results
 
-def _set_grid_to_multiperiod_state(grid, investment_period):    
+def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):    
     for line in grid.lines_AC_exp:
         line.np_line = line.investment_decisions['np_dynamic'][investment_period]
     for line in grid.lines_DC:
@@ -1179,7 +1179,7 @@ def _set_grid_to_multiperiod_state(grid, investment_period):
         rs.np_rsgen = rs.investment_decisions['np_dynamic'][investment_period]
     for gen in grid.Generators:
         gen.np_gen = gen.investment_decisions['np_dynamic'][investment_period]
-    
+    _update_grid_investment_period(grid, investment_period,Price_Zones)
 def _calculate_decomision_period(element,n_years):
 
     element.decomision_period = math.ceil(element.life_time/n_years)

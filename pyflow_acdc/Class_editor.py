@@ -1928,6 +1928,10 @@ def current_fuel_type_distribution(grid, output='df'):
 
     total_cap = sum(type_capacity.values())
     total_units = sum(type_units.values())
+    total_system_load = (
+        sum(float(getattr(node, 'PLi', 0.0)) for node in getattr(grid, 'nodes_AC', [])) +
+        sum(float(getattr(node, 'PLi', 0.0)) for node in getattr(grid, 'nodes_DC', []))
+    )
 
     rows = []
     for typ in sorted(type_capacity):
@@ -1948,6 +1952,13 @@ def current_fuel_type_distribution(grid, output='df'):
         'number of gen': total_units,
         'total install cap': total_cap,
         'percentage': 100.0 if total_cap > 0 else 0.0,
+        'current limit': None,
+    })
+    rows.append({
+        'Type': 'System load (all nodes)',
+        'number of gen': '',
+        'total install cap': total_system_load,
+        'percentage': '',
         'current limit': None,
     })
 
