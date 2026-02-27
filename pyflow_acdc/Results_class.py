@@ -1041,14 +1041,17 @@ class Results:
         costtot=0
         for gen in self.Grid.Generators:
           if gen.np_gen>0.001:  
+            n_units = float(gen.np_gen)
             Pgi=gen.PGen*self.Grid.S_base
             Qgi=gen.QGen*self.Grid.S_base
             S= np.sqrt(Pgi**2+Qgi**2)
+            Pgi_unit = Pgi / n_units
             
             load=gen.loading
-            qf=gen.qf/gen.np_gen
-            fc=gen.fc*gen.np_gen
-            cost=(Pgi**2*qf+Pgi*gen.lf+fc)/1000
+            qf=gen.qf
+            fc=gen.fc
+            cost_unit=(Pgi_unit**2*qf+Pgi_unit*gen.lf+fc)/1000
+            cost_total=cost_unit*n_units
            
             rows.append({
                 "Generator": gen.name,
@@ -1058,25 +1061,30 @@ class Results:
                 "Reactive power (MVAR)": np.round(Qgi, decimals=self.dec),
                 "Quadratic Price €/MWh^2": np.round(qf, decimals=self.dec),
                 "Linear Price €/MWh": np.round(gen.lf, decimals=self.dec),
-                "Fixed Cost €": np.round(fc, decimals=self.dec),
+                "Fixed Cost €/unit": np.round(fc, decimals=self.dec),
                 "Loading %": np.round(load, decimals=self.dec),
-                "Cost k€": np.round(cost, decimals=0)
+                "Cost per unit k€": np.round(cost_unit, decimals=0),
+                "Total Cost k€": np.round(cost_total, decimals=0)
             })
             Pabs+=abs(Pgi)
             Qabs+=abs(Qgi)
             Ptot+=Pgi
             Qtot+=Qgi
             Stot+=S
-            costtot+=cost
+            costtot+=cost_total
             Ltot+=gen.capacity_MVA
 
         for gen in self.Grid.Generators_DC:
           if gen.np_gen>0.001:  
+            n_units = float(gen.np_gen)
             Pgi=gen.PGen*self.Grid.S_base
+            Pgi_unit = Pgi / n_units
             
             load=gen.loading
-            fc=gen.fc*gen.np_gen
-            cost=(Pgi**2*gen.qf+Pgi*gen.lf+fc)/1000
+            qf=gen.qf
+            fc=gen.fc
+            cost_unit=(Pgi_unit**2*qf+Pgi_unit*gen.lf+fc)/1000
+            cost_total=cost_unit*n_units
            
             rows.append({
                 "Generator": gen.name,
@@ -1084,16 +1092,17 @@ class Results:
                 "Num. gen": np.round(gen.np_gen, decimals=self.dec),
                 "Power (MW)": np.round(Pgi, decimals=self.dec),
                 "Reactive power (MVAR)": "----",
-                "Quadratic Price €/MWh^2": np.round(gen.qf, decimals=self.dec),
+                "Quadratic Price €/MWh^2": np.round(qf, decimals=self.dec),
                 "Linear Price €/MWh": np.round(gen.lf, decimals=self.dec),
-                "Fixed Cost €": np.round(fc, decimals=self.dec),
+                "Fixed Cost €/unit": np.round(fc, decimals=self.dec),
                 "Loading %": np.round(load, decimals=self.dec),
-                "Cost k€": np.round(cost, decimals=0)
+                "Cost per unit k€": np.round(cost_unit, decimals=0),
+                "Total Cost k€": np.round(cost_total, decimals=0)
             })
             Pabs+=abs(Pgi)
             Ptot+=Pgi
             Stot+=Pgi
-            costtot+=cost
+            costtot+=cost_total
             Ltot+=gen.capacity_MW
 
         if Ltot !=0:
@@ -1108,9 +1117,10 @@ class Results:
             "Reactive power (MVAR)": np.round(Qtot, decimals=self.dec),
             "Quadratic Price €/MWh^2": "",
             "Linear Price €/MWh": "",
-            "Fixed Cost €": " ",
+            "Fixed Cost €/unit": " ",
             "Loading %": "",
-            "Cost k€": np.round(costtot, decimals=0)
+            "Cost per unit k€": "",
+            "Total Cost k€": np.round(costtot, decimals=0)
         })
         rows.append({
             "Generator": "Total abs",
@@ -1120,14 +1130,16 @@ class Results:
             "Reactive power (MVAR)": np.round(Qabs, decimals=self.dec),
             "Quadratic Price €/MWh^2": "",
             "Linear Price €/MWh": "",
-            "Fixed Cost €": "",
+            "Fixed Cost €/unit": "",
             "Loading %": np.round(load, decimals=self.dec),
-            "Cost k€": ""
+            "Cost per unit k€": "",
+            "Total Cost k€": ""
         })
 
         columns = [
             "Generator", "Node", "Num. gen", "Power (MW)", "Reactive power (MVAR)",
-            "Quadratic Price €/MWh^2", "Linear Price €/MWh", "Fixed Cost €", "Loading %", "Cost k€"
+            "Quadratic Price €/MWh^2", "Linear Price €/MWh", "Fixed Cost €/unit", "Loading %",
+            "Cost per unit k€", "Total Cost k€"
         ]
         df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=columns)
         if "Num. gen" in df.columns:
@@ -1157,8 +1169,8 @@ class Results:
                 bp+=Pgi
                 cur= (1-rs.gamma)*100
                 tcur+=Pgi*(1-rs.gamma)
-                PGicur=Pgi*(rs.gamma)
-                QGi=rs.QGi_ren*self.Grid.S_base
+                PGicur=Pgi*(rs.gamma)*rs.np_rsgen
+                QGi=rs.QGi_ren*self.Grid.S_base*rs.np_rsgen
                 
                 if not self.Grid.OnlyGen or self.Grid.OPF_Price_Zones_constraints_used:
                    
