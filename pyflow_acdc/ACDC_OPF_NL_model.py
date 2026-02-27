@@ -126,7 +126,7 @@ def Generation_variables(model,grid,gen_info,TEP):
     if grid.ACmode:
         model.gen_AC     = pyo.Set(initialize=lista_gen)
  
-        if grid.GPR:
+        if grid.GPR and TEP:
             model.PGi_gen = pyo.Var(model.gen_AC, initialize=P_gen_ini)
             model.QGi_gen = pyo.Var(model.gen_AC, initialize=Q_gen_ini) 
         else:
@@ -152,7 +152,7 @@ def Generation_variables(model,grid,gen_info,TEP):
     if grid.DCmode:
         model.gen_DC     = pyo.Set(initialize=lista_gen_DC)    
     
-        if grid.GPR:
+        if grid.GPR and TEP:
             model.PGi_gen_DC = pyo.Var(model.gen_DC, initialize=P_gen_ini_DC)
 
         else:

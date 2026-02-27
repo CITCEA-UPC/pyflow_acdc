@@ -902,13 +902,13 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
     # Capture fuel-type distribution for each investment period based on solved dynamic states.
     fuel_type_dist_by_period = {}
     for i in model.inv_periods:
-        _set_grid_to_dynamic_state(grid, i)
+        _set_grid_to_multiperiod_state(grid, i)
         fuel_type_dist_by_period[int(i) + 1] = current_fuel_type_distribution(grid, output='df')
 
     grid.MP_TEP_fuel_type_distribution = fuel_type_dist_by_period
 
     last_i = max(model.inv_periods)
-    _set_grid_to_dynamic_state(grid, last_i)
+    _set_grid_to_multiperiod_state(grid, last_i)
      
     ExportACDC_NLmodel_toPyflowACDC(model.inv_model[last_i],grid,Price_Zones,TEP=True)
 
@@ -1001,7 +1001,7 @@ def save_MP_TEP_period_svgs(grid, name_prefix='grid_MP_TEP', journal=True, legen
    
     for i in range(periods):
             # From DataFrame by names
-        _set_grid_to_dynamic_state(grid, i) 
+        _set_grid_to_multiperiod_state(grid, i) 
 
         try:
             create_geometries(grid)
@@ -1040,7 +1040,7 @@ def run_opf_for_investment_period(
     Apply a dynamic investment state, run OPF, and optionally export Results.All to Excel.
 
     This uses the same period-state loader as MP-TEP result post-processing:
-    `_set_grid_to_dynamic_state(grid, investment_period)`.
+    `_set_grid_to_multiperiod_state(grid, investment_period)`.
     """
     period_idx = int(investment_period)
     export_location = export_location or 'MP_investment_periods'
@@ -1050,7 +1050,7 @@ def run_opf_for_investment_period(
             f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
         )
 
-    _set_grid_to_dynamic_state(grid, period_idx)
+    _set_grid_to_multiperiod_state(grid, period_idx)
 
     model, model_res, timing_info, solver_stats = Optimal_PF(
         grid,
@@ -1166,7 +1166,7 @@ def run_opf_for_all_investment_periods(
 
     return period_results
 
-def _set_grid_to_dynamic_state(grid, investment_period):    
+def _set_grid_to_multiperiod_state(grid, investment_period):    
     for line in grid.lines_AC_exp:
         line.np_line = line.investment_decisions['np_dynamic'][investment_period]
     for line in grid.lines_DC:

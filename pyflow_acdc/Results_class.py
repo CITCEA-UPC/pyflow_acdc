@@ -1044,17 +1044,19 @@ class Results:
             Pgi=gen.PGen*self.Grid.S_base
             Qgi=gen.QGen*self.Grid.S_base
             S= np.sqrt(Pgi**2+Qgi**2)
-
+            
             load=gen.loading
+            qf=gen.qf/gen.np_gen
             fc=gen.fc*gen.np_gen
-            cost=(Pgi**2*gen.qf+Pgi*gen.lf+fc)/1000
+            cost=(Pgi**2*qf+Pgi*gen.lf+fc)/1000
            
             rows.append({
                 "Generator": gen.name,
                 "Node": gen.Node_AC,
+                "Num. gen": np.round(gen.np_gen, decimals=self.dec),
                 "Power (MW)": np.round(Pgi, decimals=self.dec),
                 "Reactive power (MVAR)": np.round(Qgi, decimals=self.dec),
-                "Quadratic Price €/MWh^2": np.round(gen.qf, decimals=self.dec),
+                "Quadratic Price €/MWh^2": np.round(qf, decimals=self.dec),
                 "Linear Price €/MWh": np.round(gen.lf, decimals=self.dec),
                 "Fixed Cost €": np.round(fc, decimals=self.dec),
                 "Loading %": np.round(load, decimals=self.dec),
@@ -1079,6 +1081,7 @@ class Results:
             rows.append({
                 "Generator": gen.name,
                 "Node": gen.Node_DC,
+                "Num. gen": np.round(gen.np_gen, decimals=self.dec),
                 "Power (MW)": np.round(Pgi, decimals=self.dec),
                 "Reactive power (MVAR)": "----",
                 "Quadratic Price €/MWh^2": np.round(gen.qf, decimals=self.dec),
@@ -1100,6 +1103,7 @@ class Results:
         rows.append({
             "Generator": "Total",
             "Node": "",
+            "Num. gen": "",
             "Power (MW)": np.round(Ptot, decimals=self.dec),
             "Reactive power (MVAR)": np.round(Qtot, decimals=self.dec),
             "Quadratic Price €/MWh^2": "",
@@ -1111,6 +1115,7 @@ class Results:
         rows.append({
             "Generator": "Total abs",
             "Node": "",
+            "Num. gen": "",
             "Power (MW)": np.round(Pabs, decimals=self.dec),
             "Reactive power (MVAR)": np.round(Qabs, decimals=self.dec),
             "Quadratic Price €/MWh^2": "",
@@ -1120,30 +1125,22 @@ class Results:
             "Cost k€": ""
         })
 
-        df = pd.DataFrame(rows) if rows else pd.DataFrame(
-            columns=["Generator","Node" ,"Power (MW)", "Reactive power (MVAR)",
-                     "Quadratic Price €/MWh^2","Linear Price €/MWh","Fixed Cost €","Loading %","Cost k€"]
-        )
+        columns = [
+            "Generator", "Node", "Num. gen", "Power (MW)", "Reactive power (MVAR)",
+            "Quadratic Price €/MWh^2", "Linear Price €/MWh", "Fixed Cost €", "Loading %", "Cost k€"
+        ]
+        df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=columns)
+        if "Num. gen" in df.columns:
+            df["Num. gen"] = df["Num. gen"].fillna("")
         self.tables["Ext_gen"] = df
 
         if print_table:
             print('--------------')
             print('External Generation optimization')
             table = pt()
-            table.field_names = ["Generator","Node" ,"Power (MW)", "Reactive power (MVAR)",
-                                 "Quadratic Price €/MWh^2","Linear Price €/MWh","Fixed Cost €","Loading %","Cost k€"]
+            table.field_names = columns
             for _, row in df.iterrows():
-                table.add_row([
-                    row["Generator"],
-                    row["Node"],
-                    row["Power (MW)"],
-                    row["Reactive power (MVAR)"],
-                    row["Quadratic Price €/MWh^2"],
-                    row["Linear Price €/MWh"],
-                    row["Fixed Cost €"],
-                    row["Loading %"],
-                    row["Cost k€"],
-                ])
+                table.add_row([row[col] for col in columns])
             print(table)
     
         return df
@@ -1183,6 +1180,7 @@ class Results:
                 rows.append({
                     "Name": rs.name,
                     "Bus": rs.Node,
+                    "Num. gen": np.round(rs.np_rsgen, decimals=self.dec),
                     "Base Power (MW)": np.round(Pgi, decimals=self.dec),
                     "Curtailment %": np.round(cur, decimals=self.dec),
                     "Power Injected (MW)": np.round(PGicur, decimals=self.dec),
@@ -1200,6 +1198,7 @@ class Results:
         rows.append({
             "Name": "Total",
             "Bus": "",
+            "Num. gen": "",
             "Base Power (MW)": np.round(bp, decimals=self.dec),
             "Curtailment %": np.round(cur, decimals=self.dec),
             "Power Injected (MW)": np.round(PGicur, decimals=self.dec),
@@ -1210,7 +1209,7 @@ class Results:
         })
 
         df = pd.DataFrame(rows) if rows else pd.DataFrame(
-            columns=["Name","Bus", "Base Power (MW)", "Curtailment %",
+            columns=["Name","Bus", "Num. gen", "Base Power (MW)", "Curtailment %",
                      "Power Injected (MW)","Reactive Power Injected (MVAR)",
                      "Price €/MWh","Cost k€","Curtailment Cost [k€]"]
         )
@@ -1220,13 +1219,14 @@ class Results:
             print('--------------')
             print('Renewable energy sources')
             table = pt()
-            table.field_names = ["Name","Bus", "Base Power (MW)", "Curtailment %",
+            table.field_names = ["Name","Bus", "Num. gen", "Base Power (MW)", "Curtailment %",
                                  "Power Injected (MW)","Reactive Power Injected (MVAR)",
                                  "Price €/MWh","Cost k€","Curtailment Cost [k€]"]
             for _, row in df.iterrows():
                 table.add_row([
                     row["Name"],
                     row["Bus"],
+                    row["Num. gen"],
                     row["Base Power (MW)"],
                     row["Curtailment %"],
                     row["Power Injected (MW)"],
