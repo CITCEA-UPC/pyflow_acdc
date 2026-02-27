@@ -1051,6 +1051,8 @@ def run_opf_for_investment_period(
         )
 
     _set_grid_to_multiperiod_state(grid, period_idx)
+    _, PZ = obj_w_rule(grid,ObjRule,True)
+    _update_grid_investment_period(grid, investment_period,PZ)
 
     model, model_res, timing_info, solver_stats = Optimal_PF(
         grid,
@@ -1177,7 +1179,7 @@ def _set_grid_to_multiperiod_state(grid, investment_period):
         rs.np_rsgen = rs.investment_decisions['np_dynamic'][investment_period]
     for gen in grid.Generators:
         gen.np_gen = gen.investment_decisions['np_dynamic'][investment_period]
-
+    
 def _calculate_decomision_period(element,n_years):
 
     element.decomision_period = math.ceil(element.life_time/n_years)
