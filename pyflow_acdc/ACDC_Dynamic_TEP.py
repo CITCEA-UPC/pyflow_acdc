@@ -467,7 +467,7 @@ def multi_period_transmission_expansion(
     discount_rate=0.02,
     ObjRule=None,
     solver='bonmin',
-    time_limit=99999,
+    time_limit=None,
     tee=False,
     callback=False,
     solver_options=None,
