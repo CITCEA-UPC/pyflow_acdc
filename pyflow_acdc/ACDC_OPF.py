@@ -858,7 +858,7 @@ def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_pat
         opt.options['print_level'] = 5
     elif solver_name == 'bonmin':
         # Continue MINLP search if an NLP subproblem fails, so incumbents can still be returned.
-        opt.options['bonmin.nlp_failure_behavior'] = 'continue'
+        opt.options['bonmin.nlp_failure_behavior'] = 'fathom'
     
     start = time.perf_counter()
     
@@ -1069,7 +1069,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
 
         if solver == 'bonmin' and (not solver_options or 'bonmin.nlp_failure_behavior' not in solver_options):
             # Keep searching after NLP failures unless user explicitly overrides this option.
-            opt.options['bonmin.nlp_failure_behavior'] = 'continue'
+            opt.options['bonmin.nlp_failure_behavior'] = 'fathom'
         
         # Apply custom solver options (overrides time_limit if also specified)
         if solver_options:
