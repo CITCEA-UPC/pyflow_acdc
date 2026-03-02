@@ -1020,9 +1020,16 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
             targets.append(node)
         return targets
 
+    def _is_ignore_token(value):
+        return str(value).strip().lower() == 'ignore'
+
     for col in inv.columns:
         col_values = inv[col].reset_index(drop=True)
         inv_name = _series_name(col)
+        if _is_ignore_token(inv_name):
+            continue
+        if len(col_values) > 0 and _is_ignore_token(col_values.iloc[0]):
+            continue
 
         # Case 1: element and type explicitly provided in function call.
         # CSV column contains only period data.
@@ -1068,12 +1075,18 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
             raise ValueError(f"Investment series '{inv_name}' has no period values")
 
         # Keep period length consistent across all investment series.
+        # Allow scalar (len=1) values; period expansion happens later in Dynamic TEP.
         if expected_len is None:
             expected_len = len(data)
         elif len(data) != expected_len:
-            raise ValueError(
-                f"Investment series '{inv_name}' has {len(data)} periods, expected {expected_len}"
-            )
+            # If prior expected_len is scalar, promote it to current full length.
+            if expected_len == 1 and len(data) > 1:
+                expected_len = len(data)
+            # Scalar series are valid and stay scalar here.
+            elif len(data) != 1:
+                raise ValueError(
+                    f"Investment series '{inv_name}' has {len(data)} periods, expected {expected_len}"
+                )
 
         if str(element_type) not in known_types:
             print(
@@ -1161,10 +1174,10 @@ def add_gen_mix_limits(grid, mix_data):
         gen_mix_series[gen_type] = data.to_numpy(dtype=float).tolist()
         if gen_type not in grid.generation_types:
             grid.generation_types.append(gen_type)
-        # Keep compatibility with current scalar limit usage in TEP model.
-        grid.generation_type_limits[gen_type] = float(data.iloc[0])
+        # Full per-period limits for MP model logic.
+        grid.generation_type_limits[gen_type] = data.to_numpy(dtype=float).tolist()
+        grid.current_generation_type_limits[gen_type] = float(data.iloc[0])
 
-    grid.generation_type_limits_series = gen_mix_series
     return gen_mix_series
 
 
@@ -1215,16 +1228,19 @@ def create_gen_limit_csv_template(grid, file_path=None):
     if not active_types:
         raise ValueError("No active generation types were found in the provided grid.")
 
-    # Prefer existing per-period limits when available.
-    limit_series_raw = getattr(grid, 'generation_type_limits_series', {})
+    # Read limits from the canonical container (can be scalar or per-period list).
     limit_series = {}
-    if isinstance(limit_series_raw, dict):
-        limit_series = {_norm(k): list(v) for k, v in limit_series_raw.items() if _norm(k)}
-
     scalar_limits_raw = getattr(grid, 'generation_type_limits', {})
     scalar_limits = {}
     if isinstance(scalar_limits_raw, dict):
-        scalar_limits = {_norm(k): v for k, v in scalar_limits_raw.items() if _norm(k)}
+        for k, v in scalar_limits_raw.items():
+            kn = _norm(k)
+            if not kn:
+                continue
+            if isinstance(v, (list, tuple, np.ndarray)):
+                limit_series[kn] = list(v)
+            else:
+                scalar_limits[kn] = v
 
     max_periods = max((len(limit_series.get(gen_type, [])) for gen_type in active_types), default=0)
 
@@ -1255,7 +1271,7 @@ def create_gen_limit_csv_template(grid, file_path=None):
     template_df.to_csv(path, index=False, header=False)
     return str(path)
     
-def create_inv_csv_template(grid, file_path=None):
+def create_inv_csv_template(grid, file_path=None, exclude=None):
     """
     Create an investment-series template CSV for the current grid.
 
@@ -1269,6 +1285,7 @@ def create_inv_csv_template(grid, file_path=None):
     path = Path(file_path)
     if path.parent and not path.parent.exists():
         path.parent.mkdir(parents=True, exist_ok=True)
+    exclude_keys = set(str(k) for k in (exclude or []))
 
     element_groups = [
         getattr(grid, 'Price_Zones', []),
@@ -1304,6 +1321,8 @@ def create_inv_csv_template(grid, file_path=None):
             if element_name is None:
                 continue
             for inv_key, inv_values in element.investment_decisions.items():
+                if str(inv_key) in exclude_keys:
+                    continue
                 values = list(inv_values) if inv_values is not None else []
                 max_periods = max(max_periods, len(values))
                 columns[col_idx] = [element_name, inv_key] + values
@@ -1907,7 +1926,7 @@ def current_fuel_type_distribution(grid, output='df'):
 
     type_capacity = {}
     type_units = {}
-    type_limits = {_norm(k): v for k, v in grid.generation_type_limits.items()}
+    type_limits = {_norm(k): v for k, v in grid.current_generation_type_limits.items()}
 
     for gen in getattr(grid, 'Generators', []):
         gt = _norm(getattr(gen, 'gen_type', None))

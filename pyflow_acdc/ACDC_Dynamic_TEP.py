@@ -272,12 +272,31 @@ def _MP_TEP_constraints(model,grid):
 
 def _MP_GEN_balance_constraints(model, grid):
     # Same logic as static GEN balance, indexed by investment period.
-    if all(v == 1 for v in grid.generation_type_limits.values()):
+    n_periods = len(list(model.inv_periods))
+    gen_type_limits = {}
+    for k, v in grid.generation_type_limits.items():
+        key = k.lower()
+        if isinstance(v, (list, tuple, np.ndarray)):
+            vals = [float(x) for x in v]
+            if len(vals) == 1 and n_periods > 1:
+                vals = vals * n_periods
+            elif len(vals) != n_periods:
+                raise ValueError(
+                    f"generation_type_limits['{k}'] has length {len(vals)} but expected {n_periods}"
+                )
+        else:
+            vals = [float(v)] * n_periods
+        gen_type_limits[key] = vals
+
+    if all(all(x == 1 for x in vals) for vals in gen_type_limits.values()):
         return
 
-    gen_type_limits = {k.lower(): v for k, v in grid.generation_type_limits.items()}
     model.gen_types = pyo.Set(initialize=list(gen_type_limits.keys()))
-    model.gen_type_limits = pyo.Param(model.gen_types, initialize=gen_type_limits)
+    model.gen_type_limits = pyo.Param(
+        model.gen_types,
+        model.inv_periods,
+        initialize=lambda m, gt, i: gen_type_limits[gt][int(i)],
+    )
 
     def normalize_type(type_name):
         return type_name.lower() if type_name else None
@@ -313,7 +332,7 @@ def _MP_GEN_balance_constraints(model, grid):
     model.total_max_capacity = pyo.Expression(model.inv_periods, rule=total_max_capacity_rule)
 
     def gen_type_balance_rule(model, gen_type, i):
-        return model.gen_type_max_capacity[gen_type, i] <= model.total_max_capacity[i] * model.gen_type_limits[gen_type]
+        return model.gen_type_max_capacity[gen_type, i] <= model.total_max_capacity[i] * model.gen_type_limits[gen_type, i]
 
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, model.inv_periods, rule=gen_type_balance_rule)
 
@@ -757,10 +776,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
             total_cost = 0
             for i in range(n_periods):
                 n_val = gen_mp_values[g, i]
-                if i == 0:
-                    cost = (n_val - pyo.value(model.np_gen_base[g])) * gen.base_cost
-                else:
-                    cost = (n_val - gen_mp_values[g, i-1]) * gen.base_cost
+                cost = gen_installed_values[g, i] * gen.base_cost
                 row[f"Decommissioned_{i+1}"] = gen_decomision_values[g, i]
                 row[f"Installed_{i+1}"] = gen_installed_values[g, i]    
                 row[f"Active_{i+1}"] = n_val                
@@ -787,10 +803,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
             total_cost = 0
             for i in range(n_periods):
                 n_val = rs_mp_values[rs, i]
-                if i == 0:
-                    cost = (n_val - pyo.value(model.np_rsgen_base[rs])) * ren_source.base_cost
-                else:
-                    cost = (n_val - rs_mp_values[rs, i-1]) * ren_source.base_cost
+                cost = rs_installed_values[rs, i] * ren_source.base_cost
                 row[f"Decommissioned_{i+1}"] = rs_decomision_values[rs, i]
                 row[f"Installed_{i+1}"] = rs_installed_values[rs, i]    
                 row[f"Active_{i+1}"] = n_val                
@@ -818,10 +831,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
                 total_cost = 0
                 for i in range(n_periods):
                     n_val = ac_lines_mp_values[l, i]
-                    if i == 0:
-                        cost = (n_val - pyo.value(model.NumLinesACP_base[l])) * line.base_cost
-                    else:
-                        cost = (n_val - ac_lines_mp_values[l, i-1]) * line.base_cost
+                    cost = ac_line_installed_values[l, i] * line.base_cost
                     row[f"Decommissioned_{i+1}"] = ac_line_decomision_values[l, i]
                     row[f"Installed_{i+1}"] = ac_line_installed_values[l, i]
                     row[f"Active_{i+1}"] = n_val
@@ -853,10 +863,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
                 total_cost = 0
                 for i in range(n_periods):
                     n_val = dc_lines_mp_values[l, i]
-                    if i == 0:
-                        cost = (n_val - pyo.value(model.NumLinesDCP_base[l])) * line.base_cost
-                    else:
-                        cost = (n_val - dc_lines_mp_values[l, i-1]) * line.base_cost
+                    cost = dc_line_installed_values[l, i] * line.base_cost
                     row[f"Decommissioned_{i+1}"] = dc_line_decomision_values[l, i]
                     row[f"Installed_{i+1}"] = dc_line_installed_values[l, i]
                     row[f"Active_{i+1}"] = n_val
@@ -883,10 +890,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
             total_cost = 0
             for i in range(n_periods):
                 n_val = acdc_conv_mp_values[c, i]   
-                if i == 0:
-                    cost = (n_val - pyo.value(model.NumConvP_base[c])) * conv.base_cost
-                else:
-                    cost = (n_val - acdc_conv_mp_values[c, i-1]) * conv.base_cost
+                cost = conv_installed_values[c, i] * conv.base_cost
                 row[f"Decommissioned_{i+1}"] = conv_decomision_values[c, i]
                 row[f"Installed_{i+1}"] = conv_installed_values[c, i]
                 row[f"Active_{i+1}"] = n_val
@@ -1195,6 +1199,14 @@ def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):
     for gen in grid.Generators:
         gen.np_gen = gen.investment_decisions['np_dynamic'][investment_period]
     _update_grid_investment_period(grid, investment_period)
+    # Keep active single-period limits aligned with selected period.
+    series_map = grid.generation_type_limits
+    for gen_type, series in series_map.items():
+        if isinstance(series, (list, tuple, np.ndarray)):
+            if investment_period < len(series):
+                grid.current_generation_type_limits[gen_type] = float(series[investment_period])
+        else:
+            grid.current_generation_type_limits[gen_type] = float(series)
 def _calculate_decomision_period(element,n_years):
 
     element.decomision_period = math.ceil(element.life_time/n_years)

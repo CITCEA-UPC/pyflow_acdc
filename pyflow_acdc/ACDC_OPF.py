@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 from pyomo.util.infeasible import log_infeasible_constraints
+from pyomo.opt import SolverStatus
 
 import os
 import sys
@@ -856,17 +857,35 @@ def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_pat
         # Keep print_level reasonable for log file, tee controls console
         opt.options['print_level'] = 5
     elif solver_name == 'bonmin':
-        # Bonmin has no reliable log file option across versions; skip it
-        pass
+        # Continue MINLP search if an NLP subproblem fails, so incumbents can still be returned.
+        opt.options['bonmin.nlp_failure_behavior'] = 'continue'
     
     start = time.perf_counter()
     
     # Always write to log file, use Pyomo's tee to control console output.
-    # For Bonmin, rely on Pyomo's `logfile` capture so parser input is guaranteed.
+    # For Bonmin, disable autoload so Pyomo does not raise on status=error
+    # before we can parse logs and recover the last feasible incumbent.
     solve_kwargs = {'tee': tee_console}
+    if solver_name == 'bonmin':
+        solve_kwargs['load_solutions'] = False
     if solver_name == 'bonmin':
         solve_kwargs['logfile'] = log_path
     results = opt.solve(model, **solve_kwargs)
+
+    # Bonmin-specific incumbent recovery when solver exits with status=error.
+    if solver_name == 'bonmin':
+        try:
+            solution_list = getattr(results, 'solution', None)
+            if solution_list is not None and len(solution_list) > 0:
+                original_status = getattr(results.solver, 'status', None)
+                if original_status == SolverStatus.error:
+                    results.solver.status = SolverStatus.warning
+                model.solutions.load_from(results)
+                if original_status == SolverStatus.error:
+                    results.solver.status = original_status
+        except Exception as exc:
+            if tee_console:
+                print(f"Warning: could not load incumbent solution from solver results: {exc}")
     
     end = time.perf_counter()
 
@@ -1047,6 +1066,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 opt.options['time_limit'] = time_limit
             elif solver == 'minotaur':
                 opt.options['--time_limit'] = time_limit
+
+        if solver == 'bonmin' and (not solver_options or 'bonmin.nlp_failure_behavior' not in solver_options):
+            # Keep searching after NLP failures unless user explicitly overrides this option.
+            opt.options['bonmin.nlp_failure_behavior'] = 'continue'
         
         # Apply custom solver options (overrides time_limit if also specified)
         if solver_options:
@@ -1123,6 +1146,18 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 solver_stats['solution_found'] = True
             except (ValueError, AttributeError):
                 solver_stats['solution_found'] = False
+    elif solver == 'bonmin' and feasible_solutions:
+        # Fallback: parser captured feasible incumbents but no clean SolverResults
+        solver_stats['solution_found'] = True
+
+    # Additional fallback: keep solver termination/status untouched (can be "error"),
+    # but still surface results when the solver returned at least one solution.
+    if solver == 'bonmin' and not solver_stats['solution_found'] and results:
+        try:
+            if len(getattr(results, 'solution', [])) > 0:
+                solver_stats['solution_found'] = True
+        except Exception:
+            pass
 
     if results and results.solver.termination_condition == pyo.TerminationCondition.infeasible:
         if not suppress_warnings:

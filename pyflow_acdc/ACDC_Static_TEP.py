@@ -136,7 +136,8 @@ def expand_elements_from_pd(grid,exp_elements):
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'base_cost'),
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'per_unit_cost'),
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'exp'),
-        False
+        update_grid=False,
+        n_inv_max=get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_inv_max')
     ))
     grid.Update_Graph_AC()
     grid.create_Ybus_AC() 
@@ -165,7 +166,7 @@ def repurpose_element_from_pd(grid,rec_elements):
     grid.create_Ybus_AC()    
 
 
-def update_attributes(element, N_b,N_i, N_max, Life_time, base_cost, per_unit_cost, exp):
+def update_attributes(element, N_b,N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=None):
    """Updates the attributes of the given element if not None."""
    if N_b is not None:
        if N_i is None:
@@ -199,7 +200,10 @@ def update_attributes(element, N_b,N_i, N_max, Life_time, base_cost, per_unit_co
        if hasattr(element, 'np_gen_max'):
            element.np_gen_max = N_max     
        if hasattr(element, 'np_rsgen_max'):
-           element.np_rsgen_max = N_max     
+           element.np_rsgen_max = N_max
+   max_inv_seed = n_inv_max if n_inv_max is not None else N_max
+   if max_inv_seed is not None and isinstance(getattr(element, 'investment_decisions', None), dict):
+       element.investment_decisions['max_inv'] = [float(max_inv_seed)]
     
    if Life_time is not None:
        element.life_time = Life_time
@@ -219,7 +223,7 @@ def update_attributes(element, N_b,N_i, N_max, Life_time, base_cost, per_unit_co
        element.exp = exp
 
 
-def Expand_element(grid,name,N_b=None,N_i=None,N_max=None,Life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True):
+def Expand_element(grid,name,N_b=None,N_i=None,N_max=None,Life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True,n_inv_max=None):
     
     if N_max is None:
         N_max= N_b+20
@@ -229,30 +233,30 @@ def Expand_element(grid,name,N_b=None,N_i=None,N_max=None,Life_time=None,base_co
             from .Class_editor import change_line_AC_to_expandable
             exp_l=change_line_AC_to_expandable(grid, name,update_grid)
             exp_l.np_line_opf = True
-            update_attributes(exp_l, N_b,N_i, N_max,Life_time, base_cost, per_unit_cost, exp)
+            update_attributes(exp_l, N_b,N_i, N_max,Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
 
     for l in grid.lines_DC:
         if name == l.name:
             l.np_line_opf = True
-            update_attributes(l, N_b, N_i, N_max,Life_time, base_cost, per_unit_cost, exp)
+            update_attributes(l, N_b, N_i, N_max,Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
             
     for cn in grid.Converters_ACDC:
         if name == cn.name:
             cn.NUmConvP_opf = True
-            update_attributes(cn, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp)
+            update_attributes(cn, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
         
     for gen in grid.Generators:
         if name == gen.name:
             gen.np_gen_opf = True
-            update_attributes(gen, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp)
+            update_attributes(gen, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
     for rs in grid.RenSources:
         if name == rs.name:
             rs.np_rsgen_opf = True
-            update_attributes(rs, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp)
+            update_attributes(rs, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
 def base_cost_calculation(element):
     from .Classes import Exp_Line_AC 

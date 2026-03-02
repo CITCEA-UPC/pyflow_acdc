@@ -216,6 +216,7 @@ class Grid:
                 ))
         # Default per-type limits are derived from the type list.
         self.generation_type_limits = {gen_type: 1 for gen_type in self.generation_types}
+        self.current_generation_type_limits = {gen_type: 1 for gen_type in self.generation_types}
         self.TEP_n_periods = None
                 
 

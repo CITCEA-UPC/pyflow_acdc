@@ -1875,31 +1875,98 @@ class Results:
         # Check if the attribute exists and is a DataFrame
         if hasattr(self.Grid, "MP_TEP_results") and isinstance(self.Grid.MP_TEP_results, pd.DataFrame):
             df = self.Grid.MP_TEP_results
-            self.tables["MP_TEP_results"] = df
+            self.tables["MP_TEP_results_raw"] = df
+
+            # Build metric-wise tables (similar style to MP_TEP_fuel_type_distribution)
+            y = getattr(self.Grid, "TEP_n_years", 1)
+
+            def _period_label(period):
+                p_int = int(period)
+                return f"Inv year {int((p_int - 1) * y)}"
+
+            period_ids = []
+            for col in df.columns:
+                for prefix in ("Installed_", "Decommissioned_", "Active_", "Cost_"):
+                    if col.startswith(prefix):
+                        suffix = col[len(prefix):]
+                        if suffix.isdigit():
+                            period_ids.append(int(suffix))
+            period_ids = sorted(set(period_ids))
+
+            metric_tables = {}
+
+            metric_prefix = {
+                "Installed": "Installed_",
+                "Decommissioned": "Decommissioned_",
+                "Active": "Active_",
+                "Cost": "Cost_",
+            }
+
+            for metric_name, prefix in metric_prefix.items():
+                cols = [c for c in ("Element", "Type") if c in df.columns]
+                if metric_name == "Active" and "Pre Existing" in df.columns:
+                    cols.append("Pre Existing")
+                metric_df = df[cols].copy()
+                for p in period_ids:
+                    src_col = f"{prefix}{p}"
+                    out_col = _period_label(p)
+                    metric_df[out_col] = df[src_col] if src_col in df.columns else np.nan
+                if metric_name == "Cost" and "Total_Cost" in df.columns:
+                    metric_df["Total_Cost"] = df["Total_Cost"]
+                metric_tables[metric_name] = metric_df
+
+            # Stacked export table (one metric section under another), similar to
+            # MP_TEP_fuel_type_distribution for easier Excel reading.
+            stacked_blocks = []
+            for metric_name in ["Installed", "Decommissioned", "Active", "Cost"]:
+                if metric_name not in metric_tables:
+                    continue
+                section_df = metric_tables[metric_name].copy()
+                value_cols = [c for c in section_df.columns if c not in ("Element", "Type")]
+                title_row = {"Variable": metric_name, "Element": "", "Type": ""}
+                title_row.update({c: "" for c in value_cols})
+                section_df.insert(0, "Variable", "")
+                spacer_row = {"Variable": "", "Element": "", "Type": ""}
+                spacer_row.update({c: "" for c in value_cols})
+                stacked_blocks.extend([
+                    pd.DataFrame([title_row]),
+                    section_df,
+                    pd.DataFrame([spacer_row]),
+                ])
+            stacked_df = pd.concat(stacked_blocks, ignore_index=True) if stacked_blocks else pd.DataFrame()
+            self.tables["MP_TEP_results"] = stacked_df
+
+            for name, tbl in metric_tables.items():
+                key = f"MP_TEP_results_{name.lower().replace(' ', '_')}"
+                self.tables[key] = tbl
 
             if print_table:
                 print('--------------')
                 print('Dynamic Transmission Expansion Problem')
                 print('')
                 print('Investments in elements')
-                table = pt()
-                table.field_names = list(df.columns)
-                for row in df.itertuples(index=False):
-                    row_list = list(row)
-                    # Format numeric values with thousand separators (spaces)
-                    formatted_row = []
-                    for val in row_list:
-                        if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
-                            formatted_row.append(' ')
-                        elif isinstance(val, (int, float)):
-                            # Round to integer and format with thousand separators (spaces), no decimals
-                            rounded_val = int(round(val))
-                            formatted_val = f"{rounded_val:,}".replace(',', ' ')
-                            formatted_row.append(formatted_val)
-                        else:
-                            formatted_row.append(val)
-                    table.add_row(formatted_row)
-                print(table)
+                print('')
+                for metric_name in ["Installed", "Decommissioned", "Active", "Cost"]:
+                    if metric_name not in metric_tables:
+                        continue
+                    df_metric = metric_tables[metric_name]
+                    print(metric_name)
+                    table = pt()
+                    table.field_names = list(df_metric.columns)
+                    for row in df_metric.itertuples(index=False):
+                        row_list = list(row)
+                        formatted_row = []
+                        for val in row_list:
+                            if pd.isna(val) or (isinstance(val, float) and np.isnan(val)):
+                                formatted_row.append(' ')
+                            elif isinstance(val, (int, float)):
+                                rounded_val = int(round(val))
+                                formatted_row.append(f"{rounded_val:,}".replace(',', ' '))
+                            else:
+                                formatted_row.append(val)
+                        table.add_row(formatted_row)
+                    print(table)
+                    print('')
                 print('')
 
             return df
@@ -1985,7 +2052,12 @@ class Results:
             return f"Inv year {int((p_int - 1) * y)}"
 
         period_cols = [_period_label(p) for p in periods]
-        metrics = ["number of gen", "total install cap", "percentage"]
+        metrics = [
+            "number of gen",
+            "total install cap",
+            "percentage",
+            "current limit"
+        ]
 
         normalized_metric_by_period = {m: {} for m in metrics}
         all_types = set()
@@ -2029,6 +2101,7 @@ class Results:
         self.tables["MP_TEP_fuel_type_distribution_number_of_gen"] = metric_tables["number of gen"]
         self.tables["MP_TEP_fuel_type_distribution_total_install_cap"] = metric_tables["total install cap"]
         self.tables["MP_TEP_fuel_type_distribution_percentage"] = metric_tables["percentage"]
+        self.tables["MP_TEP_fuel_type_distribution_current_limit"] = metric_tables["current limit"] 
 
         # Stacked export table (one metric section under another)
         stacked_blocks = []
