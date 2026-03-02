@@ -717,7 +717,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
 
 
 def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],cable_database=None,cable_types_allowed=3,curtailment_allowed=0.05,max_turbines_per_string= None,LCoE=1,trenching_cost=1,MIP_time=None,name=None):
-    from .Class_editor import add_AC_node, add_line_sizing, add_RenSource, add_extGrid, add_cable_option
+    from .Class_editor import add_AC_node, add_line_sizing, add_RenSource, add_extgrid, add_cable_option
     from .Classes import Cable_options, Line_AC, Line_DC
 
     turbines_df = Data["turbine"]
@@ -785,7 +785,7 @@ def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],ca
             node.ct_limit = turbines_df.loc[attrs['original_idx']].connections
             
         if attrs['point_type'] == 'substation':
-            add_extGrid(grid,node,MVAmax=99999,Allow_sell=True,lf=LCoE)
+            add_extgrid(grid,node,MVAmax=99999,Allow_sell=True,lf=LCoE)
             node.ct_limit = substations_df.loc[attrs['original_idx']].connections
             node.type = 'Slack'
             node.V_ini = 1

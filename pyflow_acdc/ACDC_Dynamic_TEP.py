@@ -503,6 +503,7 @@ def multi_period_transmission_expansion(
         rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in _inv_decision(rs, 'planned_installation'))
     
     t1=time.time()
+    pre_opt_fuel_type_distribution = current_fuel_type_distribution(grid, output='df')
 
     model = pyo.ConcreteModel()
     model.name        ="Dynamic TEP MTDC AC/DC hybrid OPF"
@@ -559,7 +560,13 @@ def multi_period_transmission_expansion(
     if solver != 'ipopt':
         MINLP = True
     
-    export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=PZ,MINLP=MINLP)
+    export_MP_TEP_results_toPyflowACDC(
+        model,
+        grid,
+        Price_Zones=PZ,
+        MINLP=MINLP,
+        pre_opt_fuel_type_distribution=pre_opt_fuel_type_distribution,
+    )
     _save_inv_models(model,grid)
     t4 = time.time()
 
@@ -722,7 +729,7 @@ def _save_inv_models(model,grid):
     for i in model.inv_periods:
         grid.inv_models[i] = model.inv_model[i]
 
-def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False):
+def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False, *, pre_opt_fuel_type_distribution):
     
 
     grid.MP_TEP_run=True
@@ -900,7 +907,8 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False)
     df = pd.concat([df, pd.DataFrame([total_row])], ignore_index=True)
     
     # Capture fuel-type distribution for each investment period based on solved dynamic states.
-    fuel_type_dist_by_period = {}
+    # Key 0 stores the state before optimization.
+    fuel_type_dist_by_period = {0: pre_opt_fuel_type_distribution}
     for i in model.inv_periods:
         _set_grid_to_multiperiod_state(grid, i,Price_Zones)
         
@@ -944,6 +952,7 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
 
     # 4. Create model sets
     t1 = time.time()
+    pre_opt_fuel_type_distribution = current_fuel_type_distribution(grid, output='df')
     model = pyo.ConcreteModel()
     model.name = "MP TEP MS MTDC AC/DC hybrid OPF"
     
@@ -984,7 +993,13 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
     MINLP = False
     if solver != 'ipopt':
         MINLP = True
-    TEP_TS_res = export_MP_TEP_results_toPyflowACDC(model, grid,Price_Zones,MINLP)
+    TEP_TS_res = export_MP_TEP_results_toPyflowACDC(
+        model,
+        grid,
+        Price_Zones,
+        MINLP,
+        pre_opt_fuel_type_distribution=pre_opt_fuel_type_distribution,
+    )
     t4 = time.time()
 
     timing_info = {

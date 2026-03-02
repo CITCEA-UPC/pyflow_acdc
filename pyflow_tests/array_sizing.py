@@ -63,7 +63,7 @@ def array_sizing(combinations):
         pyf.add_RenSource(grid,'T7', power_rating,min_gamma=gamma_limit,Qrel=0.3)
         pyf.add_RenSource(grid,'T8', power_rating,min_gamma=gamma_limit,Qrel=0.3)
 
-        pyf.add_extGrid(grid, 'SS',lf=LCoE)
+        pyf.add_extgrid(grid, 'SS',lf=LCoE)
 
         # ABB_Cu_XLPE_95mm²_66kV    34  145
         # ABB_Cu_XLPE_120mm2_66kV   38  157    

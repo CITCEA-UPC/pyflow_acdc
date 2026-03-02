@@ -861,9 +861,12 @@ def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_pat
     
     start = time.perf_counter()
     
-    # Always write to log file, use Pyomo's tee to control console output
-    # No stdout redirection needed - solvers write directly to log file
-    results = opt.solve(model, tee=tee_console)
+    # Always write to log file, use Pyomo's tee to control console output.
+    # For Bonmin, rely on Pyomo's `logfile` capture so parser input is guaranteed.
+    solve_kwargs = {'tee': tee_console}
+    if solver_name == 'bonmin':
+        solve_kwargs['logfile'] = log_path
+    results = opt.solve(model, **solve_kwargs)
     
     end = time.perf_counter()
 

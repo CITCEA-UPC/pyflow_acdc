@@ -1974,8 +1974,17 @@ class Results:
 
         self.MP_TEP_fuel_type_distribution_dict = dist
 
-        periods = sorted(dist.keys())
-        period_cols = [str(p) for p in periods]
+        periods = sorted(int(p) for p in dist.keys())
+
+        y = self.Grid.TEP_n_years
+
+        def _period_label(period):
+            p_int = int(period)
+            if p_int == 0:
+                return "pre existing"
+            return f"Inv year {int((p_int - 1) * y)}"
+
+        period_cols = [_period_label(p) for p in periods]
         metrics = ["number of gen", "total install cap", "percentage"]
 
         normalized_metric_by_period = {m: {} for m in metrics}
@@ -2005,7 +2014,7 @@ class Results:
         for metric in metrics:
             metric_df = pd.DataFrame({"Type": type_order})
             for period in periods:
-                col_name = str(period)
+                col_name = _period_label(period)
                 if period not in normalized_metric_by_period[metric]:
                     metric_df[col_name] = np.nan
                     continue
