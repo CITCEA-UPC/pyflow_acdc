@@ -2650,7 +2650,10 @@ class Results:
         if solver_name:
             row['Solver'] = solver_name
         row['Termination'] = termination
+        if solver_message:
+            row['Termination Message'] = solver_message
         row['Solution Found'] = solution_found
+        row['Run Status'] = 'ok' if solution_found else 'failed'
 
         if obj_scaling != 1.0:
             row['Objective (scaled)'] = np.round(obj_value_scaled, decimals=self.dec) if obj_value_scaled is not None else None

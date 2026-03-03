@@ -574,6 +574,20 @@ def multi_period_transmission_expansion(
     )
     
     t3 = time.time()
+
+    if not (solver_stats and solver_stats.get('solution_found', False)):
+        termination = solver_stats.get('termination_condition', 'unknown') if solver_stats else 'unknown'
+        solver_message = solver_stats.get('solver_message', '') if solver_stats else ''
+        if tee:
+            print(f"MP-TEP failed: no feasible solution found (termination: {termination}).")
+            if solver_message:
+                print(f"Solver message: {solver_message}")
+        timing_info = {
+            "create": t2 - t1,
+            "solve": solver_stats['time'] if solver_stats else None,
+            "export": 0.0,
+        }
+        return None, model_results, timing_info, solver_stats
     
     MINLP = False
     if solver != 'ipopt':

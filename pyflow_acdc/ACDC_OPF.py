@@ -1112,6 +1112,28 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'obj_scaling': obj_scaling,
     }
 
+    def _has_reported_solution(results_obj):
+        """Return True when solver results explicitly include at least one solution."""
+        if results_obj is None:
+            return False
+        try:
+            return len(getattr(results_obj, 'solution', [])) > 0
+        except Exception:
+            return False
+
+    def _has_finite_upper_bound(results_obj):
+        """Return True when solver reports a finite incumbent objective."""
+        if results_obj is None:
+            return False
+        try:
+            ub = getattr(results_obj.problem, 'upper_bound', None)
+            if ub is None:
+                return False
+            # Guard against solver sentinel values (e.g., 1e+50 when no incumbent exists).
+            return np.isfinite(ub) and abs(float(ub)) < 1e49
+        except Exception:
+            return False
+
     # Determine if a feasible solution was found
     if results:
         if results.solver.termination_condition == pyo.TerminationCondition.optimal:
@@ -1119,33 +1141,21 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         elif results.solver.termination_condition == pyo.TerminationCondition.feasible:
             solver_stats['solution_found'] = True
         elif results.solver.termination_condition == pyo.TerminationCondition.maxTimeLimit:
-            # Check if we have a solution even if time limit was hit
-            try:
-                if objective_name:
-                    _ = pyo.value(getattr(model, objective_name))
-                else:
-                    try:
-                        _ = pyo.value(model.obj)
-                    except AttributeError:
-                        _ = pyo.value(model.objective)
-                solver_stats['solution_found'] = True
-            except (ValueError, AttributeError):
-                solver_stats['solution_found'] = False
+            # Time limit can still return an incumbent; use solver-reported evidence.
+            solver_stats['solution_found'] = (
+                _has_reported_solution(results)
+                or _has_finite_upper_bound(results)
+                or len(feasible_solutions) > 0
+            )
         elif results.solver.termination_condition == pyo.TerminationCondition.infeasible:
             solver_stats['solution_found'] = False
         else:
-            # Unknown status - try to access objective to see if solution exists
-            try:
-                if objective_name:
-                    _ = pyo.value(getattr(model, objective_name))
-                else:
-                    try:
-                        _ = pyo.value(model.obj)
-                    except AttributeError:
-                        _ = pyo.value(model.objective)
-                solver_stats['solution_found'] = True
-            except (ValueError, AttributeError):
-                solver_stats['solution_found'] = False
+            # Unknown status: avoid objective-value heuristics (can create false positives).
+            solver_stats['solution_found'] = (
+                _has_reported_solution(results)
+                or _has_finite_upper_bound(results)
+                or len(feasible_solutions) > 0
+            )
     elif solver == 'bonmin' and feasible_solutions:
         # Fallback: parser captured feasible incumbents but no clean SolverResults
         solver_stats['solution_found'] = True
