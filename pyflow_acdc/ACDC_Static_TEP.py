@@ -114,13 +114,16 @@ def update_grid_scenario_frame(grid,ts,t,n_clusters,clustering):
 def expand_elements_from_pd(grid,exp_elements):
     """
     This function iterates over exp_elements and applies Expand_element 
-    with the corresponding columns (N_i, Life_time, and base_cost) if available.
+    with the corresponding columns (N_i, life_time, and base_cost) if available.
     
     Parameters:
     exp_elements: DataFrame containing element data.
     grid: The grid object to be passed to Expand_element.
     """
     
+    # Normalize CSV headers to lowercase so lookups are case-insensitive.
+    exp_elements = exp_elements.rename(columns=lambda c: str(c).strip().lower())
+
     # Helper function to get the column value if it exists
     def get_column_value(row, col_name):
         return row[col_name] if col_name in row.index else None
@@ -129,10 +132,10 @@ def expand_elements_from_pd(grid,exp_elements):
     exp_elements.iloc[:, 0].apply(lambda name: Expand_element(
         grid,
         name,
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'N_b'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'N_i'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'N_max'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'Life_time'),
+        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_b'),
+        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_i'),
+        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_max'),
+        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'life_time'),
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'base_cost'),
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'per_unit_cost'),
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'exp'),
@@ -144,6 +147,9 @@ def expand_elements_from_pd(grid,exp_elements):
 
 def repurpose_element_from_pd(grid,rec_elements):
     from .Class_editor import change_line_AC_to_reconducting
+
+    # Normalize CSV headers to lowercase so lookups are case-insensitive.
+    rec_elements = rec_elements.rename(columns=lambda c: str(c).strip().lower())
     
     def get_column_value(row, col_name,default_value=None):
         return row[col_name] if col_name in row.index else default_value
@@ -156,8 +162,8 @@ def repurpose_element_from_pd(grid,rec_elements):
         get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'x_new',default_value=0.001),
         get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'g_new',default_value=0),
         get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'b_new',default_value=0),
-        get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'MVA_rating_new',default_value=99999),
-        get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'Life_time',default_value=1),
+        get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'mva_rating_new',default_value=99999),
+        get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'life_time',default_value=1),
         get_column_value(rec_elements.loc[rec_elements[rec_elements.iloc[:, 0] == name].index[0], :], 'base_cost',default_value=0),
         False
             
@@ -166,47 +172,47 @@ def repurpose_element_from_pd(grid,rec_elements):
     grid.create_Ybus_AC()    
 
 
-def update_attributes(element, N_b,N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=None):
+def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=None):
    """Updates the attributes of the given element if not None."""
-   if N_b is not None:
-       if N_i is None:
-           N_i = N_b
+   if n_b is not None:
+       if n_i is None:
+           n_i = n_b
        if hasattr(element, 'np_line'):
-           element.np_line_b = N_b
-           element.np_line = N_b
+           element.np_line_b = n_b
+           element.np_line = n_b
        if hasattr(element, 'np_line_i'):
-           element.np_line_i = N_i
-       if hasattr(element, 'NumConvP'):
-           element.NumConvP_b = N_b  
-           element.NumConvP = N_b
-       if hasattr(element, 'NumConvP_i'):
-           element.NumConvP_i = N_i      # Only set if it exists
+           element.np_line_i = n_i
+       if hasattr(element, 'np_conv'):
+           element.np_conv_b = n_b  
+           element.np_conv = n_b
+       if hasattr(element, 'np_conv_i'):
+           element.np_conv_i = n_i      # Only set if it exists
        if hasattr(element, 'np_gen'):
-           element.np_gen_b = N_b
-           element.np_gen = N_b
+           element.np_gen_b = n_b
+           element.np_gen = n_b
        if hasattr(element, 'np_gen_i'):
-           element.np_gen_i = N_i
+           element.np_gen_i = n_i
        if hasattr(element, 'np_rsgen'):
-           element.np_rsgen_b = N_b
-           element.np_rsgen = N_b
+           element.np_rsgen_b = n_b
+           element.np_rsgen = n_b
        if hasattr(element, 'np_rsgen_i'):
-           element.np_rsgen_i = N_i
+           element.np_rsgen_i = n_i
        
-   if N_max is not None:
+   if n_max is not None:
        if hasattr(element, 'np_line_max'):
-           element.np_line_max = N_max
-       if hasattr(element, 'NumConvP_max'):
-           element.NumConvP_max = N_max  
+           element.np_line_max = n_max
+       if hasattr(element, 'np_conv_max'):
+           element.np_conv_max = n_max  
        if hasattr(element, 'np_gen_max'):
-           element.np_gen_max = N_max     
+           element.np_gen_max = n_max     
        if hasattr(element, 'np_rsgen_max'):
-           element.np_rsgen_max = N_max
-   max_inv_seed = n_inv_max if n_inv_max is not None else N_max
+           element.np_rsgen_max = n_max
+   max_inv_seed = n_inv_max if n_inv_max is not None else n_max
    if max_inv_seed is not None and isinstance(getattr(element, 'investment_decisions', None), dict):
        element.investment_decisions['max_inv'] = [float(max_inv_seed)]
     
-   if Life_time is not None:
-       element.life_time = Life_time
+   if life_time is not None:
+       element.life_time = life_time
    
    if per_unit_cost is not None:
        if hasattr(element, 'cost_perMWkm'):
@@ -223,40 +229,50 @@ def update_attributes(element, N_b,N_i, N_max, Life_time, base_cost, per_unit_co
        element.exp = exp
 
 
-def Expand_element(grid,name,N_b=None,N_i=None,N_max=None,Life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True,n_inv_max=None):
+def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True,n_inv_max=None, **legacy_kwargs):
+    # Backward compatibility: accept legacy uppercase kwargs.
+    if n_b is None and 'N_b' in legacy_kwargs:
+        n_b = legacy_kwargs.pop('N_b')
+    if n_i is None and 'N_i' in legacy_kwargs:
+        n_i = legacy_kwargs.pop('N_i')
+    if n_max is None and 'N_max' in legacy_kwargs:
+        n_max = legacy_kwargs.pop('N_max')
+    if legacy_kwargs:
+        unexpected = ", ".join(sorted(legacy_kwargs.keys()))
+        raise TypeError(f"Unexpected keyword arguments: {unexpected}")
     
-    if N_max is None:
-        N_max= N_b+20
+    if n_max is None:
+        n_max= n_b+20
     
     for l in grid.lines_AC:
         if name == l.name:
             from .Class_editor import change_line_AC_to_expandable
             exp_l=change_line_AC_to_expandable(grid, name,update_grid)
             exp_l.np_line_opf = True
-            update_attributes(exp_l, N_b,N_i, N_max,Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(exp_l, n_b,n_i, n_max,life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
 
     for l in grid.lines_DC:
         if name == l.name:
             l.np_line_opf = True
-            update_attributes(l, N_b, N_i, N_max,Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(l, n_b, n_i, n_max,life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
             
     for cn in grid.Converters_ACDC:
         if name == cn.name:
-            cn.NUmConvP_opf = True
-            update_attributes(cn, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            cn.np_conv_opf = True
+            update_attributes(cn, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
         
     for gen in grid.Generators:
         if name == gen.name:
             gen.np_gen_opf = True
-            update_attributes(gen, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(gen, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
     for rs in grid.RenSources:
         if name == rs.name:
             rs.np_rsgen_opf = True
-            update_attributes(rs, N_b, N_i, N_max, Life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(rs, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
             continue
 def base_cost_calculation(element):
     from .Classes import Exp_Line_AC 
@@ -318,7 +334,7 @@ def Translate_pd_TEP(grid):
 
 def get_TEP_variables(grid):
     
-    NumConvP,NumConvP_i,NumConvP_max={},{},{}
+    np_conv,np_conv_i,np_conv_max={},{},{}
     S_limit_conv={}
     P_lineDC_limit ={}
     NP_lineDC,NP_lineDC_i,NP_lineDC_max ={},{},{}
@@ -344,12 +360,12 @@ def get_TEP_variables(grid):
             ct_ini[l.lineNumber, ct] = 1 if ct == l.active_config else 0  
              
     for conv in grid.Converters_ACDC:
-        NumConvP [conv.ConvNumber]  = conv.NumConvP 
-        NumConvP_i[conv.ConvNumber] = (
-            conv.NumConvP if not conv.NUmConvP_opf 
-            else max(conv.NumConvP,min(conv.NumConvP_i , conv.NumConvP_max))
+        np_conv [conv.ConvNumber]  = conv.np_conv 
+        np_conv_i[conv.ConvNumber] = (
+            conv.np_conv if not conv.np_conv_opf 
+            else max(conv.np_conv,min(conv.np_conv_i , conv.np_conv_max))
         )
-        NumConvP_max[conv.ConvNumber] = conv.NumConvP_max
+        np_conv_max[conv.ConvNumber] = conv.np_conv_max
         S_limit_conv[conv.ConvNumber] = conv.MVA_max/grid.S_base
     for l in grid.lines_DC:
         P_lineDC_limit[l.lineNumber]  = l.MW_rating/grid.S_base
@@ -382,9 +398,9 @@ def get_TEP_variables(grid):
     # Return as dictionary for easier extension and maintenance
     return {
         'converters': {
-            'NumConvP': NumConvP,
-            'NumConvP_i': NumConvP_i,
-            'NumConvP_max': NumConvP_max,
+            'np_conv': np_conv,
+            'np_conv_i': np_conv_i,
+            'np_conv_max': np_conv_max,
             'S_limit_conv': S_limit_conv
         },
         'dc_lines': {
@@ -433,8 +449,8 @@ def MS_TEP_constraints(model,grid):
             return pyo.Constraint.Skip
     def NP_conv_link(model,conv,t):
         element=grid.Converters_ACDC[conv]
-        if element.NUmConvP_opf:
-            return model.NumConvP[conv] ==model.scenario_model[t].NumConvP[conv]
+        if element.np_conv_opf:
+            return model.np_conv[conv] ==model.scenario_model[t].np_conv[conv]
         else:
             return pyo.Constraint.Skip
     if grid.TEP_AC:
@@ -721,7 +737,7 @@ def alpha_paretto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=8760,discount_rate=0
                 line.np_line = pyo.value(model.NumLinesDCP[l])
             for conv in grid.Converters_ACDC:
                 c = conv.ConvNumber
-                conv.NUmConvP = pyo.value(model.NumConvP[c])
+                conv.NUmConvP = pyo.value(model.np_conv[c])
 
             save_network_svg(grid,save_path)
     
@@ -1161,11 +1177,11 @@ def TEP_obj(model,grid,NPV):
         Inv_conv=0
         for cn in model.conv:
             conv= grid.Converters_ACDC[cn]
-            if conv.NUmConvP_opf:
+            if conv.np_conv_opf:
                if NPV: 
-                 Inv_conv+=(model.NumConvP[cn]-model.NumConvP_base[cn])*conv.base_cost
+                 Inv_conv+=(model.np_conv[cn]-model.np_conv_base[cn])*conv.base_cost
                else:
-                 Inv_conv+=(model.NumConvP[cn]-model.NumConvP_base[cn])*conv.base_cost/conv.life_time_hours
+                 Inv_conv+=(model.np_conv[cn]-model.np_conv_base[cn])*conv.base_cost/conv.life_time_hours
         return Inv_conv
     
     if grid.GPR:
@@ -1402,16 +1418,16 @@ def get_converter_data(t, model, grid):
     row_data_conv = {'Time_Frame': t}
 
     for conv in grid.Converters_ACDC:
-        if conv.NUmConvP_opf:
+        if conv.np_conv_opf:
             cn = conv.ConvNumber
-            if conv.NumConvP <= 0.00001:
+            if conv.np_conv <= 0.00001:
                 row_data_conv[conv.name] = np.nan
             else:
                 P_DC = np.float64(pyo.value(model.scenario_model[t].P_conv_DC[conv.Node_DC.nodeNumber])) * grid.S_base
                 P_s  = np.float64(pyo.value(model.scenario_model[t].P_conv_s_AC[cn])) * grid.S_base
                 Q_s  = np.float64(pyo.value(model.scenario_model[t].Q_conv_s_AC[cn])) * grid.S_base
                 S = np.sqrt(P_s**2 + Q_s**2)
-                loading = max(S, abs(P_DC)) / (conv.MVA_max * conv.NumConvP) * 100
+                loading = max(S, abs(P_DC)) / (conv.MVA_max * conv.np_conv) * 100
                 row_data_conv[conv.name] = np.round(loading, decimals=0)
                 
 
@@ -1484,7 +1500,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones)
     # Helper function for converters
     def process_converter(conv):
         nconv = conv.ConvNumber
-        nconvp=np.float64(pyo.value(model.NumConvP[nconv]))
+        nconvp=np.float64(pyo.value(model.np_conv[nconv]))
         conv.P_DC  = np.float64(sum(pyo.value(model.scenario_model[t].P_conv_DC[conv.Node_DC.nodeNumber])   *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.P_AC  = np.float64(sum(pyo.value(model.scenario_model[t].P_conv_s_AC[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.Q_AC  = np.float64(sum(pyo.value(model.scenario_model[t].Q_conv_s_AC[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
@@ -1498,7 +1514,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones)
         conv.th_c  = np.float64(sum(pyo.value(model.scenario_model[t].th_c[nconv]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.th_f  = np.float64(sum(pyo.value(model.scenario_model[t].th_f[nconv]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.th_s  = np.float64(sum(pyo.value(model.scenario_model[t].thetha_AC[nconv]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
-        conv.NumConvP = nconvp
+        conv.np_conv = nconvp
     # Helper function for price_zones
     def process_price_zone(m):
         nM = m.price_zone_num
@@ -1806,10 +1822,10 @@ def export_TEP_multiScenario_results_to_excel(grid,export):
     if grid.ACmode and grid.DCmode:
         # Loop through ACDC converters and add data to the list
         for cn in grid.Converters_ACDC:
-            if cn.NUmConvP_opf:
+            if cn.np_conv_opf:
                 element = cn.name
-                ini = cn.NumConvP_i
-                opt = cn.NumConvP
+                ini = cn.np_conv_i
+                opt = cn.np_conv
                 pr = opt * cn.MVA_max
                 cost = ((opt - ini) * cn.base_cost)  / 1000
                 tot += cost

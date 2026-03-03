@@ -61,7 +61,7 @@ def _fill_investment_decisions(grid):
             if element.np_line_opf:
                 yield element
         for element in grid.Converters_ACDC:
-            if element.NUmConvP_opf:
+            if element.np_conv_opf:
                 yield element
 
     def _as_list(values):
@@ -246,7 +246,7 @@ def _MP_TEP_constraints(model,grid):
 
     if grid.ACmode and grid.DCmode:
         def MP_Conv_link(model, c, i):
-            return model.inv_model[i].NumConvP[c] == model.ConvMP[c, i]
+            return model.inv_model[i].np_conv[c] == model.ConvMP[c, i]
         model.MP_Conv_link_constraint = pyo.Constraint(model.conv, model.inv_periods, rule=MP_Conv_link)
 
         def MP_Conv_decomision(model, c, i):
@@ -265,7 +265,7 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_Conv_installed(model, c, i):
             if i == 0:
-                return model.ConvMP[c,i] == model.installed_Conv[c,i] + model.NumConvP_base[c]
+                return model.ConvMP[c,i] == model.installed_Conv[c,i] + model.np_conv_base[c]
             else:
                 return model.ConvMP[c,i] == model.installed_Conv[c,i] + model.ConvMP[c,i-1] - model.decomision_Conv[c,i]
         model.MP_Conv_installed_constraint = pyo.Constraint(model.conv, model.inv_periods, rule=MP_Conv_installed)
@@ -457,27 +457,148 @@ def _MP_TEP_variables(model,grid):
         model.decomision_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
 
     if grid.ACmode and grid.DCmode:
-        NumConvP = tep_vars['converters']['NumConvP']
-        NumConvP_max = tep_vars['converters']['NumConvP_max']
-        model.NumConvP_base  =pyo.Param(model.conv,initialize=NumConvP)
+        np_conv = tep_vars['converters']['np_conv']
+        np_conv_max = tep_vars['converters']['np_conv_max']
+        model.np_conv_base  =pyo.Param(model.conv,initialize=np_conv)
         def MP_Conv_bounds(model,c,i):
-            return (0,NumConvP_max[c])
+            return (0,np_conv_max[c])
         def MP_Conv_bounds_install(model,c,i):
-            return (0,NumConvP_max[c])
+            return (0,np_conv_max[c])
         def MP_Conv_bounds_install_opt(model,c,i):
             conv = grid.Converters_ACDC[c]
-            if conv.NUmConvP_opf:
-                return (-model.planned_installation_Conv[c, i], NumConvP_max[c])
+            if conv.np_conv_opf:
+                return (-model.planned_installation_Conv[c, i], np_conv_max[c])
             else:
                 return (0,0)
-        def NumConvP_i(model, c, i):
-            return NumConvP[c]
-        model.ConvMP = pyo.Var(model.conv,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_Conv_bounds,initialize=NumConvP_i)
+        def np_conv_i(model, c, i):
+            return np_conv[c]
+        model.ConvMP = pyo.Var(model.conv,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_Conv_bounds,initialize=np_conv_i)
         model.installed_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_Conv_bounds_install)
         model.planned_installation_Conv = pyo.Param(model.conv,model.inv_periods,initialize=planned_installation_Conv_init)
         model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_Conv_bounds_install_opt)
         model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
-        
+def _validate_grid_for_MP_TEP(grid):
+    """
+    Fast pre-solve validation for MP TEP inputs.
+
+    Current checks:
+    - planned_decomision[p] >= 0 for all periods
+    - sum(planned_decomision) <= pre-existing stock
+    - cumulative planned_decomision[t] <= stock[t] where
+      stock[t] = pre-existing + cumulative planned_installation[t]
+    """
+    def _as_float_series(values, label, name, key):
+        series = np.array(values, dtype=float).reshape(-1)
+        if series.size == 0:
+            raise ValueError(f"{label} '{name}' has empty {key} series")
+        return series
+
+    def _validate_element_planned_decomision(element, base_count, label):
+        inv = element.investment_decisions
+        name = element.name
+        required_keys = ('planned_installation', 'planned_decomision', 'max_inv', 'np_dynamic')
+        for key in required_keys:
+            if key not in inv:
+                raise ValueError(f"{label} '{name}' is missing investment_decisions['{key}']")
+
+        series = {
+            key: _as_float_series(inv[key], label, name, key)
+            for key in required_keys
+        }
+        lengths = {arr.size for arr in series.values()}
+        if len(lengths) != 1:
+            raise ValueError(
+                f"{label} '{name}' has mismatched investment series lengths: "
+                f"planned_installation={series['planned_installation'].size}, "
+                f"planned_decomision={series['planned_decomision'].size}, "
+                f"max_inv={series['max_inv'].size}, np_dynamic={series['np_dynamic'].size}"
+            )
+        planned_installation = series['planned_installation']
+        planned_decomision = series['planned_decomision']
+
+        if np.any(planned_installation < 0):
+            bad_idx = np.where(planned_installation < 0)[0][0]
+            bad_val = float(planned_installation[bad_idx])
+            raise ValueError(
+                f"{label} '{name}' has negative planned_installation at period {int(bad_idx)}: {bad_val}"
+            )
+
+        if np.any(planned_decomision < 0):
+            bad_idx = np.where(planned_decomision < 0)[0][0]
+            bad_val = float(planned_decomision[bad_idx])
+            raise ValueError(
+                f"{label} '{name}' has negative planned_decomision at period {int(bad_idx)}: {bad_val}"
+            )
+
+        if np.any(series['max_inv'] < 0):
+            bad_idx = np.where(series['max_inv'] < 0)[0][0]
+            bad_val = float(series['max_inv'][bad_idx])
+            raise ValueError(
+                f"{label} '{name}' has negative max_inv at period {int(bad_idx)}: {bad_val}"
+            )
+
+        if np.any(series['np_dynamic'] < 0):
+            bad_idx = np.where(series['np_dynamic'] < 0)[0][0]
+            bad_val = float(series['np_dynamic'][bad_idx])
+            raise ValueError(
+                f"{label} '{name}' has negative np_dynamic at period {int(bad_idx)}: {bad_val}"
+            )
+
+        base_count = float(base_count)
+        if base_count < 0:
+            raise ValueError(f"{label} '{name}' has negative base count: {base_count}")
+        total_decom = float(np.sum(planned_decomision))
+        if total_decom > base_count + 1e-9:
+            raise ValueError(
+                f"{label} '{name}' violates baseline decommission check: "
+                f"sum(planned_decomision)={total_decom} > base_count={base_count}"
+            )
+
+        cum_decom = np.cumsum(planned_decomision)
+        cum_install = np.cumsum(planned_installation)
+        available_stock = base_count + cum_install
+        bad = np.where(cum_decom > available_stock + 1e-9)[0]
+        if bad.size > 0:
+            t = int(bad[0])
+            raise ValueError(
+                f"{label} '{name}' violates stock-aware decommission check at period {t}: "
+                f"cum_decom={float(cum_decom[t])} > available={float(available_stock[t])}"
+            )
+
+    def _validate_static_parameters(element, base_count, max_count, label):
+        name = element.name
+
+        life_time = float(element.life_time)
+        if life_time <= 0:
+            raise ValueError(f"{label} '{name}' has non-positive life_time: {life_time}")
+
+        base_cost = float(element.base_cost)
+        if base_cost < 0:
+            raise ValueError(f"{label} '{name}' has negative base_cost: {base_cost}")
+
+        base_count = float(base_count)
+        max_count = float(max_count)
+        if max_count < 0:
+            raise ValueError(f"{label} '{name}' has negative max count: {max_count}")
+        if base_count > max_count + 1e-9:
+            raise ValueError(
+                f"{label} '{name}' has base count greater than max count: "
+                f"base_count={base_count} > max_count={max_count}"
+            )
+
+    element_groups = [
+        (grid.Generators, lambda e: e.np_gen_opf, lambda e: e.np_gen, lambda e: e.np_gen_max, "Generator"),
+        (grid.RenSources, lambda e: e.np_rsgen_opf, lambda e: e.np_rsgen, lambda e: e.np_rsgen_max, "RenSource"),
+        (grid.lines_AC_exp, lambda e: e.np_line_opf, lambda e: e.np_line, lambda e: e.np_line_max, "AC line"),
+        (grid.lines_DC, lambda e: e.np_line_opf, lambda e: e.np_line, lambda e: e.np_line_max, "DC line"),
+        (grid.Converters_ACDC, lambda e: e.np_conv_opf, lambda e: e.np_conv, lambda e: e.np_conv_max, "Converter"),
+    ]
+    for elements, is_active, base_count, max_count, label in element_groups:
+        for element in elements:
+            if is_active(element):
+                _validate_static_parameters(element, base_count(element), max_count(element), label)
+                _validate_element_planned_decomision(element, base_count(element), label)
+
 def multi_period_transmission_expansion(
     grid,
     inv_periods=[],
@@ -512,6 +633,8 @@ def multi_period_transmission_expansion(
             node.investment_decisions['Load'] = load_factors.copy().tolist()
     
     n_periods = _fill_investment_decisions(grid)
+    
+    _validate_grid_for_MP_TEP(grid)
 
     grid.GPR = True if any(any(x != 0 for x in _inv_decision(gen, 'planned_installation')) for gen in grid.Generators) else grid.GPR
     grid.rs_GPR = True if any(any(x != 0 for x in _inv_decision(ren_source, 'planned_installation')) for ren_source in grid.RenSources) else grid.rs_GPR
@@ -900,7 +1023,7 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
             conv.investment_decisions['np_dynamic'] = [acdc_conv_mp_values[c, i] for i in range(n_periods)]
             row = {'Element': str(conv.name)}
             row['Type'] = 'ACDC Conv'
-            row['Pre Existing'] = pyo.value(model.NumConvP_base[c])
+            row['Pre Existing'] = pyo.value(model.np_conv_base[c])
             total_cost = 0
             for i in range(n_periods):
                 n_val = acdc_conv_mp_values[c, i]   
@@ -959,6 +1082,7 @@ def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760,
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate = discount_rate
     n_periods = _fill_investment_decisions(grid)
+    _validate_grid_for_MP_TEP(grid)
 
     # 3. Handle time series clustering
     try:
@@ -1207,7 +1331,7 @@ def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):
     for line in grid.lines_DC:
         line.np_line = line.investment_decisions['np_dynamic'][investment_period]
     for conv in grid.Converters_ACDC:
-        conv.NumConvP = conv.investment_decisions['np_dynamic'][investment_period]
+        conv.np_conv = conv.investment_decisions['np_dynamic'][investment_period]
     for rs in grid.RenSources:
         rs.np_rsgen = rs.investment_decisions['np_dynamic'][investment_period]
     for gen in grid.Generators:

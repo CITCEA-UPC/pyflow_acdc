@@ -1193,7 +1193,7 @@ def Converter_variables(model,grid,Conv_info):
     
     Conv_Lists, Conv_Volt = Conv_info
         
-    lista_conv,NumConvP_i = Conv_Lists
+    lista_conv,np_conv_i = Conv_Lists
     u_c_min,u_c_max,S_limit_conv,P_conv_limit = Conv_Volt
 
 
@@ -1474,13 +1474,13 @@ def Converter_constraints(model,grid,Conv_info):
     # Adds all converters in the AC nodes they are connected to
     def Conv_PAC_rule(model,node):
        nAC = grid.nodes_AC[node]
-       P_conv = sum(model.P_conv_s_AC[conv]*model.NumConvP[conv] for conv in nAC.connected_conv)
+       P_conv = sum(model.P_conv_s_AC[conv]*model.np_conv[conv] for conv in nAC.connected_conv)
                   
        return  model.P_conv_AC[node] ==   P_conv
            
     def Conv_Q_rule(model,node):
        nAC = grid.nodes_AC[node]
-       Q_conv = sum(model.Q_conv_s_AC[conv]*model.NumConvP[conv] for conv in nAC.connected_conv)
+       Q_conv = sum(model.Q_conv_s_AC[conv]*model.np_conv[conv] for conv in nAC.connected_conv)
     
        return   model.Q_conv_AC[node] ==   Q_conv       
          
@@ -1490,7 +1490,7 @@ def Converter_constraints(model,grid,Conv_info):
         nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
         nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
-        return model.P_conv_c_AC[conv]*model.NumConvP[conv]+model.P_conv_DC[nDC] + model.P_conv_loss[conv]*model.NumConvP[conv] == 0
+        return model.P_conv_c_AC[conv]*model.np_conv[conv]+model.P_conv_DC[nDC] + model.P_conv_loss[conv]*model.np_conv[conv] == 0
 
     def Conv_loss_rule(model, conv):
         element=grid.Converters_ACDC[conv]
@@ -1514,8 +1514,8 @@ def Converter_constraints(model,grid,Conv_info):
     
             
     
-            # c_inver = (element.c_inver_og /model.NumConvP[conv])*element.basekA**2/grid.S_base
-            # c_rect = (element.c_rect_og   /model.NumConvP[conv])*element.basekA**2/grid.S_base 
+            # c_inver = (element.c_inver_og /model.np_conv[conv])*element.basekA**2/grid.S_base
+            # c_rect = (element.c_rect_og   /model.np_conv[conv])*element.basekA**2/grid.S_base 
             
             c_inver=grid.Converters_ACDC[conv].c_inver 
             c_rect=grid.Converters_ACDC[conv].c_rect   
@@ -1814,7 +1814,7 @@ def TEP_parameters(model,grid,AC_info,DC_info,Conv_info):
     tep_vars = get_TEP_variables(grid)
 
     # Extract converter variables
-    NumConvP = tep_vars['converters']['NumConvP']
+    np_conv = tep_vars['converters']['np_conv']
     
     # Extract DC line variables
     NP_lineDC = tep_vars['dc_lines']['NP_lineDC']
@@ -1855,9 +1855,9 @@ def TEP_parameters(model,grid,AC_info,DC_info,Conv_info):
 
     if grid.ACmode and grid.DCmode:
         Conv_Lists, Conv_Volt = Conv_info
-        lista_conv,NumConvP = Conv_Lists
+        lista_conv,np_conv = Conv_Lists
 
-        model.NumConvP = pyo.Param(model.conv,initialize=NumConvP,mutable=True)
+        model.np_conv = pyo.Param(model.conv,initialize=np_conv,mutable=True)
 
 
 def TEP_variables(model,grid):
@@ -1867,9 +1867,9 @@ def TEP_variables(model,grid):
     tep_vars = get_TEP_variables(grid)
 
     # Extract converter variables
-    NumConvP = tep_vars['converters']['NumConvP']
-    NumConvP_i = tep_vars['converters']['NumConvP_i']
-    NumConvP_max = tep_vars['converters']['NumConvP_max']
+    np_conv = tep_vars['converters']['np_conv']
+    np_conv_i = tep_vars['converters']['np_conv_i']
+    np_conv_max = tep_vars['converters']['np_conv_max']
     S_limit_conv = tep_vars['converters']['S_limit_conv']
     
     # Extract DC line variables
@@ -2020,13 +2020,13 @@ def TEP_variables(model,grid):
     if grid.ACmode and grid.DCmode:
         def NPconv_bounds(model, conv):
             element=grid.Converters_ACDC[conv]
-            if element.NUmConvP_opf==False:
-                return (NumConvP[conv], NumConvP[conv])
+            if element.np_conv_opf==False:
+                return (np_conv[conv], np_conv[conv])
             else:
-                return (NumConvP[conv], NumConvP_max[conv])
+                return (np_conv[conv], np_conv_max[conv])
         
-        model.NumConvP = pyo.Var(model.conv, within=pyo.NonNegativeIntegers,bounds=NPconv_bounds,initialize=NumConvP_i)
-        model.NumConvP_base  =pyo.Param(model.conv,initialize=NumConvP)
+        model.np_conv = pyo.Var(model.conv, within=pyo.NonNegativeIntegers,bounds=NPconv_bounds,initialize=np_conv_i)
+        model.np_conv_base  =pyo.Param(model.conv,initialize=np_conv)
 
 
 def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
@@ -2311,19 +2311,19 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
         P_conv_loss_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_loss.items()}
         Uc_values            = {k: np.float64(pyo.value(v)) for k, v in model.Uc.items()}
         Uf_values            = {k: np.float64(pyo.value(v)) for k, v in model.Uf.items()}
-        nconv_TEP            = {k: np.float64(pyo.value(v)) for k, v in model.NumConvP.items()}
+        nconv_TEP            = {k: np.float64(pyo.value(v)) for k, v in model.np_conv.items()}
 
         # Parallelize converter processing
         def process_converter(conv):
             nconv = conv.ConvNumber
             if TEP:
-                conv.NumConvP = nconv_TEP[nconv]
+                conv.np_conv = nconv_TEP[nconv]
             conv.P_DC      = P_conv_DC_conv_values[conv.Node_DC.nodeNumber] 
-            conv.P_AC      = P_conv_s_AC_values[nconv] * conv.NumConvP
-            conv.Q_AC      = Q_conv_s_AC_values[nconv] * conv.NumConvP
-            conv.Pc        = P_conv_c_AC_values[nconv] * conv.NumConvP
-            conv.Qc        = Q_conv_c_AC_values[nconv] * conv.NumConvP
-            conv.P_loss    = P_conv_loss_values[nconv] * conv.NumConvP
+            conv.P_AC      = P_conv_s_AC_values[nconv] * conv.np_conv
+            conv.Q_AC      = Q_conv_s_AC_values[nconv] * conv.np_conv
+            conv.Pc        = P_conv_c_AC_values[nconv] * conv.np_conv
+            conv.Qc        = Q_conv_c_AC_values[nconv] * conv.np_conv
+            conv.P_loss    = P_conv_loss_values[nconv] * conv.np_conv
             conv.P_loss_tf = abs(conv.P_AC - conv.Pc)
             conv.U_c       = Uc_values[nconv]
             conv.U_f       = Uf_values[nconv]

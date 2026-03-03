@@ -538,7 +538,7 @@ def _modify_parameters(grid,model,Price_Zones):
             
         # Conv_Lists, Conv_Volt = Conv_info
         
-        # lista_conv,NumConvP_i = Conv_Lists
+        # lista_conv,np_conv_i = Conv_Lists
         # u_c_min,u_c_max,S_limit_conv,P_conv_limit = Conv_Volt
     
     _,Price_Zone_lim = Price_Zone_info   

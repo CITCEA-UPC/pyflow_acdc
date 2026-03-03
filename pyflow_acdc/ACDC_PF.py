@@ -727,8 +727,8 @@ def flow_conv(grid, conv, tol_lim=1e-12, maxIter=20):
 
 def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
     
-    Ztf = conv.Ztf / conv.NumConvP
-    Zc = conv.Zc / conv.NumConvP
+    Ztf = conv.Ztf / conv.np_conv
+    Zc = conv.Zc / conv.np_conv
 
     Zeq = Ztf+Zc
      
@@ -800,9 +800,9 @@ def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
             Ic = np.sqrt(Pc*Pc+Qc*Qc)/Uc
         
             if conv.P_DC < 0:  # DC to AC
-                P_loss = conv.a_conv* conv.NumConvP+conv.b_conv*Ic+conv.c_inver*Ic*Ic/ conv.NumConvP
+                P_loss = conv.a_conv* conv.np_conv+conv.b_conv*Ic+conv.c_inver*Ic*Ic/ conv.np_conv
             else:  # AC to DC
-                P_loss = conv.a_conv* conv.NumConvP+conv.b_conv*Ic+conv.c_rect*Ic*Ic/ conv.NumConvP
+                P_loss = conv.a_conv* conv.np_conv+conv.b_conv*Ic+conv.c_rect*Ic*Ic/ conv.np_conv
         
         Pc_new = -conv.P_DC-P_loss
 
@@ -849,10 +849,10 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
     th_c = conv.th_c
     
 
-    Bf = conv.Bf    * conv.NumConvP
-    Gc  = conv.Gc   * conv.NumConvP
+    Bf = conv.Bf    * conv.np_conv
+    Gc  = conv.Gc   * conv.np_conv
     Bc  = conv.Bc   * conv.NumConv
-    Bf  = conv.Bf   * conv.NumConvP
+    Bf  = conv.Bf   * conv.np_conv
     
     
     Pc_known = -np.copy(conv.P_DC)
@@ -911,9 +911,9 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
             Ic = np.sqrt(Pc*Pc+Qc*Qc)/Uc
         
             if conv.P_DC < 0:  # DC to AC
-                P_loss = conv.a_conv* conv.NumConvP+conv.b_conv*Ic+conv.c_inver*Ic*Ic/ conv.NumConvP
+                P_loss = conv.a_conv* conv.np_conv+conv.b_conv*Ic+conv.c_inver*Ic*Ic/ conv.np_conv
             else:  # AC to DC
-                P_loss = conv.a_conv* conv.NumConvP+conv.b_conv*Ic+conv.c_rect*Ic*Ic/ conv.NumConvP    
+                P_loss = conv.a_conv* conv.np_conv+conv.b_conv*Ic+conv.c_rect*Ic*Ic/ conv.np_conv    
             
         
 
@@ -955,12 +955,12 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
     th_f = conv.th_f
     th_c = conv.th_c
    
-    Bf = conv.Bf    * conv.NumConvP
-    Gc  = conv.Gc   * conv.NumConvP
-    Bc  = conv.Bc   * conv.NumConvP
-    Gtf = conv.Gtf  * conv.NumConvP
-    Btf = conv.Btf  * conv.NumConvP
-    Bf  = conv.Bf   * conv.NumConvP
+    Bf = conv.Bf    * conv.np_conv
+    Gc  = conv.Gc   * conv.np_conv
+    Bc  = conv.Bc   * conv.np_conv
+    Gtf = conv.Gtf  * conv.np_conv
+    Btf = conv.Btf  * conv.np_conv
+    Bf  = conv.Bf   * conv.np_conv
     
     
     Pc_known = -np.copy(conv.P_DC)
@@ -1033,9 +1033,9 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
             Ic = np.sqrt(Pc*Pc+Qc*Qc)/Uc
         
             if conv.P_DC < 0:  # DC to AC
-                P_loss = conv.a_conv* conv.NumConvP+conv.b_conv*Ic+conv.c_inver*Ic*Ic/ conv.NumConvP
+                P_loss = conv.a_conv* conv.np_conv+conv.b_conv*Ic+conv.c_inver*Ic*Ic/ conv.np_conv
             else:  # AC to DC
-                P_loss = conv.a_conv* conv.NumConvP+conv.b_conv*Ic+conv.c_rect*Ic*Ic/ conv.NumConvP
+                P_loss = conv.a_conv* conv.np_conv+conv.b_conv*Ic+conv.c_rect*Ic*Ic/ conv.np_conv
         # print(f'{conv.name} - {P_loss}')
         Pc_new = -conv.P_DC-P_loss
 
@@ -1085,9 +1085,9 @@ def Converter_Qlimit(grid, conv):
     Us = conv.Node_AC.V
     th_s = conv.Node_AC.theta
 
-    conj_Ztf = np.conj(conv.Ztf/ conv.NumConvP)
-    conj_Zc = np.conj(conv.Zc/ conv.NumConvP)
-    conj_Zf = np.conj(conv.Zf/ conv.NumConvP)
+    conj_Ztf = np.conj(conv.Ztf/ conv.np_conv)
+    conj_Zc = np.conj(conv.Zc/ conv.np_conv)
+    conj_Zf = np.conj(conv.Zf/ conv.np_conv)
 
     S_max = conv.MVA_max/grid.S_base
     Icmax = S_max #assumes V = 1
@@ -1098,13 +1098,13 @@ def Converter_Qlimit(grid, conv):
     S0v = 0
     Y1 = 0
     if conv.Z1 != 0:
-        Y1 = (1/conv.Z1)*conv.NumConvP
+        Y1 = (1/conv.Z1)*conv.np_conv
 
     if conv.Zf != 0:
         r = Us*Icmax*np.abs(conj_Zf/(conj_Zf+conj_Ztf))
 
         S0 = -Us**2*(1/(conj_Zf+conj_Ztf))
-        Y2 = (1/conv.Z2)*conv.NumConvP
+        Y2 = (1/conv.Z2)*conv.np_conv
         S0v = -Us**2*(np.conj(Y1)+np.conj(Y2))
         rVmin = Us*conv.Ucmin*np.abs(Y2)
         rVmax = Us*conv.Ucmax*np.abs(Y2)

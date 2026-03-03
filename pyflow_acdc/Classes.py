@@ -223,9 +223,6 @@ class Grid:
 
         self.Time_series = []
         self.Time_series_dic ={}
-        
-        self.inv_series = []
-        self.inv_series_dic ={}
 
         self.Price_Zones =[]
         self.Price_Zones_dic ={}
@@ -1127,7 +1124,7 @@ class Gen_AC:
         self.qf=quadratic_cost_factor
         self.fc=fixed_cost
 
-        self.Life_time = 30
+        self.life_time = 50
         self.base_cost = installation_cost
         
         if S_rated is not None:
@@ -1238,7 +1235,7 @@ class Gen_DC:
         self.qf=quadratic_cost_factor
         self.fc=fixed_cost
 
-        self.Life_time = 30
+        self.life_time = 50
         self.base_cost = installation_cost
        
         self.price_zone_link = False
@@ -1321,7 +1318,7 @@ class Ren_Source:
         
         self.curtailable= True
        
-        self.life_time = 30
+        self.life_time = 50
         self._S_base = S_base
         self.S_base_i = S_base
         
@@ -2031,7 +2028,7 @@ class Exp_Line_AC(Line_AC):
         self.kV_base = self.fromNode.kV_base
         self.direction = 'from'
         self.base_cost = 0
-        self.life_time = 25
+        self.life_time = 50
         self.exp_inv=1
         self.cost_perMVAkm = None
         self.phi=0
@@ -2742,7 +2739,7 @@ class Line_DC:
         self.ts_avg_loading = 0
         
         self.base_cost = 0
-        self.life_time = 25
+        self.life_time = 50
         self.exp_inv=1
         self.cost_perMWkm = None
         self.phi=1
@@ -2870,12 +2867,12 @@ class AC_DC_converter:
         self.Node_DC.type = value  # Update DC_node type when converter type changes
 
     @property
-    def NumConvP(self):
-        return self._NumConvP
+    def np_conv(self):
+        return self._np_conv
 
-    @NumConvP.setter
-    def NumConvP(self, value):
-        self._NumConvP = value
+    @np_conv.setter
+    def np_conv(self, value):
+        self._np_conv = value
         self.Node_DC.Nconv= value
         P_DC = self.P_DC
         P_s = self.P_AC 
@@ -2889,8 +2886,8 @@ class AC_DC_converter:
 
     @property
     def capacity_MVA(self):
-        # Treat non-positive as 0; NumConvP may be 0 before sizing
-        return max(self.MVA_max * getattr(self, 'NumConvP', 1), 0.0)
+        # Treat non-positive as 0; np_conv may be 0 before sizing
+        return max(self.MVA_max * getattr(self, 'np_conv', 1), 0.0)
 
     @property
     def loading(self):
@@ -2970,21 +2967,21 @@ class AC_DC_converter:
         AC_DC_converter.ConvNumber += 1
         # type: (1=P, 2=droop, 3=Slack)
         self.S_base = S_base
-        self._NumConvP= nConvP
+        self._np_conv= nConvP
 
-        self.NumConvP_b= nConvP
-        self.NumConvP_i= nConvP
-        self.NumConvP_max = nConvP
+        self.np_conv_b= nConvP
+        self.np_conv_i= nConvP
+        self.np_conv_max = nConvP
         
-        self.NUmConvP_opf=False
+        self.np_conv_opf=False
         self.investment_decisions = {
             'planned_installation': [0],
             'planned_decomision': [0],
-            'max_inv': [self.NumConvP_max],
-            'np_dynamic': [self.NumConvP]
+            'max_inv': [self.np_conv_max],
+            'np_dynamic': [self.np_conv]
         }
         self.base_cost = 0
-        self.life_time = 25
+        self.life_time = 50
         self.exp_inv=1
         self.cost_perMVA = None
         self.phi=1
@@ -3524,6 +3521,3 @@ class TimeSeries:
             self._name = name
 
         TimeSeries.names.add(self.name)
-
-# Investment periods are stored as dict records in grid.inv_series:
-# {'id', 'type', 'element_name', 'data', 'name'}

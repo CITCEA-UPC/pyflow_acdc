@@ -1635,15 +1635,15 @@ class Results:
                 
         
         for cn in self.Grid.Converters_ACDC:
-            if cn.NUmConvP_opf:
-                if (cn.NumConvP-cn.NumConvP_b)>0.01:
+            if cn.np_conv_opf:
+                if (cn.np_conv-cn.np_conv_b)>0.01:
                     element= cn.name
-                    ini=cn.NumConvP_b
-                    opt=cn.NumConvP
+                    ini=cn.np_conv_b
+                    opt=cn.np_conv
                     pr=opt*cn.MVA_max
                     cost=(opt-ini)*cn.base_cost
                     tot+=cost
-                    maxn=cn.NumConvP_max
+                    maxn=cn.np_conv_max
                     rows.append([element, "ACDC Conv" ,ini,np.round(opt, decimals=2),maxn,
                                  float(np.round(pr, decimals=0)), float(cost)])
         
@@ -1776,8 +1776,8 @@ class Results:
                 
         
         for cn in self.Grid.Converters_ACDC:
-            if cn.NUmConvP_opf:
-                opt=cn.NumConvP
+            if cn.np_conv_opf:
+                opt=cn.np_conv
                 cost=((opt)*cn.MVA_max*cn.phi)*cn.life_time*8760/(10**6)
                 tot+=cost
                 tot_n+=((opt)*cn.MVA_max*cn.phi)/1000
@@ -2451,7 +2451,7 @@ class Results:
         base = self.Grid.S_base
 
         for conv in self.Grid.Converters_ACDC:
-            if conv.NumConvP <= 0.01:
+            if conv.np_conv <= 0.01:
                 continue
             P_DC = np.round(conv.P_DC*base, decimals=self.dec)
             P_s = np.round(conv.P_AC*base, decimals=self.dec)
@@ -2479,7 +2479,7 @@ class Results:
                 "AC control mode": conv.AC_type,
                 "DC control mode": conv.type,
                 "Loading %": loading,
-                "Capacity [MVA]": int(conv.MVA_max*conv.NumConvP),
+                "Capacity [MVA]": int(conv.MVA_max*conv.np_conv),
             })
 
         df_main = pd.DataFrame(rows_main) if rows_main else pd.DataFrame(

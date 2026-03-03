@@ -317,7 +317,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                     "type": "conv",
                     "area":conv_obj.Node_DC.PZ,
                     "ant_viable":False,
-                    "thck": getattr(conv_obj, 'NumConvP', 1),
+                    "thck": getattr(conv_obj, 'np_conv', 1),
                     "name": getattr(conv_obj, 'name', 'Unknown'),
                     "hover_text": getattr(conv_obj, 'hover_text', 'No info'),
                     "color": 'purple'

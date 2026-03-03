@@ -1228,11 +1228,11 @@ def Create_grid_from_mat(matfile):
             MVA_max=MVA_max,nConvP=n,polarity=pol,Ucmin=Ucmin,Ucmax=Ucmax,lossa=LossA,lossb=LossB,losscrect=LossCrec ,losscinv=LossCinv ,name=str(var_name),S_base=S_base)
 
             if Converter_data.at[index, 'cost'] >= 0:
-                Converters[var_name].NUmConvP_opf = True
-                Converters[var_name].NumConvP   = 0
-                Converters[var_name].NumConvP_b = 0
-                Converters[var_name].NumConvP_i = 0
-                Converters[var_name].NumConvP_max = 1
+                Converters[var_name].np_conv_opf = True
+                Converters[var_name].np_conv   = 0
+                Converters[var_name].np_conv_b = 0
+                Converters[var_name].np_conv_i = 0
+                Converters[var_name].np_conv_max = 1
                 Converters[var_name].base_cost = Converter_data.at[index, 'cost']
         Convertor_list = list(Converters.values())
 

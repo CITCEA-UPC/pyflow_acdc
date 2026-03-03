@@ -962,12 +962,9 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
         'planned_installation', 'planned_decomision',
         'max_inv', 'np_dynamic'
     }
+    # Expected period length is inferred from the first imported series
+    # with more than one value. Scalar series (len=1) are always allowed.
     expected_len = None
-
-    if len(grid.inv_series) > 0:
-        first_inv = grid.inv_series[0]
-        expected_data = first_inv['data'] if isinstance(first_inv, dict) else first_inv.data
-        expected_len = len(expected_data)
 
     def _series_name(col):
         return str(col) if name is None else name
@@ -1074,19 +1071,15 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
         if data.size == 0:
             raise ValueError(f"Investment series '{inv_name}' has no period values")
 
-        # Keep period length consistent across all investment series.
-        # Allow scalar (len=1) values; period expansion happens later in Dynamic TEP.
-        if expected_len is None:
-            expected_len = len(data)
-        elif len(data) != expected_len:
-            # If prior expected_len is scalar, promote it to current full length.
-            if expected_len == 1 and len(data) > 1:
-                expected_len = len(data)
-            # Scalar series are valid and stay scalar here.
-            elif len(data) != 1:
-                raise ValueError(
-                    f"Investment series '{inv_name}' has {len(data)} periods, expected {expected_len}"
-                )
+        # Keep period length consistent inside this imported file.
+        # Use the first non-scalar series as reference; scalar series are always valid.
+        data_len = len(data)
+        if data_len > 1 and expected_len is None:
+            expected_len = data_len
+        elif expected_len is not None and data_len not in (1, expected_len):
+            raise ValueError(
+                f"Investment series '{inv_name}' has {data_len} periods, expected {expected_len} (or 1)."
+            )
 
         if str(element_type) not in known_types:
             print(
@@ -1315,7 +1308,7 @@ def create_inv_csv_template(grid, file_path=None, exclude=None):
                 continue
             if hasattr(element, 'np_rsgen_opf') and not element.np_rsgen_opf:
                 continue
-            if hasattr(element, 'NUmConvP_opf') and not element.NUmConvP_opf:
+            if hasattr(element, 'np_conv_opf') and not element.np_conv_opf:
                 continue
             element_name = getattr(element, 'name', None)
             if element_name is None:

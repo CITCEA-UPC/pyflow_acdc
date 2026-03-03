@@ -1525,7 +1525,7 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
         P_lineDC_limit, NP_lineDC = {}, {}
 
         AC_nodes_connected_conv, DC_nodes_connected_conv = [], []
-        S_limit_conv, NumConvP, P_conv_loss = {}, {}, {}
+        S_limit_conv, np_conv, P_conv_loss = {}, {}, {}
         DC_slack = []
 
         P_DCDC_limit, Pset_DCDC = {}, {}
@@ -1565,12 +1565,12 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
             DC_nodes_connected_conv.append(conv.Node_DC.nodeNumber)
             P_conv_limit[conv.Node_DC.nodeNumber] = conv.MVA_max / grid.S_base
             S_limit_conv[conv.ConvNumber] = conv.MVA_max / grid.S_base
-            NumConvP[conv.ConvNumber] = conv.NumConvP
+            np_conv[conv.ConvNumber] = conv.np_conv
             u_c_min[conv.ConvNumber] = conv.Ucmin
             u_c_max[conv.ConvNumber] = conv.Ucmax
             P_conv_loss[conv.ConvNumber] = conv.P_loss
 
-        Conv_Lists = pack_variables(lista_conv, NumConvP)
+        Conv_Lists = pack_variables(lista_conv, np_conv)
         Conv_Volt = pack_variables(u_c_min, u_c_max, S_limit_conv, P_conv_limit) 
         Conv_info = pack_variables(Conv_Lists, Conv_Volt)
     
@@ -1691,18 +1691,18 @@ def OPF_step_results(model,grid):
             nconv = conv.ConvNumber
             name = conv.name   
            
-            opt_res_P_conv_DC[name] = P_conv_DC_conv_values[conv.Node_DC.nodeNumber] * conv.NumConvP
-            opt_res_P_conv_AC[name] = P_conv_s_AC_values[nconv] * conv.NumConvP
-            opt_res_Q_conv_AC[name] = Q_conv_s_AC_values[nconv] * conv.NumConvP
+            opt_res_P_conv_DC[name] = P_conv_DC_conv_values[conv.Node_DC.nodeNumber] * conv.np_conv
+            opt_res_P_conv_AC[name] = P_conv_s_AC_values[nconv] * conv.np_conv
+            opt_res_Q_conv_AC[name] = Q_conv_s_AC_values[nconv] * conv.np_conv
                 
             
             S_AC = np.sqrt(opt_res_P_conv_AC[name]**2 + opt_res_Q_conv_AC[name]**2)
             P_DC = opt_res_P_conv_DC[name]
             
-            if conv.NumConvP == 0:
+            if conv.np_conv == 0:
                 opt_res_Loading_conv[name]=0
             else:
-                opt_res_Loading_conv[name]=max(S_AC, np.abs(P_DC)) * grid.S_base / (conv.MVA_max*conv.NumConvP)
+                opt_res_Loading_conv[name]=max(S_AC, np.abs(P_DC)) * grid.S_base / (conv.MVA_max*conv.np_conv)
     
         with ThreadPoolExecutor() as executor:
             executor.map(process_converter, grid.Converters_ACDC)

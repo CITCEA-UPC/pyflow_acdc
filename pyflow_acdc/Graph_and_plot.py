@@ -1478,7 +1478,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
-                stroke_width = float(2 * float(conv.NumConvP))
+                stroke_width = float(2 * float(conv.np_conv))
                 dwg.add(dwg.path(d=path_data, stroke='purple', stroke_width=stroke_width, fill='none'))
         
         # Draw nodes

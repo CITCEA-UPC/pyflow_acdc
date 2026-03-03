@@ -8,6 +8,7 @@ import pyflow_acdc as pyf
 import pyomo.environ as pyo
 from pathlib import Path
 import time
+import re
 
 cases = {
     'arcadis_ost'
@@ -32,6 +33,28 @@ def run_case(case,MIP_solver='gurobi'):
     touple = pyf.Grid_creator.load_pickle(f'{path}/wfarms/{case}.pkl.gz')
     array_graph,Data,cable_types,final_polygon =touple
 
+    # Normalize legacy cable naming from pickles to current DB keys.
+    pyf.Line_AC.load_cable_database()
+    valid_ac_cables = set(pyf.Line_AC._cable_database.index)
+
+    def _normalize_cable_name(name):
+        if name in valid_ac_cables:
+            return name
+
+        normalized = str(name).replace(' ', '_')
+        if normalized in valid_ac_cables:
+            return normalized
+
+        m = re.match(r'^(?P<kv>\d+kV)_(?P<size>\d+mm2)_sub_CU_ABB_XLPE$', normalized)
+        if m:
+            candidate = f"ABB_XLPE_Cu_{m.group('kv')}_sub_{m.group('size')}"
+            if candidate in valid_ac_cables:
+                return candidate
+
+        return name
+
+    cable_types = [_normalize_cable_name(c) for c in cable_types]
+
     
     grid, res = pyf.Create_grid_from_turbine_graph(array_graph,Data,cable_types=cable_types,cable_types_allowed=ct,curtailment_allowed=0 ,LCoE=LCoE,MIP_time=tl,name=case)
     #model, model_results , timing_info, solver_stats= pyf.Optimal_L_CSS_gurobi(grid,OPEX=True,NPV=True,n_years=25,Hy=FLH,discount_rate=WACC,tee=False,time_limit=tl)
@@ -54,6 +77,7 @@ def run_case(case,MIP_solver='gurobi'):
 
 def run_test():
     """Test CIGRE B4 optimal power flow."""
+    mip_solver = MIP_solver
     try:
         import dill
     except ImportError:
@@ -71,9 +95,9 @@ def run_test():
             raise ImportError("Gurobi solver not available")
     except (ImportError, Exception):
         print("Gurobi solver is not available.")
-        MIP_solver = 'glpk'
+        mip_solver = 'glpk'
     for case in cases:
-        i, total_time, edges, subsations, turbines,obj_value,path_time,css_time,summary_results,crossing,cable_length = run_case(case,MIP_solver)
+        i, total_time, edges, subsations, turbines,obj_value,path_time,css_time,summary_results,crossing,cable_length = run_case(case, mip_solver)
         print(f'{case}- iterations {i}, total time {total_time}, edges {edges}, subsations {subsations}, turbines {turbines}, obj_value {obj_value}, path_time {path_time}, css_time {css_time},  crossing {crossing}, cable_length {cable_length}')
     
 if __name__ == "__main__":
