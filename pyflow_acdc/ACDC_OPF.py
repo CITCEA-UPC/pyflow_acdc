@@ -621,6 +621,39 @@ def _parse_bonmin_log(log_path):
                         except (ValueError, TypeError):
                             continue
                 
+                # Also capture CBC incumbent summaries, e.g.:
+                # Cbc0010I After 1100 nodes, ... 45.844224 best solution, ... (6984.48 seconds)
+                # Cbc0005I Partial search - best objective 45.844224 (...), took 225525 iterations ... (6999.82 seconds)
+                elif line.startswith('Cbc0010I') and 'best solution' in line:
+                    obj_match = re.search(r'([\d\.eE\+\-]+)\s+best solution', line)
+                    time_match = re.search(r'\(([\d\.]+)\s+seconds\)', line)
+                    iter_match = re.search(r'After\s+(\d+)\s+nodes', line)
+                    if obj_match and time_match:
+                        try:
+                            objective = float(obj_match.group(1))
+                            time_sec = float(time_match.group(1))
+                            iterations = int(iter_match.group(1)) if iter_match else cumulative_iterations
+                            solution_data = (time_sec, objective, iterations)
+                            feasible_solutions.append(solution_data)
+                            all_solutions.append([time_sec, objective, iterations, last_nlp_call, True])
+                        except (ValueError, TypeError):
+                            continue
+                
+                elif line.startswith('Cbc0005I') and 'best objective' in line:
+                    obj_match = re.search(r'best objective\s+([-\d\.eE\+]+)', line)
+                    time_match = re.search(r'\(([\d\.]+)\s+seconds\)', line)
+                    iter_match = re.search(r'took\s+(\d+)\s+iterations', line)
+                    if obj_match and time_match:
+                        try:
+                            objective = float(obj_match.group(1))
+                            time_sec = float(time_match.group(1))
+                            iterations = int(iter_match.group(1)) if iter_match else cumulative_iterations
+                            solution_data = (time_sec, objective, iterations)
+                            feasible_solutions.append(solution_data)
+                            all_solutions.append([time_sec, objective, iterations, last_nlp_call, True])
+                        except (ValueError, TypeError):
+                            continue
+                
                 # Also look for NLP iteration lines like:
                 # NLP0014I            24         OPT 8.9135036e+09       25 0.341783
                 elif 'NLP0014I' in line and 'OPT' in line:
@@ -1112,62 +1145,36 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'obj_scaling': obj_scaling,
     }
 
-    def _has_reported_solution(results_obj):
-        """Return True when solver results explicitly include at least one solution."""
-        if results_obj is None:
-            return False
-        try:
-            return len(getattr(results_obj, 'solution', [])) > 0
-        except Exception:
-            return False
+    def _has_solution(results_obj, model_obj):
+        """Simple feasibility signal: solver/model has at least one solution entry."""
+        if results_obj is not None:
+            try:
+                if len(getattr(results_obj, 'solution', [])) > 0:
+                    return True
+            except Exception:
+                pass
+        if model_obj is not None:
+            try:
+                if len(model_obj.solutions) > 0:
+                    return True
+            except Exception:
+                try:
+                    if len(getattr(model_obj.solutions, '_entry', [])) > 0:
+                        return True
+                except Exception:
+                    pass
+        return False
 
-    def _has_finite_upper_bound(results_obj):
-        """Return True when solver reports a finite incumbent objective."""
-        if results_obj is None:
-            return False
-        try:
-            ub = getattr(results_obj.problem, 'upper_bound', None)
-            if ub is None:
-                return False
-            # Guard against solver sentinel values (e.g., 1e+50 when no incumbent exists).
-            return np.isfinite(ub) and abs(float(ub)) < 1e49
-        except Exception:
-            return False
+    has_solution = _has_solution(results, model) or len(feasible_solutions) > 0
+    tc = results.solver.termination_condition if results else None
 
-    # Determine if a feasible solution was found
-    if results:
-        if results.solver.termination_condition == pyo.TerminationCondition.optimal:
-            solver_stats['solution_found'] = True
-        elif results.solver.termination_condition == pyo.TerminationCondition.feasible:
-            solver_stats['solution_found'] = True
-        elif results.solver.termination_condition == pyo.TerminationCondition.maxTimeLimit:
-            # Time limit can still return an incumbent; use solver-reported evidence.
-            solver_stats['solution_found'] = (
-                _has_reported_solution(results)
-                or _has_finite_upper_bound(results)
-                or len(feasible_solutions) > 0
-            )
-        elif results.solver.termination_condition == pyo.TerminationCondition.infeasible:
-            solver_stats['solution_found'] = False
-        else:
-            # Unknown status: avoid objective-value heuristics (can create false positives).
-            solver_stats['solution_found'] = (
-                _has_reported_solution(results)
-                or _has_finite_upper_bound(results)
-                or len(feasible_solutions) > 0
-            )
-    elif solver == 'bonmin' and feasible_solutions:
-        # Fallback: parser captured feasible incumbents but no clean SolverResults
+    if tc == pyo.TerminationCondition.infeasible:
+        solver_stats['solution_found'] = False
+    elif tc in (pyo.TerminationCondition.optimal, pyo.TerminationCondition.feasible):
         solver_stats['solution_found'] = True
-
-    # Additional fallback: keep solver termination/status untouched (can be "error"),
-    # but still surface results when the solver returned at least one solution.
-    if solver == 'bonmin' and not solver_stats['solution_found'] and results:
-        try:
-            if len(getattr(results, 'solution', [])) > 0:
-                solver_stats['solution_found'] = True
-        except Exception:
-            pass
+    else:
+        # Covers maxIterations/maxTimeLimit/unknown/error-with-incumbent cases.
+        solver_stats['solution_found'] = has_solution
 
     if results and results.solver.termination_condition == pyo.TerminationCondition.infeasible:
         if not suppress_warnings:
