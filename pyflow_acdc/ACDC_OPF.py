@@ -1211,6 +1211,7 @@ def OPF_obj_L(model,grid,ObjRule):
     
 
 def OPF_obj(model,grid,weights_def,OnlyGen=True):
+    np_den_eps = 1e-3
    
     # for node in  model.nodes_AC:
     #     nAC=grid.nodes_AC[node]
@@ -1231,11 +1232,11 @@ def OPF_obj(model,grid,weights_def,OnlyGen=True):
         DC= 0
         if grid.ACmode:
             if grid.act_gen:
-                AC= sum((((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/model.np_gen[gen.genNumber]+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc)*model.gen_active[gen.genNumber]) for gen in grid.Generators)
+                AC= sum((((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/(model.np_gen[gen.genNumber] + np_den_eps)+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc)*model.gen_active[gen.genNumber]) for gen in grid.Generators)
             else:
-                AC= sum(((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/model.np_gen[gen.genNumber]+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc) for gen in grid.Generators)
+                AC= sum(((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/(model.np_gen[gen.genNumber] + np_den_eps)+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc) for gen in grid.Generators)
         if grid.DCmode:
-            DC= sum(((model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base)**2*gen.qf/model.np_gen_DC[gen.genNumber_DC]+model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base*model.lf_dc[gen.genNumber_DC]+model.np_gen_DC[gen.genNumber_DC]*gen.fc) for gen in grid.Generators_DC)
+            DC= sum(((model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base)**2*gen.qf/(model.np_gen_DC[gen.genNumber_DC] + np_den_eps)+model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base*model.lf_dc[gen.genNumber_DC]+model.np_gen_DC[gen.genNumber_DC]*gen.fc) for gen in grid.Generators_DC)
         
         if OnlyGen:
             return AC+DC
