@@ -986,8 +986,6 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         - IPOPT: {'max_iter': 1000}
         - Bonmin: {'bonmin.time_limit': 3600}
         - Minotaur: {'specific_solver': 'mglob', 'executable': '/path/to/minotaur', 'time_limit': 3600, ...}
-    objective_name : str, optional
-        Name of objective function in model (default: tries 'obj' then 'objective')
     nlp_warmstart : bool, default=False
         If True and solver is a MINLP solver (bonmin, minotaur), first solve the NLP
         relaxation with IPOPT to initialize all variable values. This gives the MINLP
@@ -1070,7 +1068,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             results, feasible_solutions, all_solutions = _solver_progress(model, feasible_solutions, 'ipopt', time_limit, 'ipopt.log', tee_console=tee)
         elif solver == 'highs':
             results, feasible_solutions, all_solutions = _solver_progress(model, feasible_solutions, 'highs', time_limit, 'highs.log', tee_console=tee)
-    else:
+        else:
+            print(f"No callback available for {solver}")
+            callback = False
+    if not callback:
         # For Minotaur, check if executable is specified in solver_options
         if solver == 'minotaur':
             

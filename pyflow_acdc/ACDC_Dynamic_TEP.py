@@ -710,7 +710,7 @@ def multi_period_transmission_expansion(
             "solve": solver_stats['time'] if solver_stats else None,
             "export": 0.0,
         }
-        return None, model_results, timing_info, solver_stats
+        return model, model_results, timing_info, solver_stats
     
     MINLP = False
     if solver != 'ipopt':
