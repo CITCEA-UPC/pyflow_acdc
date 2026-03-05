@@ -483,7 +483,7 @@ def log_infeasible_constraints_limited(model, max_per_type=5):
     
     print("=" * 80)
 
-def _gurobi_callback(model, feasible_solutions, time_limit=None, solver_options=None, tee=False):
+def _gurobi_callback(model, feasible_solutions, bound_solutions, time_limit=None, solver_options=None, tee=False):
     """
     Gurobi callback function with support for custom solver options.
     
@@ -493,6 +493,8 @@ def _gurobi_callback(model, feasible_solutions, time_limit=None, solver_options=
         The model to solve
     feasible_solutions : list
         List to append (time, objective, gap) tuples
+    bound_solutions : list
+        List to append (time, best_bound, node_count) tuples
     time_limit : float, optional
         Time limit in seconds
     solver_options : dict, optional
@@ -527,6 +529,8 @@ def _gurobi_callback(model, feasible_solutions, time_limit=None, solver_options=
 
             # Store: (time, value, gap)
             feasible_solutions.append((time_found, obj, gap))
+            node_count = model.cbGet(GRB.Callback.MIPSOL_NODCNT)
+            bound_solutions.append((time_found, bound, node_count))
 
     # Set time limit
     if time_limit is not None:
@@ -560,6 +564,7 @@ def _gurobi_callback(model, feasible_solutions, time_limit=None, solver_options=
             else:  # MAXIMIZE
                 final_gap = (obj_bound - obj_val) / abs(obj_val)
         feasible_solutions.append((grb_model.Runtime, obj_val, final_gap))
+        bound_solutions.append((grb_model.Runtime, obj_bound, grb_model.NodeCount))
     
     if grb_model.Status == GRB.Status.OPTIMAL:
         results.solver.termination_condition = pyo.TerminationCondition.optimal
@@ -578,14 +583,16 @@ def _gurobi_callback(model, feasible_solutions, time_limit=None, solver_options=
         if grb_model.SolCount > 0:
             opt.load_vars()
     opt._solver_model.dispose()  # Cleanup
-    return results, feasible_solutions
+    return results, feasible_solutions, bound_solutions
 
 def _parse_bonmin_log(log_path):
     """Parse Bonmin log file to extract feasible solutions and all solutions.
-    Returns tuple of (feasible_solutions, all_solutions) where each is a list of (time, objective, iterations) tuples.
+    Returns tuple of (feasible_solutions, all_solutions, bound_solutions) where each
+    stream stores (time, value, iterations_like_counter).
     """
     feasible_solutions = []
     all_solutions = []
+    bound_solutions = []
     last_nlp_call = 0
     cumulative_iterations = 0
     cumulative_time = 0
@@ -610,37 +617,35 @@ def _parse_bonmin_log(log_path):
                     
                     if obj_match and iter_match and time_match:
                         try:
-                            objective = all_solutions[-1][1]
-                            iterations = all_solutions[-1][2]
-                            time_sec = all_solutions[-1][0]
-                            # Only explicit integer solution lines define feasibility
+                            objective = float(obj_match.group(1))
+                            iterations = int(iter_match.group(1))
+                            time_sec = float(time_match.group(1))
+                            # Only explicit integer solution lines define feasibility/incumbents.
                             feasible_solutions.append((time_sec, objective, iterations))
-                            if all_solutions:
-                                all_solutions[-1][4] = True
+                            all_solutions.append([time_sec, objective, iterations, last_nlp_call, True])
                                 
                         except (ValueError, TypeError):
                             continue
                 
-                # Also capture CBC incumbent summaries, e.g.:
-                # Cbc0010I After 1100 nodes, ... 45.844224 best solution, ... (6984.48 seconds)
-                # Cbc0005I Partial search - best objective 45.844224 (...), took 225525 iterations ... (6999.82 seconds)
-                elif line.startswith('Cbc0010I') and 'best solution' in line:
-                    obj_match = re.search(r'([\d\.eE\+\-]+)\s+best solution', line)
+                # Capture best-bound progress from CBC summaries when available.
+                elif line.startswith('Cbc0010I') and 'best possible' in line:
+                    bound_match = re.search(r'best possible\s+([-\d\.eE\+]+)', line)
                     time_match = re.search(r'\(([\d\.]+)\s+seconds\)', line)
                     iter_match = re.search(r'After\s+(\d+)\s+nodes', line)
-                    if obj_match and time_match:
+                    if bound_match and time_match:
                         try:
-                            objective = float(obj_match.group(1))
+                            best_bound = float(bound_match.group(1))
                             time_sec = float(time_match.group(1))
                             iterations = int(iter_match.group(1)) if iter_match else cumulative_iterations
-                            solution_data = (time_sec, objective, iterations)
-                            feasible_solutions.append(solution_data)
-                            all_solutions.append([time_sec, objective, iterations, last_nlp_call, True])
+                            bound_solutions.append((time_sec, best_bound, iterations))
                         except (ValueError, TypeError):
                             continue
-                
+
+                # Keep partial search summaries only in all_solutions (not incumbents).
                 elif line.startswith('Cbc0005I') and 'best objective' in line:
                     obj_match = re.search(r'best objective\s+([-\d\.eE\+]+)', line)
+                    # Optional best bound in parenthesis: best objective X (Y)
+                    bound_match = re.search(r'best objective\s+[-\d\.eE\+]+\s+\(([-\d\.eE\+]+)\)', line)
                     time_match = re.search(r'\(([\d\.]+)\s+seconds\)', line)
                     iter_match = re.search(r'took\s+(\d+)\s+iterations', line)
                     if obj_match and time_match:
@@ -648,9 +653,11 @@ def _parse_bonmin_log(log_path):
                             objective = float(obj_match.group(1))
                             time_sec = float(time_match.group(1))
                             iterations = int(iter_match.group(1)) if iter_match else cumulative_iterations
-                            solution_data = (time_sec, objective, iterations)
-                            feasible_solutions.append(solution_data)
-                            all_solutions.append([time_sec, objective, iterations, last_nlp_call, True])
+                            # Partial-search status line; keep only as progress history.
+                            all_solutions.append([time_sec, objective, iterations, last_nlp_call, False])
+                            if bound_match:
+                                best_bound = float(bound_match.group(1))
+                                bound_solutions.append((time_sec, best_bound, iterations))
                         except (ValueError, TypeError):
                             continue
                 
@@ -689,7 +696,7 @@ def _parse_bonmin_log(log_path):
                             continue
     except (FileNotFoundError, IOError):
         pass
-    return feasible_solutions, all_solutions
+    return feasible_solutions, all_solutions, bound_solutions
 
 def _parse_highs_log(log_path):
     """Parse HiGHS log file to extract feasible solutions and all solutions.
@@ -715,10 +722,11 @@ def _parse_highs_log(log_path):
     - 11: LpIters
     - 12: Time (with 's' suffix)
     
-    Returns tuple of (feasible_solutions, all_solutions) where each is a list of (time, objective, gap) tuples.
+    Returns tuple of (feasible_solutions, all_solutions, bound_solutions).
     """
     feasible_solutions = []
     all_solutions = []
+    bound_solutions = []
     
     try:
         with open(log_path, 'r') as f:
@@ -761,6 +769,7 @@ def _parse_highs_log(log_path):
                     # Now extract columns (adjusting for optional Src)
                     # BestSol is at position 6 from start of data (after Src if present)
                     # So: data_start + 5 = BestBound, data_start + 6 = BestSol, data_start + 7 = Gap
+                    best_bound_idx = data_start + 4
                     best_sol_idx = data_start + 5
                     gap_idx = data_start + 6
                     time_idx = data_start + 11  # Last column
@@ -778,6 +787,7 @@ def _parse_highs_log(log_path):
                     
                     # Extract objective value
                     objective = float(best_sol_str)
+                    best_bound = float(parts[best_bound_idx])
                     
                     # Extract gap (remove '%' and convert to decimal)
                     gap_str = parts[gap_idx].rstrip('%')
@@ -789,6 +799,7 @@ def _parse_highs_log(log_path):
                     # Store solution
                     solution_data = (time_sec, objective, gap)
                     all_solutions.append([time_sec, objective, gap, time_sec, is_new_solution])
+                    bound_solutions.append((time_sec, best_bound, None))
                     
                     # Only add to feasible_solutions if it's a new solution (T or L marker)
                     # or if BestSol changed from previous (improved objective)
@@ -806,11 +817,11 @@ def _parse_highs_log(log_path):
     except (FileNotFoundError, IOError):
         pass
     
-    return feasible_solutions, all_solutions
+    return feasible_solutions, all_solutions, bound_solutions
 
 def _parse_ipopt_log(log_path):
     """Parse Ipopt log file to extract iteration progress and final solution.
-    Returns list of (iteration, objective, is_feasible) tuples.
+    Returns list of (iteration, objective, is_feasible, inf_pr, inf_du) tuples.
     
     Feasibility is determined by inf_pr (primal infeasibility):
       - During iterations: inf_pr < 1e-4 (relaxed, since IPOPT's acceptable
@@ -831,15 +842,16 @@ def _parse_ipopt_log(log_path):
                 #   0  1.5929771e+10 1.00e+00 1.00e+00  -1.0 1.00e+00    -  1.00e+00 1.00e+00   0
                 if re.match(r'^\s*\d+r?\s+[\d\.eE\+\-]+\s+', line.strip()):
                     parts = line.strip().split()
-                    if len(parts) >= 3:
+                    if len(parts) >= 4:
                         try:
                             iteration = int(parts[0].rstrip('r'))
                             objective = float(parts[1])
                             inf_pr = float(parts[2])
+                            inf_du = float(parts[3])
                             
                             is_feasible = inf_pr < 1e-4
                             
-                            progress_events.append((iteration, objective, is_feasible))
+                            progress_events.append((iteration, objective, is_feasible, inf_pr, inf_du))
                             final_objective = objective
                             final_iteration = iteration
                         except (ValueError, IndexError):
@@ -855,8 +867,8 @@ def _parse_ipopt_log(log_path):
     
     # If IPOPT declared optimal or acceptable, ensure the final point is marked feasible
     if (exit_optimal or exit_acceptable) and progress_events:
-        last_iter, last_obj, _ = progress_events[-1]
-        progress_events[-1] = (last_iter, last_obj, True)
+        last_iter, last_obj, _, last_inf_pr, last_inf_du = progress_events[-1]
+        progress_events[-1] = (last_iter, last_obj, True, last_inf_pr, last_inf_du)
     
     return progress_events
 
@@ -924,23 +936,27 @@ def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_pat
 
     # Parse the log file based on solver type
     all_solutions = []
+    bound_solutions = []
     if solver_name == 'ipopt':
         parsed_events = _parse_ipopt_log(log_path)
         # Convert to same format as feasible_solutions for consistency
-        for iter_num, obj, is_feasible in parsed_events:
+        for iter_num, obj, is_feasible, inf_pr, inf_du in parsed_events:
             if is_feasible:
                 feasible_solutions.append((iter_num, obj, iter_num))
-            all_solutions.append([iter_num, obj, iter_num, iter_num, is_feasible])
+            # all_solutions extended schema (ipopt): [..., is_feasible, inf_pr, inf_du]
+            all_solutions.append([iter_num, obj, iter_num, iter_num, is_feasible, inf_pr, inf_du])
     elif solver_name == 'bonmin':
-        parsed_feasible, parsed_all = _parse_bonmin_log(log_path)
+        parsed_feasible, parsed_all, parsed_bounds = _parse_bonmin_log(log_path)
         feasible_solutions.extend(parsed_feasible)
         all_solutions.extend(parsed_all)
+        bound_solutions.extend(parsed_bounds)
     elif solver_name == 'highs':
-        parsed_feasible, parsed_all = _parse_highs_log(log_path)
+        parsed_feasible, parsed_all, parsed_bounds = _parse_highs_log(log_path)
         feasible_solutions.extend(parsed_feasible)
         all_solutions.extend(parsed_all)
+        bound_solutions.extend(parsed_bounds)
 
-    return results, feasible_solutions, all_solutions
+    return results, feasible_solutions, all_solutions, bound_solutions
 
 def reset_to_initialize(model, initial_values):
     """
@@ -1001,6 +1017,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     solver = solver.lower()
     feasible_solutions = []  # Always defined, but only populated if callback is used
     all_solutions = []  # Always defined, but only populated if callback is used
+    bound_solutions = []  # Best-bound updates from callback log parsing
 
     # NLP warm-start: solve continuous relaxation with IPOPT first
     if nlp_warmstart and solver in ('bonmin', 'minotaur'):
@@ -1059,15 +1076,15 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
 
     if callback:
         if solver == 'gurobi' and GUROBI_AVAILABLE:
-            results, feasible_solutions = _gurobi_callback(model, feasible_solutions, time_limit, solver_options, tee=tee)
+            results, feasible_solutions, bound_solutions = _gurobi_callback(model, feasible_solutions, bound_solutions, time_limit, solver_options, tee=tee)
             # For Gurobi, all_solutions is the same as feasible_solutions
             all_solutions = feasible_solutions.copy()
         elif solver == 'bonmin':
-            results, feasible_solutions, all_solutions = _solver_progress(model, feasible_solutions, 'bonmin', time_limit, 'bonmin.log', tee_console=tee)
+            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'bonmin', time_limit, 'bonmin.log', tee_console=tee)
         elif solver == 'ipopt':
-            results, feasible_solutions, all_solutions = _solver_progress(model, feasible_solutions, 'ipopt', time_limit, 'ipopt.log', tee_console=tee)
+            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'ipopt', time_limit, 'ipopt.log', tee_console=tee)
         elif solver == 'highs':
-            results, feasible_solutions, all_solutions = _solver_progress(model, feasible_solutions, 'highs', time_limit, 'highs.log', tee_console=tee)
+            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'highs', time_limit, 'highs.log', tee_console=tee)
         else:
             print(f"No callback available for {solver}")
             callback = False
@@ -1118,7 +1135,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             'solver': solver, 'iterations': None, 'best_objective': None,
             'time': None, 'termination_condition': 'error',
             'solver_message': 'Solver crashed', 'feasible_solutions': [],
-            'all_solutions': [], 'solution_found': False, 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
+            'all_solutions': [], 'bound_solutions': [], 'solution_found': False, 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
         }
             return None, solver_stats
 
@@ -1142,6 +1159,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'solver_message': solver_message,
         'feasible_solutions': feasible_solutions,
         'all_solutions': all_solutions,
+        'bound_solutions': bound_solutions,
         'solution_found': False,  # Will be set below
         'obj_scaling': obj_scaling,
     }
@@ -1847,21 +1865,31 @@ def calculate_objective_from_model(model, grid, weights_def, OnlyGen=True):
 
 def export_solver_progress_to_excel(solver_stats, save_path):
     import pandas as pd
-    """Export solver progress to a 6-column Excel regardless of length differences.
+    """Export solver progress to a 13-column Excel regardless of length differences.
 
     Columns:
     - time_all, obj_all, iter_all (from all_solutions)
     - time_feasible, obj_feasible, iter_feasible (from feasible_solutions)
+    - time_bound, bound_value, iter_bound (from bound_solutions)
+    - is_feasible_all, inf_pr_all, inf_du_all (from all_solutions when available, e.g. IPOPT)
+    - kkt_inf_du_feasible (inf_du only where is_feasible_all is True)
     """
-    # all_solutions format: [time_sec, objective, cumulative_iterations, nlp_call_num, is_feasible]
+    # all_solutions base format: [time_sec, objective, cumulative_iterations, nlp_call_num, is_feasible]
+    # optional extra fields by solver:
+    # - IPOPT: [time, objective, iter, iter, is_feasible, inf_pr, inf_du]
     all_solutions = solver_stats.get('all_solutions', []) or []
     feasible_solutions = solver_stats.get('feasible_solutions', []) or []  # (time, obj, iterations)
+    bound_solutions = solver_stats.get('bound_solutions', []) or []  # (time, bound, iterations_like_counter)
 
     # Map to uniform tuples (time, obj, iter)
     all_triplets = [(a[0], a[1], a[2]) for a in all_solutions]
+    all_feasibility = [a[4] if len(a) > 4 else None for a in all_solutions]
+    all_inf_pr = [a[5] if len(a) > 5 else None for a in all_solutions]
+    all_inf_du = [a[6] if len(a) > 6 else None for a in all_solutions]
     feas_triplets = [(f[0], f[1], f[2]) for f in feasible_solutions]
+    bound_triplets = [(b[0], b[1], b[2]) for b in bound_solutions]
 
-    max_len = max(len(all_triplets), len(feas_triplets))
+    max_len = max(len(all_triplets), len(feas_triplets), len(bound_triplets), 1)
 
     # Pad shorter list with None
     def pad(seq, n):
@@ -1869,6 +1897,14 @@ def export_solver_progress_to_excel(solver_stats, save_path):
 
     all_padded = pad(all_triplets, max_len)
     feas_padded = pad(feas_triplets, max_len)
+    bound_padded = pad(bound_triplets, max_len)
+    feas_flag_padded = all_feasibility + [None] * (max_len - len(all_feasibility))
+    inf_pr_padded = all_inf_pr + [None] * (max_len - len(all_inf_pr))
+    inf_du_padded = all_inf_du + [None] * (max_len - len(all_inf_du))
+    kkt_inf_du_feasible = [
+        inf_du if is_feasible is True else None
+        for is_feasible, inf_du in zip(feas_flag_padded, inf_du_padded)
+    ]
 
     df = pd.DataFrame({
         'time_all': [t for t, _, _ in all_padded],
@@ -1877,6 +1913,13 @@ def export_solver_progress_to_excel(solver_stats, save_path):
         'time_feasible': [t for t, _, _ in feas_padded],
         'obj_feasible': [o for _, o, _ in feas_padded],
         'iter_feasible': [it for _, _, it in feas_padded],
+        'time_bound': [t for t, _, _ in bound_padded],
+        'bound_value': [o for _, o, _ in bound_padded],
+        'iter_bound': [it for _, _, it in bound_padded],
+        'is_feasible_all': feas_flag_padded,
+        'inf_pr_all': inf_pr_padded,
+        'inf_du_all': inf_du_padded,
+        'kkt_inf_du_feasible': kkt_inf_du_feasible,
     })
 
     # Ensure .xlsx extension

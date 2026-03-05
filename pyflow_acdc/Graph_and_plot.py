@@ -218,8 +218,9 @@ def update_lineACexp_hovertext(line,S_base,text):
         y= np.round(line.Y,decimals=5)
         rating = line.MVA_rating
         rating = np.round(rating,decimals=0)
+        np_line = np.round(line.np_line, decimals=1)
         Line_tf = 'Transformer' if line.isTf else 'Line'
-        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA"
+        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA<br>Number Lines: {np_line}"
 
     elif text=='inPu':
         
@@ -433,15 +434,15 @@ def update_gen_hovertext(gen,S_base,text):
          name= gen.name
          node = gen.Node_AC 
          n_gens = gen.np_gen
-         installation_cost = gen.base_cost
-         P_max = gen.Max_pow_gen * S_base * gen.np_gen
-         P_min = gen.Min_pow_gen * S_base * gen.np_gen
-         Q_max = gen.Max_pow_genR * S_base * gen.np_gen
-         Q_min = gen.Min_pow_genR * S_base * gen.np_gen
+         installation_cost = np.round(gen.base_cost/10**6, decimals=2)
+         P_max = np.round(gen.Max_pow_gen * S_base * gen.np_gen, decimals=2)
+         P_min = np.round(gen.Min_pow_gen * S_base * gen.np_gen, decimals=2)
+         Q_max = np.round(gen.Max_pow_genR * S_base * gen.np_gen, decimals=2)
+         Q_min = np.round(gen.Min_pow_genR * S_base * gen.np_gen, decimals=2)
          rating = gen.capacity_MVA
          rating = np.round(rating,decimals=1)
          
-         gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br>Rating: {rating}MVA<br>Installation cost: {installation_cost}<br>Fuel: {gen.gen_type}<br>P max: {P_max}MW<br>Q max: {Q_max}MVAR<br>P min: {P_min}MW<br>Q min: {Q_min}MVAR"    
+         gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br>Rating: {rating}MVA<br>Installation cost: {installation_cost}M€<br>Fuel: {gen.gen_type}<br>P max: {P_max}MW<br>Q max: {Q_max}MVAR<br>P min: {P_min}MW<br>Q min: {Q_min}MVAR"    
          
      elif text =='inPu':
          name= gen.name
@@ -467,12 +468,17 @@ def update_renSource_hovertext(renSource,S_base,text):
          name= renSource.name
          node = renSource.Node
          n_rs = renSource.np_rsgen
-         installation_cost = renSource.base_cost
-         rating = renSource.capacity_MVA
-         Pmin = renSource.PGi_ren_base*renSource.min_gamma*renSource.np_rsgen*S_base
-         Pmax = renSource.PGi_ren_base*renSource.np_rsgen*S_base
-         rating = np.round(rating,decimals=0)
-         renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>Rating: {rating}<br>Installation cost: {installation_cost}<br>Tech: {renSource.rs_type}<br>P min: {Pmin}MW<br>P max: {Pmax}MW"    
+         installation_cost = np.round(renSource.base_cost/10**6, decimals=2)
+         rating = np.round(renSource.capacity_MVA, decimals=2)
+         Pmin = np.round(
+             renSource.PGi_ren_base * renSource.min_gamma * renSource.np_rsgen * S_base,
+             decimals=2,
+         )
+         Pmax = np.round(
+             renSource.PGi_ren_base * renSource.np_rsgen * S_base,
+             decimals=2,
+         )
+         renSource.hover_text = f"Ren Source: {name}<br>Number of sources: {n_rs}<br>Rating: {rating}<br>Installation cost: {installation_cost} M€<br>Tech: {renSource.rs_type}<br>P min: {Pmin}MW<br>P max: {Pmax}MW"    
          
      elif text=='inPu':
          name= renSource.name
@@ -1567,24 +1573,29 @@ def plot_model_feasebility(solver_stats,sol='all', x_axis='time', y_axis= 'objec
 
         if normalize:
             # Only consider objectives that have feasible flag set to True
-            feasible_objectives = [objective for _, objective, _, _, is_feasible in solutions if is_feasible]
+            feasible_objectives = [s[1] for s in solutions if len(s) > 4 and s[4]]
             if feasible_objectives:
                 min_objective = min(feasible_objectives)
             else:
-                min_objective = min(objective for _, objective, _, _, _ in solutions)
-            solutions = [ [time_sec, (objective/min_objective-1)*100, cumulative_iterations, nlp_call_num, is_feasible] for time_sec, objective, cumulative_iterations, nlp_call_num, is_feasible in solutions]
+                min_objective = min(s[1] for s in solutions)
+            norm_solutions = []
+            for s in solutions:
+                row = list(s)
+                row[1] = (row[1] / min_objective - 1) * 100
+                norm_solutions.append(row)
+            solutions = norm_solutions
     
 
         if x_axis == 'time':
-            x_data = [time_sec for time_sec, _, _, _, _ in solutions]
+            x_data = [s[0] for s in solutions]
         elif x_axis == 'iterations':
-            x_data = [cumulative_iterations for _, _, cumulative_iterations, _, _ in solutions]
+            x_data = [s[2] for s in solutions]
 
         if y_axis == 'objective':
             y_axis = 'objective [%]' if normalize else 'objective'
-            y_data = [objective for _, objective, _, _, _ in solutions]
+            y_data = [s[1] for s in solutions]
         elif y_axis == 'iterations':
-            y_data = [cumulative_iterations for _, _, cumulative_iterations, _, _ in solutions]
+            y_data = [s[2] for s in solutions]
 
         # Separate feasible and non-feasible points
         feasible_x = []
@@ -1593,7 +1604,8 @@ def plot_model_feasebility(solver_stats,sol='all', x_axis='time', y_axis= 'objec
         regular_y = []
         
         for i, solution in enumerate(solutions):
-            if solution[4]:  # is_feasible is True
+            is_feasible = bool(solution[4]) if len(solution) > 4 else False
+            if is_feasible:
                 feasible_x.append(x_data[i])
                 feasible_y.append(y_data[i])
                 regular_x.append(x_data[i])

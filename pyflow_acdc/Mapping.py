@@ -109,7 +109,7 @@ def create_geometries(grid):
         if gen.x_coord is not None and gen.y_coord is not None and gen.geometry is None:
             gen.geometry = Point(gen.x_coord, gen.y_coord)
 
-def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=None,linestrings=None,ant_path='None',clustering=True,coloring=None,show=True,planar=False,scale_gen=False,base_icon_size=24,plot_load=True):
+def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=None,linestrings=None,ant_path='None',clustering=True,coloring=None,show=True,planar=False,scale_gen=False,base_icon_size=24,plot_load=True,show_all=False):
     # "OpenStreetMap",     "CartoDB Positron"     "Cartodb dark_matter" 
     if name is None:
         name = grid.name
@@ -368,6 +368,9 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
     def extract_gen_data(gens):
         gen_data = []
         for gen in gens:
+            # Skip generators with zero (or negative) multiplicity from folium plotting.
+            if gen.np_gen <= 0:
+                continue
             subgraph_idx = subgraph_dict.get(gen, None)
             geometry = getattr(gen, 'geometry', None)
             VL = 'HV' if gen.kV_base < 300 else \
@@ -385,7 +388,12 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                     "color": subgraph_colors[VL].get(subgraph_idx, "black"),
                     "mw_size": mw_size,
                 })
-        return gpd.GeoDataFrame(gen_data, geometry="geometry")
+        if gen_data:
+            return gpd.GeoDataFrame(gen_data, geometry="geometry")
+        return gpd.GeoDataFrame(
+            columns=["geometry", "name", "VL", "area", "hover_text", "type", "color", "mw_size"],
+            geometry="geometry",
+        )
     
     
     if grid.Generators != []:
@@ -397,6 +405,8 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
     def extract_renSource_data(renSources):
         gen_data = []
         for rs in renSources:
+            if rs.np_rsgen <= 0:
+                continue
             subgraph_idx = subgraph_dict.get(rs, None)
             geometry = getattr(rs, 'geometry', None)
             VL = 'HV' if rs.kV_base < 300 else \
@@ -414,7 +424,12 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                     "color": subgraph_colors[VL].get(subgraph_idx, "black"),
                     "mw_size": mw_size,
                 })
-        return gpd.GeoDataFrame(gen_data, geometry="geometry")
+        if gen_data:
+            return gpd.GeoDataFrame(gen_data, geometry="geometry")
+        return gpd.GeoDataFrame(
+            columns=["geometry", "name", "VL", "area", "hover_text", "type", "color", "mw_size"],
+            geometry="geometry",
+        )
     
     
     if grid.RenSources != []:
@@ -479,7 +494,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                     weight=3*row["thck"] if row["type"] == "HVDC" else 2*row["thck"],  # HVDC lines slightly thicker
                     opacity=0.8,
                     delay=400,  # Adjust animation speed
-                    popup=row["hover_text"]
+                    popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
                 ).add_to(tech_name)
     
             else:
@@ -489,7 +504,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                     color=row["color"],
                     weight=3*row["thck"] if row["type"] == "HVDC" else 2*row["thck"],  # HVDC lines slightly thicker
                     opacity=0.8,
-                    popup=row["hover_text"]
+                    popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
                 ).add_to(tech_name)
         s=1
     # Calculate map center from node coordinates
@@ -532,7 +547,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                 color=row["color"],
                 fill=True,
                 fill_opacity=0.9,
-                popup=row["hover_text"]
+                popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
             ).add_to(tech_name)
 
     def add_load_markers(gdf, tech_name):
@@ -546,7 +561,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
                 continue
             folium.Marker(
                 location=(row.geometry.y, row.geometry.x),
-                popup=row["hover_text"],
+                popup=folium.Popup(row["hover_text"], max_width=360, min_width=220),
                 icon=folium.CustomIcon(
                     icon_image=load_icon_path,
                     icon_size=(load_icon_px, load_icon_px),
@@ -604,7 +619,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
 
                 folium.Marker(
                     location=(lat, lon),  # Keep marker on exact coordinate
-                    popup=row["hover_text"],  # Display name on click
+                    popup=folium.Popup(row["hover_text"], max_width=360, min_width=220),  # Display name on click
                     icon=folium.CustomIcon(
                         icon_image=icon_path,
                         icon_size=icon_size,
@@ -624,7 +639,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
     ct_AC = folium.FeatureGroup(name="Conductor Size Selection")
     exp_lines = folium.FeatureGroup(name="Exp Lines")
     rec_lines = folium.FeatureGroup(name="Rec Lines")
-    loads_fg = folium.FeatureGroup(name="Loads", show=False)
+    loads_fg = folium.FeatureGroup(name="Loads", show=bool(show_all))
     
     if ant_path == 'All' or ant_path == 'Reduced':
         ant = True
@@ -654,7 +669,7 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
     
     layer_names = grid.generation_types
     # Dictionary to store FeatureGroups for each generation type (lowercase key for robust matching)
-    layers = {name.lower(): folium.FeatureGroup(name=name, show=False) for name in layer_names}
+    layers = {name.lower(): folium.FeatureGroup(name=name, show=bool(show_all)) for name in layer_names}
     
     
     # Add filtered layers to map
@@ -674,13 +689,13 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
     for gen_type, subset in gdf_gens.groupby('type'):  # Split by 'type'
         key = str(gen_type).lower()
         if key not in layers:
-            layers[key] = folium.FeatureGroup(name=str(gen_type), show=False)
+            layers[key] = folium.FeatureGroup(name=str(gen_type), show=bool(show_all))
         add_markers(subset, layers[key])
     
     for gen_type, subset in gdf_rsSources.groupby('type'):  # Split by 'type'
         key = str(gen_type).lower()
         if key not in layers:
-            layers[key] = folium.FeatureGroup(name=str(gen_type), show=False)
+            layers[key] = folium.FeatureGroup(name=str(gen_type), show=bool(show_all))
         add_markers(subset, layers[key])
     for layer in layers.values():
         if len(layer._children) > 0:  # Check if the layer has children

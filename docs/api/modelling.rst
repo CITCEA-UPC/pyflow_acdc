@@ -1077,10 +1077,10 @@ Key Attributes:
          :alt: Nuclear source icon
          :align: center
      - 
-   * - coal
+  * - hard coal
      - .. image:: ../images/coal.svg
          :width: 100
-         :alt: Coal source icon
+        :alt: Hard Coal source icon
          :align: center
      - 
    * - solid biomass
@@ -1119,13 +1119,31 @@ Key Attributes:
          :alt: Waste source icon
          :align: center
      - 
+  * - biogas
+    - .. image:: ../images/Biogas.svg
+        :width: 100
+        :alt: Biogas source icon
+        :align: center
+    -
+  * - ccgt
+    - .. image:: ../images/CCGT.svg
+        :width: 100
+        :alt: CCGT source icon
+        :align: center
+    -
    * - diesel
      - .. image:: ../images/diesel.svg
          :width: 100
-         :alt: Waste source icon
+        :alt: Diesel source icon
+        :align: center
+    -
+  * - shunt reactor
+    - .. image:: ../images/reactor.svg
+        :width: 100
+        :alt: Shunt reactor source icon
          :align: center
-     -   
-   * - Other
+    -
+  * - other
      - .. image:: ../images/gen.svg
          :width: 100
          :alt: Other source icon
