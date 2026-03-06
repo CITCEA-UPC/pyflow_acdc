@@ -1,28 +1,12 @@
-import pyflow_acdc as pyf
-from pathlib import Path
+from pyflow_acdc.windfarm_loader import load_case_grid_and_geo
 
-current_file = Path(__file__).resolve()
-examples_path = current_file.parents[2] / "examples"
 
-def nordsee_one(ct=3, ns= None, nt = None,curtailment_allowed=0  ):
-    touple = pyf.grid_creator.load_pickle(str(examples_path / "nordsee_one.pkl.gz"))
-    array_graph,Data,cable_types,final_polygon =touple
-
-    if nt is not None:
-        Data["turbine"] = Data["turbine"].assign(connections=3)
-        
+def nordsee_one(cab_types_allowed=3, ns=None, nt=None, curtailment_allowed=0):
+    _ = (nt, curtailment_allowed)
+    grid, res = load_case_grid_and_geo("Nordsee_one")
+    grid.cab_types_allowed = cab_types_allowed
     if ns is not None:
-        Data["offshore_substation"] = Data["offshore_substation"].assign(connections=ns)
-
-    if ns is not None:
-        Data["transformer_station"] = Data["transformer_station"].assign(connections=ns)
-
-    grid, res = pyf.Create_grid_from_turbine_graph(
-        array_graph, Data,
-        cable_types=cable_types,
-        cable_types_allowed=ct,
-        curtailment_allowed=curtailment_allowed,
-        MIP_time=600,
-        name='nordsee_one'
-    )
+        for node in grid.nodes_AC:
+            if node.type == "Slack":
+                node.ct_limit = ns
     return grid, res

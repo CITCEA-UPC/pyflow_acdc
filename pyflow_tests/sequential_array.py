@@ -6,16 +6,13 @@ Created on Mon Jul 14 15:13:24 2025
 """
 import pyflow_acdc as pyf
 import pyomo.environ as pyo
-from pathlib import Path
 import time
-import re
+from pyflow_acdc.windfarm_loader import load_case_grid_and_geo
 
 cases = {
-    'arcadis_ost'
+    'westermost_rough'
 }
 
-current_file = Path(__file__).resolve()
-path = str(current_file.parent)
 ct= 3
 LCoE = 91
 
@@ -28,37 +25,11 @@ obj = {'Energy_cost': 1}
 FLH = 8760
 WACC = 0.02
 
-def run_case(case,MIP_solver='gurobi'):
+def run_case(case, MIP_solver='gurobi'):
     start_time = time.perf_counter()
-    touple = pyf.grid_creator.load_pickle(f'{path}/wfarms/{case}.pkl.gz')
-    array_graph,Data,cable_types,final_polygon =touple
 
-    # Normalize legacy cable naming from pickles to current DB keys.
-    pyf.Line_AC.load_cable_database()
-    valid_ac_cables = set(pyf.Line_AC._cable_database.index)
-
-    def _normalize_cable_name(name):
-        if name in valid_ac_cables:
-            return name
-
-        normalized = str(name).replace(' ', '_')
-        if normalized in valid_ac_cables:
-            return normalized
-
-        m = re.match(r'^(?P<kv>\d+kV)_(?P<size>\d+mm2)_sub_CU_ABB_XLPE$', normalized)
-        if m:
-            candidate = f"ABB_XLPE_Cu_{m.group('kv')}_sub_{m.group('size')}"
-            if candidate in valid_ac_cables:
-                return candidate
-
-        return name
-
-    cable_types = [_normalize_cable_name(c) for c in cable_types]
-
-    
-    grid, res = pyf.Create_grid_from_turbine_graph(array_graph,Data,cable_types=cable_types,cable_types_allowed=ct,curtailment_allowed=0 ,LCoE=LCoE,MIP_time=tl,name=case)
-    #model, model_results , timing_info, solver_stats= pyf.Optimal_L_CSS_gurobi(grid,OPEX=True,NPV=True,n_years=25,Hy=FLH,discount_rate=WACC,tee=False,time_limit=tl)
-    
+    grid, res = load_case_grid_and_geo(case)
+    grid.cab_types_allowed = ct
 
     model, summary_results , timing_info, solver_stats,best_i= pyf.sequential_CSS(grid,NPV=True,n_years=25,Hy=FLH,discount_rate=WACC,ObjRule=obj,MIP_solver=MIP_solver,CSS_L_solver='gurobi',CSS_NL_solver='bonmin',max_iter= None,time_limit=tl,NL=NL,tee=tee,fs=fs)
     lines_active_config = {line.lineNumber: line.active_config for line in grid.lines_AC_ct}
@@ -68,15 +39,18 @@ def run_case(case,MIP_solver='gurobi'):
     cable_length = summary_results['cable_length'][best_i]
     path_time = timing_info['Paths']
     css_time = timing_info['CSS']
-    crossing = len(Data['crossing_pairs'])    
+    crossing = len(getattr(grid, 'crossing_groups', []))
+    edges = len(getattr(grid, 'lines_AC_ct', []))
+    turbines = len(getattr(grid, 'RenSources', []))
+    substations = sum(1 for n in getattr(grid, 'nodes_AC', []) if getattr(n, 'type', None) == 'Slack')
         
     total_time = time.perf_counter() - start_time
     
-    #pyf.plot_folium(grid,name=f'{case}',show=True,polygon=final_polygon)
-    return i, total_time, array_graph.number_of_edges(), array_graph.number_of_nodes()-len(Data['turbine']),len(Data['turbine']),obj_value,path_time,css_time,summary_results,crossing,cable_length
+    # pyf.plot_folium(grid, name=f'{case}', show=True, polygon=grid.dev_polygon, linestrings=grid.export_cables)
+    return i, total_time, edges, substations, turbines, obj_value, path_time, css_time, summary_results, crossing, cable_length
 
 def run_test():
-    """Test CIGRE B4 optimal power flow."""
+    
     mip_solver = MIP_solver
     try:
         import dill

@@ -1183,8 +1183,26 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 except Exception:
                     pass
         return False
+    
+    def _has_results_solution(results_obj):
+        """Strict feasibility signal from solver results only."""
+        if results_obj is not None:
+            try:
+                if len(getattr(results_obj, 'solution', [])) > 0:
+                    return True
+            except Exception:
+                pass
+        return False
 
-    has_solution = _has_solution(results, model) or len(feasible_solutions) > 0
+    # For BONMIN, require evidence from BONMIN outputs only:
+    # - results.solution from the BONMIN solve
+    # - parsed feasible/incumbent stream (callback/log parsing path)
+    # This avoids stale model.solutions entries (e.g., from NLP warm-start IPOPT)
+    # being interpreted as a successful MINLP solve.
+    if solver == 'bonmin':
+        has_solution = _has_results_solution(results) or len(feasible_solutions) > 0
+    else:
+        has_solution = _has_solution(results, model) or len(feasible_solutions) > 0
     tc = results.solver.termination_condition if results else None
 
     if tc == pyo.TerminationCondition.infeasible:
