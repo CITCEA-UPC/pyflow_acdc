@@ -127,6 +127,28 @@ MIP Path Selection (Array)
                       'MIP',
                       show=True)
 
+Simplified CSS Workflow
+-----------------------
+
+.. py:function:: simple_CSS(grid, NPV=True, n_years=25, Hy=8760, discount_rate=0.02, ObjRule=None, CSS_L_solver='gurobi', CSS_NL_solver='bonmin', time_limit=1200, NL=False, tee=False, export=True, fs=False)
+
+   Runs a simplified sequential cable sizing workflow with reduced setup.
+
+.. py:function:: simple_assign_cable_types(grid, model, t_MW=None)
+
+   Assigns cable types from an optimized model back into the grid.
+
+Linear CSS Solvers
+------------------
+
+.. py:function:: Optimal_L_CSS_gurobi(grid, OPEX=True, NPV=True, n_years=25, Hy=8760, discount_rate=0.02, tee=False, time_limit=300)
+
+   Solves the linear CSS formulation with Gurobi.
+
+.. py:function:: Optimal_L_CSS_ortools(grid, OPEX=True, NPV=True, n_years=25, Hy=8760, discount_rate=0.02, tee=False, time_limit=300)
+
+   Solves the linear CSS formulation with OR-Tools.
+
 **References**
 ^^^^^^^^^^^^^^
 

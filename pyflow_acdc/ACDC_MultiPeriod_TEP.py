@@ -9,7 +9,7 @@ import os
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables,ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,calculate_objective_from_model,Optimal_PF
 from .ACDC_Static_TEP import get_TEP_variables,_initialize_MS_STEP_sets_model,create_scenarios
-from .Class_editor import analyse_grid, current_fuel_type_distribution
+from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters
 from .Graph_and_plot import save_network_svg, create_geometries
 from .Results_class import Results

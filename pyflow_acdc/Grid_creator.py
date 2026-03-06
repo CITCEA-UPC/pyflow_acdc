@@ -8,7 +8,8 @@ from shapely.wkt import loads
 
 from .Results_class import*
 from .Classes import*
-from .Class_editor import Cable_parameters, Converter_parameters, add_gen
+from .grid_analysis import Cable_parameters, Converter_parameters
+from .grid_modifications import add_gen
 
 import pickle
 import gzip
@@ -717,7 +718,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
 
 
 def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],cable_database=None,cable_types_allowed=3,curtailment_allowed=0.05,max_turbines_per_string= None,LCoE=1,trenching_cost=1,MIP_time=None,name=None):
-    from .Class_editor import add_AC_node, add_line_sizing, add_RenSource, add_extgrid, add_cable_option
+    from .grid_modifications import add_AC_node, add_line_sizing, add_RenSource, add_extgrid, add_cable_option
     from .Classes import Cable_options, Line_AC, Line_DC
 
     turbines_df = Data["turbine"]
@@ -1341,7 +1342,7 @@ def Create_grid_from_mat(matfile):
     return [G, res]
 
 
-def Create_grid_from_pickle(path,use_dill=True):
+def Create_grid_from_pickle(path,use_dill=False):
     initialize_pyflowacdc()
 
     grid = load_pickle(path,use_dill)

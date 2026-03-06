@@ -6,7 +6,7 @@ Provides functions for AC and AC/DC power flow analysis.
 import numpy as np
 import sys
 import time
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 __all__ = [
     'AC_PowerFlow',

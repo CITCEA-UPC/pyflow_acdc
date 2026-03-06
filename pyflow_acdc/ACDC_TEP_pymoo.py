@@ -8,7 +8,7 @@ import time
 import matplotlib.pyplot as plt
 from .ACDC_OPF_NL_model import analyse_grid,ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 __all__ = [
     'transmission_expansion_pymoo'

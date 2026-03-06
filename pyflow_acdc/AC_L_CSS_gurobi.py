@@ -15,7 +15,7 @@ from .Graph_and_plot import save_network_svg
 __all__ = ['Optimal_L_CSS_gurobi']
 
 from .ACDC_OPF import  obj_w_rule, calculate_objective
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 def print_gurobi_model(model, gen_vars=None, ac_vars=None, detailed=True):
     """

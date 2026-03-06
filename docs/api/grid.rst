@@ -3,7 +3,7 @@ Grid Creation
 
 This module provides functions for creating and manipulating power system grids.
 
-functions are found in pyflow_acdc.Grid_creator
+functions are found in pyflow_acdc.grid_creator
 
 Core Grid Class
 ---------------
@@ -81,6 +81,21 @@ Create Grid From Matpower
    .. code-block:: python
 
        grid, results = pyf.Create_grid_from_mat("case9.mat")
+
+Create Grid From Turbine Graph
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: Create_grid_from_turbine_graph(array_graph, Data, S_base=100, cable_types=[], cable_database=None, cable_types_allowed=3, curtailment_allowed=0.05, max_turbines_per_string=None, LCoE=1, trenching_cost=1, MIP_time=None, name=None)
+
+   Creates a grid from an array graph and turbine metadata, intended for wind
+   farm array studies.
+
+Create Grid From Pickle
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: Create_grid_from_pickle(path, use_dill=False)
+
+   Loads a previously serialized grid from a pickle/dill file.
 
 Extend Grid From Data  
 ^^^^^^^^^^^^^^^^^^^^^

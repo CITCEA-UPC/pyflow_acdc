@@ -1,6 +1,8 @@
 Pymoo Transmission Expansion Planning Module
 ============================================
 
+This module is preliminar and has not been throughly tested. under development
+
 This module provides a metaheuristic wrapper for Transmission Expansion Planning (TEP)
 using `pymoo` genetic algorithms over a fixed nonlinear AC/DC OPF model. The OPF is
 built once and decision variables (AC/DC line counts, converter counts, repurposing

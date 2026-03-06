@@ -1880,7 +1880,7 @@ class Line_AC:
         Line_AC.names.remove(self._name)  # Remove the line's name from the set
         
     def get_cable_parameters(self, Cable_type, S_base, Length_km, N_cables,kV_base):
-        from .Class_editor import Cable_parameters
+        from .grid_analysis import Cable_parameters
         """Get cable parameters from the database."""
         # Ensure database is loaded
         if Line_AC._cable_database is None:
@@ -2665,7 +2665,7 @@ class Line_DC:
         return 0.0 if cap == 0 else (self.power_MW / cap) * 100.0
 
     def get_cable_parameters(self, Cable_type, S_base, Length_km, N_cables,kV_base):
-        from .Class_editor import Cable_parameters
+        from .grid_analysis import Cable_parameters
         """Get cable parameters from the database."""
         # Ensure database is loaded
         if Line_DC._cable_database is None:

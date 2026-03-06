@@ -13,7 +13,7 @@ from scipy import stats as st
 
 import time
 
-from .Class_editor import analyse_grid, grid_state
+from .grid_analysis import analyse_grid, grid_state
 from .ACDC_PF import AC_PowerFlow, DC_PowerFlow, ACDC_sequential 
 
 

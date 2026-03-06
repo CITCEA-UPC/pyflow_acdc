@@ -19,7 +19,7 @@ import re
 
 from  .ACDC_OPF_NL_model import *
 from  .AC_OPF_L_model import *
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 import cProfile
 import pstats
 from io import StringIO

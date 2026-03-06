@@ -80,11 +80,11 @@ This function is used to plot the time series results of the grid.
        end = 6000
        obj = {'Energy_cost': 1}
 
-       market_prices_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
+       market_prices_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
        TS_MK = pd.read_csv(market_prices_url)
        pyf.add_TimeSeries(grid,TS_MK)
 
-       wind_load_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
+       wind_load_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
        TS_wl = pd.read_csv(wind_load_url)
        pyf.add_TimeSeries(grid,TS_wl)
 
@@ -156,11 +156,11 @@ This function is used to plot the probability of the time series parameters or r
       end = 6000
       obj = {'Energy_cost': 1}
 
-      market_prices_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
+      market_prices_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
       TS_MK = pd.read_csv(market_prices_url)
       pyf.add_TimeSeries(grid,TS_MK)
 
-      wind_load_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
+      wind_load_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
       TS_wl = pd.read_csv(wind_load_url)
       pyf.add_TimeSeries(grid,TS_wl)
 
@@ -322,10 +322,25 @@ For this function, you need to have the svgwrite library installed. You can inst
 
        grid,res = pyf.NS_MTDC()
 
-       grid.save_network_svg(grid)
+       pyf.save_network_svg(grid)
 
    .. figure:: ../images/grid_network.svg
       :alt: grid_network
       :width: 70%
 
+
+Solver Diagnostics
+------------------
+
+.. py:function:: plot_model_feasebility(solver_stats, sol='all', x_axis='time', y_axis='objective', normalize=False, show=True, save_path=None, width_mm=None)
+
+   Plots solver feasible-solution progress and objective evolution.
+
+3D Grid Plot
+------------
+
+.. py:function:: plot_3D(grid, show=True, save_path=None, coloring='cable_type', line_width=6, node_size=6, title=None, show_unused=False, poly=None, coords_lonlat=False, elevation_grid=None, show_elevation_surface=True)
+
+   Generates a 3D network visualization of the grid and selected element
+   attributes.
 

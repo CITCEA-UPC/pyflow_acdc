@@ -3,7 +3,7 @@ Installation
 
 Requirements
 ------------
-* Python 3.8+
+* Python 3.10+
 * Dependencies:
     * numpy
     * pandas
@@ -18,15 +18,29 @@ Requirements
     * svgwrite
     * kmedoids
     * scikit-learn
+    * openpyxl
+    * dill
+    * xlsxwriter
+    * utm
 
 * Optional dependencies:
     * Mapping:
         * folium
+        * branca
     * Optimal power flow:  
         * pyomo
-        * ipopt
     * Dash:
         * dash
+    * Array optimization:
+        * ortools
+        * pyomo
+    * TEP (pymoo wrapper):
+        * pymoo
+        * pyomo
+    * Gurobi:
+        * gurobipy
+    * Plot export:
+        * kaleido
 
 
 
@@ -41,7 +55,7 @@ Install from source
 -------------------
 ::
 
-    git clone https://github.com/adored-project/pyflow_acdc.git
+    git clone https://github.com/CITCEA-UPC/pyflow_acdc.git
     cd pyflow_acdc
     pip install -e .
 
@@ -72,39 +86,31 @@ Making Changes
 Additional Dependencies
 ------------------------
 
-For Mapping functionality
-^^^^^^^^^^^^^^^^^^^^^^^^^^
-Install the following packages::
+Install optional dependency groups
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Install with pip extras as defined in ``pyproject.toml``::
 
-    pip install folium
+    pip install pyflow-acdc[mapping]
+    pip install pyflow-acdc[OPF]
+    pip install pyflow-acdc[Dash]
+    pip install pyflow-acdc[Array_OPT]
+    pip install pyflow-acdc[TEP_pymoo]
+    pip install pyflow-acdc[Gurobi]
+    pip install pyflow-acdc[plotting]
+    pip install pyflow-acdc[All]
 
-For OPF functionality
-^^^^^^^^^^^^^^^^^^^^^^
-Install the following packages::
+Solver installation notes
+^^^^^^^^^^^^^^^^^^^^^^^^^
+Some solvers are external to Python wheels and must be installed separately.
 
-    pip install pyomo
+For IPOPT (commonly used with OPF)::
+
     conda install -c conda-forge ipopt
 
-For TEP functionality
-^^^^^^^^^^^^^^^^^^^^^^
-pyflow_acdc has to be installed and run in a Linux environment.
-
-**System Requirements:**
-bonmin needs to be installed on the Linux system first, then Python can use it.
+For Bonmin (typically used for MINLP TEP, Linux recommended)::
 
     sudo apt update
     sudo apt install coinor-libbonmin-dev
-   
+    conda install -c conda-forge coin-or-bonmin
 
-Install bonmin on Linux::
-
-    conda install -c conda-forge bonmin
-
-**Note:** bonmin is only available through conda-forge, not pip. Make sure you have conda installed on your Linux system.
-
-
-For Dash Interface
-^^^^^^^^^^^^^^^^^^^
-Install the following packages::
-
-    pip install dash
+**Note:** bonmin and ipopt are only available through conda-forge, not pip. Make sure you have conda installed on your Linux system.

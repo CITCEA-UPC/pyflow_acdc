@@ -25,7 +25,7 @@ This flow sets up and solves the AC 'dc linear' OPF. It creates the :ref:`model 
 Creating the Linear OPF model
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. function:: OPF_create_LModel_ACDC(model, grid, PV_set, Price_Zones, TEP=False)
+.. function:: OPF_create_LModel_AC(model, grid, TEP=False)
 
    Creates the AC 'dc linear' OPF model.
 
@@ -76,7 +76,8 @@ Creating the Linear OPF model
 
    .. code-block:: python
 
-      model = pyf.OPF_create_LModel_ACDC(model, grid, PV_set=False, Price_Zones=False)
+      from pyflow_acdc.AC_OPF_L_model import OPF_create_LModel_AC
+      model = OPF_create_LModel_AC(model, grid, TEP=False)
 
 TEP/REC/CT Parameters and Variables
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

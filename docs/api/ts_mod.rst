@@ -3,7 +3,7 @@ Time Series Modifications
 
 These functions are used to modify and simplify the use of time series data.
 
-functions are found in pyflow_acdc.Class_editor
+Functions are found in `pyflow_acdc.grid_modifications`.
 
 Renewable Source Zone
 ---------------------
@@ -430,6 +430,29 @@ For a dataset of length n, the CSV will follow this format: Position 0 is treate
                               "price_n1":['node1', 'price', 20, 30, 40]})
     pyf.add_TimeSeries(grid, load_data)   
 
+
+
+
+Time-Series Clustering
+----------------------
+
+These functions are found in `pyflow_acdc.Time_series_clustering`.
+
+.. py:function:: identify_correlations(grid, time_series=[], correlation_threshold=0, cv_threshold=0, central_market=[], print_details=False, correlation_decisions=[])
+
+   Detects highly correlated time-series and builds reduction decisions.
+
+.. py:function:: cluster_TS(grid, n_clusters, time_series=[], central_market=[], algorithm='Kmeans', cv_threshold=0, correlation_threshold=0.8, print_details=False, correlation_decisions=[], critical_idx=[], base_critical_ratio=0.5, scaler_type='robust', **kwargs)
+
+   Clusters time-series profiles into representative operating states.
+
+.. py:function:: run_clustering_analysis_and_plot(grid, algorithms=['kmeans', 'kmedoids', 'ward', 'pam_hierarchical'], n_clusters_list=DEFAULT_CLUSTER_NUMBERS, path='clustering_results', time_series=[], print_details=False, ts_options=[None, 0, 0.8], correlation_decisions=[True, '2', True], plotting_options=[None, 'svg'], identifier=None)
+
+   Runs clustering sweeps and exports comparison plots/artifacts.
+
+.. py:function:: cluster_analysis(grid, clustering_options)
+
+   Applies clustering configuration and returns representative scenarios for TS/TEP workflows.
 
 **References**
 

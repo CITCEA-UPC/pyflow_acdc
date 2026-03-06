@@ -46,6 +46,7 @@ API Documentation
    api/grid
    api/csv_import
    api/grid_mod
+   api/grid_analysis
    api/results
 
 .. toctree::

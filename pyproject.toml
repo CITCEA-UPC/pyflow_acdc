@@ -29,7 +29,6 @@ classifiers = [
     'Programming Language :: C',
     'Programming Language :: Python',
     'Programming Language :: Python :: 3',
-    'Programming Language :: Python :: 3.9',
     'Programming Language :: Python :: 3.10',
     'Programming Language :: Python :: 3.11',
     'Programming Language :: Python :: 3.12',
@@ -87,7 +86,7 @@ All = ["folium",
        "kaleido"]
 
 [project.urls]
-Repository     = "https://github.com/BernardoCV/pyflow_acdc"
+Repository     = "https://github.com/CITCEA-UPC/pyflow_acdc"
 Documentation  = "https://pyflow-acdc.readthedocs.io/en/latest/"
 
 [tool.setuptools]

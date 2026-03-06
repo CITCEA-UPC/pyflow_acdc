@@ -8,7 +8,7 @@ authors:
     email: bernardo.castro@upc.edu
     affiliation: CITCEA-UPC
     orcid: "https://orcid.org/0009-0006-1619-9175"
-repository-code: "https://github.com/BernardoCV/pyflow_acdc"
+repository-code: "https://github.com/CITCEA-UPC/pyflow_acdc"
 license: BSD-3-Clause
 references:
   - type: article

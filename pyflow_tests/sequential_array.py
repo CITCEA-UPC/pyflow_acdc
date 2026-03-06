@@ -30,7 +30,7 @@ WACC = 0.02
 
 def run_case(case,MIP_solver='gurobi'):
     start_time = time.perf_counter()
-    touple = pyf.Grid_creator.load_pickle(f'{path}/wfarms/{case}.pkl.gz')
+    touple = pyf.grid_creator.load_pickle(f'{path}/wfarms/{case}.pkl.gz')
     array_graph,Data,cable_types,final_polygon =touple
 
     # Normalize legacy cable naming from pickles to current DB keys.

@@ -3,7 +3,7 @@ Export Files Module
 
 This module provides functions for exporting grid data to various file formats.
 
-functions are found in pyflow_acdc.Export_files
+Functions are found in `pyflow_acdc.Export_files` and `pyflow_acdc.ACDC_OPF`.
 
 Grid Data Export
 ----------------
@@ -46,5 +46,20 @@ save_grid_to_matlab
         - int
         - DC polarity
         - 2
+
+Pickle Export
+-------------
+
+.. py:function:: save_pickle(grid, path, compress=True, use_dill=False)
+
+   Serializes a grid object to pickle/dill for later reload with
+   :py:func:`Create_grid_from_pickle`.
+
+Solver Progress Export
+----------------------
+
+.. py:function:: export_solver_progress_to_excel(solver_stats, save_path)
+
+   Exports solver callback/progress records to an Excel file.
 
    

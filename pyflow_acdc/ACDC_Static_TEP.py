@@ -12,7 +12,7 @@ import time
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables
 from .AC_OPF_L_model import OPF_create_LModel_AC,ExportACDC_Lmodel_toPyflowACDC
@@ -146,7 +146,7 @@ def expand_elements_from_pd(grid,exp_elements):
     grid.create_Ybus_AC() 
 
 def repurpose_element_from_pd(grid,rec_elements):
-    from .Class_editor import change_line_AC_to_reconducting
+    from .grid_modifications import change_line_AC_to_reconducting
 
     # Normalize CSV headers to lowercase so lookups are case-insensitive.
     rec_elements = rec_elements.rename(columns=lambda c: str(c).strip().lower())
@@ -246,7 +246,7 @@ def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_co
     
     for l in grid.lines_AC:
         if name == l.name:
-            from .Class_editor import change_line_AC_to_expandable
+            from .grid_modifications import change_line_AC_to_expandable
             exp_l=change_line_AC_to_expandable(grid, name,update_grid)
             exp_l.np_line_opf = True
             update_attributes(exp_l, n_b,n_i, n_max,life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)

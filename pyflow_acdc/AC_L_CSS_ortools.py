@@ -13,7 +13,7 @@ import time
 __all__ = ['Optimal_L_CSS_ortools']
 
 from .ACDC_OPF import obj_w_rule, calculate_objective
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 try:
     from ortools.linear_solver import pywraplp

@@ -5,7 +5,7 @@ current_file = Path(__file__).resolve()
 examples_path = current_file.parents[2] / "examples"
 
 def anholt(ct=3, ns= None, nt = None,curtailment_allowed=0):
-    touple = pyf.Grid_creator.load_pickle(str(examples_path / "anholt.pkl.gz"))
+    touple = pyf.grid_creator.load_pickle(str(examples_path / "anholt.pkl.gz"))
     array_graph, Data, cable_types, final_polygon = touple
     
     if nt is not None:

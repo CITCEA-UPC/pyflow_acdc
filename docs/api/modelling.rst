@@ -1067,88 +1067,88 @@ Key Attributes:
      - Default cost
    * - hydro
      - .. image:: ../images/hydro.svg
-         :width: 100
-         :alt: Hydro source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Hydro source icon
+          :align: center
+     -
    * - nuclear
      - .. image:: ../images/nuclear.svg
-         :width: 100
-         :alt: Nuclear source icon
-         :align: center
-     - 
-  * - hard coal
+          :width: 100
+          :alt: Nuclear source icon
+          :align: center
+     -
+   * - hard coal
      - .. image:: ../images/coal.svg
-         :width: 100
-        :alt: Hard Coal source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Hard Coal source icon
+          :align: center
+     -
    * - solid biomass
      - .. image:: ../images/Solid_Biomass.svg
-         :width: 100
-         :alt: Solid Biomass source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Solid Biomass source icon
+          :align: center
+     -
    * - geothermal
      - .. image:: ../images/Geothermal.svg
-         :width: 100
-         :alt: Geothermal source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Geothermal source icon
+          :align: center
+     -
    * - lignite
      - .. image:: ../images/Lignite.svg
-         :width: 100
-         :alt: Lignite source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Lignite source icon
+          :align: center
+     -
    * - natural gas
      - .. image:: ../images/Natural_Gas.svg
-         :width: 100
-         :alt: Natural Gas source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Natural Gas source icon
+          :align: center
+     -
    * - oil
      - .. image:: ../images/Oil.svg
-         :width: 100
-         :alt: Oil source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Oil source icon
+          :align: center
+     -
    * - waste
      - .. image:: ../images/Waste.svg
-         :width: 100
-         :alt: Waste source icon
-         :align: center
-     - 
-  * - biogas
-    - .. image:: ../images/Biogas.svg
-        :width: 100
-        :alt: Biogas source icon
-        :align: center
-    -
-  * - ccgt
-    - .. image:: ../images/CCGT.svg
-        :width: 100
-        :alt: CCGT source icon
-        :align: center
-    -
+          :width: 100
+          :alt: Waste source icon
+          :align: center
+     -
+   * - biogas
+     - .. image:: ../images/Biogas.svg
+          :width: 100
+          :alt: Biogas source icon
+          :align: center
+     -
+   * - ccgt
+     - .. image:: ../images/CCGT.svg
+          :width: 100
+          :alt: CCGT source icon
+          :align: center
+     -
    * - diesel
      - .. image:: ../images/diesel.svg
-         :width: 100
-        :alt: Diesel source icon
-        :align: center
-    -
-  * - shunt reactor
-    - .. image:: ../images/reactor.svg
-        :width: 100
-        :alt: Shunt reactor source icon
-         :align: center
-    -
-  * - other
+          :width: 100
+          :alt: Diesel source icon
+          :align: center
+     -
+   * - shunt reactor
+     - .. image:: ../images/reactor.svg
+          :width: 100
+          :alt: Shunt reactor source icon
+          :align: center
+     -
+   * - other
      - .. image:: ../images/gen.svg
-         :width: 100
-         :alt: Other source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Other source icon
+          :align: center
+     -
 
 
 

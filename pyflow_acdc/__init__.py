@@ -8,8 +8,9 @@ import importlib.util
 
 # Core imports - required modules
 from .Results_class import *
-from .Class_editor import *
-from .Grid_creator import *
+from .grid_modifications import *
+from .grid_analysis import *
+from .grid_creator import *
 from .Classes import *
 from .Export_files import *
 from .Time_series import *
@@ -99,8 +100,6 @@ __all__ = [
     'update_grid_data',
     
     # Export
-    'export_results_to_excel',
-    'export_OPF_results_to_excel',
     'save_grid_to_file',
     'save_grid_to_matlab',
     'save_pickle',
@@ -120,7 +119,6 @@ __all__ = [
     'price_zone_coef_data',
     'plot_curves',
     'clean_entsoe_data',
-    'update_grid_price_zone_data',
 ]
 
 # Try to import OPF module if pyomo is available
@@ -130,7 +128,7 @@ try:
     # but we need to add them to __all__ only if OPF is available
     __all__.extend([
         'Optimal_PF', 'Optimal_L_PF', 'pyomo_model_solve', 'OPF_obj', 'OPF_line_res',
-        'OPF_price_priceZone', 'OPF_conv_results', 'Translate_pyf_OPF',
+        'OPF_price_priceZone', 'Translate_pyf_OPF',
         'TS_ACDC_OPF', 'TS_ACDC_OPF_parallel', 'results_TS_OPF'
     ])
     HAS_OPF = True
@@ -160,9 +158,9 @@ except ImportError:
     HAS_OPF = False
 
 try:
-    from .ACDC_Dynamic_TEP import *
+    from .ACDC_MultiPeriod_TEP import *
     __all__.extend([
-        'multi_period_TEP',
+        'multi_period_transmission_expansion',
         'multi_period_MS_TEP',
         'export_and_save_inv_period_svgs',
         'run_opf_for_investment_period',
@@ -186,7 +184,7 @@ except ImportError:
     
 try:
     from .AC_L_CSS_gurobi import *
-    __all__.extend(['Optimal_L_CSS_gurobi', 'test_master_problem'])
+    __all__.extend(['Optimal_L_CSS_gurobi'])
     HAS_AC_L_CSS_GUROBI = True
 except ImportError:
     HAS_AC_L_CSS_GUROBI = False

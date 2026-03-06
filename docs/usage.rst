@@ -225,7 +225,7 @@ For Optimal Power Flow:
 - pyf.pglib_opf_case14_ieee()
 - pyf.pglib_opf_case300_ieee()
 - pyf.pglib_opf_case588_sdet_acdc()
-- pyf.StaggSMATACDC()
+- pyf.Stagg5MATACDC()
 
 
 
