@@ -49,7 +49,8 @@ ALL_CASES = [
     #time series and dash
     'ts_dash.py',
     #wind farm array
-    'sequential_array.py'
+    'sequential_array.py',
+    'sequential_array_ortools.py'
 ]
 
 # Quick tests (basic functionality only)
