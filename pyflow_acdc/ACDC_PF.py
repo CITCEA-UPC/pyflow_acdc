@@ -239,7 +239,7 @@ def Jacobian_DC(grid, V_DC, P,Droop_PF):
 
                     J[m, n] = pol*Y*V[m]*V[n]
                 else:
-                    J[m, n] = P[m]
+                    J[m, n] = P[m, 0]
                     if grid.nconv != 0:
                         if grid.nodes_DC[k].type == 'Droop' and Droop_PF:
                             J[m, n] += grid.nodes_DC[k].Droop_rate * V[m]
