@@ -112,6 +112,18 @@ git pull origin main
 
 To merge your changes into the main branch please contact the repository owner.
 
+### TestPyPI Publishing (Collaborators)
+
+Any collaborator with permission to run GitHub Actions can publish a test build to
+TestPyPI using the manual workflow.
+
+1. Open the repository on GitHub.
+2. Go to **Actions** -> **Publish to TestPyPI (manual)**.
+3. Click **Run workflow** and confirm.
+
+This publishes the current branch build to TestPyPI for validation without
+affecting the production PyPI package.
+
 ### Optional Dependencies
 
 You can install pyflow_acdc with optional dependencies using pip:
