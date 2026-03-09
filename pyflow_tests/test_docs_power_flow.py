@@ -6,6 +6,12 @@ Tests the "Running a Power Flow" section in usage.rst
 
 import pyflow_acdc as pyf
 
+
+def test_docs_power_flow():
+    """Pytest entrypoint for docs power flow example."""
+    run_test()
+
+
 def run_test():
     """Test power flow example from documentation."""
     # Test the PEI grid example from docs

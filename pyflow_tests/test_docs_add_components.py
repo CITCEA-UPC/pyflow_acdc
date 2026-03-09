@@ -6,6 +6,12 @@ Tests the "Adding Components" section in usage.rst
 
 import pyflow_acdc as pyf
 
+
+def test_docs_add_components():
+    """Pytest entrypoint for docs add components example."""
+    run_test()
+
+
 def run_test():
     """Test adding components example from documentation."""
 
