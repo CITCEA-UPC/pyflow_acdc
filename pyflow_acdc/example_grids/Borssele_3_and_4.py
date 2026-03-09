@@ -283,17 +283,17 @@ def Borssele_3_and_4():
     pyf.add_RenSource(grid, 'T79', Turbine, ren_source_name='T79', min_gamma=gamma_limit,Qrel=0.3)
 
 
-    candidate_cables = ['ABB_Cu_XLPE_95mm2_66kV',
-                        'ABB_Cu_XLPE_120mm2_66kV',
-                        'ABB_Cu_XLPE_150mm2_66kV', 
-                        'ABB_Cu_XLPE_185mm2_66kV', 
-                        'ABB_Cu_XLPE_240mm2_66kV',
-                        'ABB_Cu_XLPE_300mm2_66kV',
-                        'ABB_Cu_XLPE_400mm2_66kV',
-                        'ABB_Cu_XLPE_500mm2_66kV', 
-                        'ABB_Cu_XLPE_630mm2_66kV',
-                        'ABB_Cu_XLPE_800mm2_66kV',
-                        'ABB_Cu_XLPE_1000mm2_66kV']
+    candidate_cables = ['ABB_XLPE_Cu_66kV_sub_95mm2',
+                        'ABB_XLPE_Cu_66kV_sub_120mm2',
+                        'ABB_XLPE_Cu_66kV_sub_150mm2',
+                        'ABB_XLPE_Cu_66kV_sub_185mm2',
+                        'ABB_XLPE_Cu_66kV_sub_240mm2',
+                        'ABB_XLPE_Cu_66kV_sub_300mm2',
+                        'ABB_XLPE_Cu_66kV_sub_400mm2',
+                        'ABB_XLPE_Cu_66kV_sub_500mm2',
+                        'ABB_XLPE_Cu_66kV_sub_630mm2',
+                        'ABB_XLPE_Cu_66kV_sub_800mm2',
+                        'ABB_XLPE_Cu_66kV_sub_1000mm2']
 
     cable_option = pyf.add_cable_option(grid,candidate_cables,'PEI')
 

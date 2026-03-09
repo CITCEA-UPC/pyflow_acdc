@@ -29,7 +29,7 @@ Converter_data = pd.read_csv(f'Stagg5MATACDC/MATACDC_Converter_data_{ext}.csv')
 
 # """
 
-time,tol,ps_iterations = pyf.ACDC_sequential(grid,QLimit=False)
+pf_time,tol,ps_iterations = pyf.ACDC_sequential(grid,QLimit=False)
 
 
 
