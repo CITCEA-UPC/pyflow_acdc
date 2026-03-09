@@ -15,7 +15,7 @@ from .Graph_and_plot import save_network_svg
 __all__ = ['Optimal_L_CSS_gurobi']
 
 from .ACDC_OPF import  obj_w_rule, calculate_objective
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 def print_gurobi_model(model, gen_vars=None, ac_vars=None, detailed=True):
     """
@@ -198,7 +198,7 @@ def Optimal_L_CSS_gurobi(grid, OPEX=True, NPV=True, n_years=25, Hy=8760, discoun
     
           
     t1 = time.perf_counter()
-    model, gen_vars, ac_vars = OPF_create_LModel_ACDC_gurobi(model,grid)
+    model, gen_vars, ac_vars = OPF_create_LModel_AC_gurobi(model,grid)
     t2 = time.perf_counter()  
     t_modelcreate = t2 - t1
     
@@ -306,13 +306,15 @@ def solve_gurobi_model(model, grid):
     return model_res, solver_stats
 
 
-def OPF_create_LModel_ACDC_gurobi(model,grid):
+def OPF_create_LModel_AC_gurobi(model,grid):
     """Create Gurobi model for AC DC OPF"""
     from .ACDC_OPF import Translate_pyf_OPF 
    
     
     # Get problem data
-    [AC_info,DC_info,Conv_info,Price_Zone_info,gen_info]=Translate_pyf_OPF(grid,False)
+    opf_data = Translate_pyf_OPF(grid,False)
+    AC_info = opf_data['AC_info']
+    gen_info = opf_data['gen_info']
     
     
     # Create variables
@@ -326,7 +328,8 @@ def OPF_create_LModel_ACDC_gurobi(model,grid):
 
 def Generation_variables_gurobi(model, grid, gen_info):
     """Convert generation variables to Gurobi"""
-    gen_AC_info, gen_DC_info, P_renSource, lista_rs = gen_info
+    gen_AC_info, _, gen_rs_info = gen_info
+    P_renSource, np_rsgen, lista_rs = gen_rs_info
     lf, qf, fc, np_gen, lista_gen = gen_AC_info
     
     # Create a dictionary to store variables
@@ -529,7 +532,8 @@ def AC_constraints_gurobi(model, grid, AC_info, gen_info, gen_vars, ac_vars):
     
     lista_lineas_AC_ct, S_lineACct_lim, cab_types_set, allowed_types = CT_info
 
-    gen_AC_info,gen_DC_info,P_renSource,lista_rs = gen_info
+    gen_AC_info, gen_DC_info, gen_rs_info = gen_info
+    P_renSource, np_rsgen, lista_rs = gen_rs_info
 
     
     max_cable_limits = {line: max(S_lineACct_lim[line, ct] for ct in cab_types_set) 
@@ -554,7 +558,7 @@ def AC_constraints_gurobi(model, grid, AC_info, gen_info, gen_vars, ac_vars):
         )
         
 
-        ren_power = sum(P_renSource[rs.rsNumber] * gen_vars['gamma'][rs.rsNumber] 
+        ren_power = sum(P_renSource[rs.rsNumber] * gen_vars['gamma'][rs.rsNumber] * np_rsgen[rs.rsNumber]
                        for rs in nAC.connected_RenSource)
         model.addConstr(
             ac_vars['PGi_ren'][node] == ren_power,

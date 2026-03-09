@@ -300,7 +300,7 @@ def Borssele_3_and_4():
     for link in lines_AC_data:
         pyf.add_line_sizing(grid,link['fromNode'],link['toNode'],cable_option=cable_option.name,active_config=link['active_config'],Length_km=link['Length_km'],name=link['Line_id'],update_grid=False,geometry=link['geometry'])
 
-    pyf.add_extGrid(grid, 'OS1',lf=LCoE)
+    pyf.add_extgrid(grid, 'OS1',lf=LCoE)
 
     grid.cab_types_allowed = Nc
 

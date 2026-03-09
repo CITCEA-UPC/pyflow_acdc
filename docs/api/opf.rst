@@ -58,7 +58,7 @@ Creating the OPF model
 ^^^^^^^^^^^^^^^^^^^^^^
 
 
-.. function:: OPF_createModel_ACDC(model,grid,PV_set,Price_Zones)
+.. function:: OPF_create_NLModel_ACDC(model, grid, PV_set, Price_Zones, TEP=False, limit_flow_rate=True)
 
    Creates the OPF model.
 
@@ -81,6 +81,12 @@ Creating the OPF model
       * - ``Price_Zones``
         - bool
         - Enable price zone constraints
+      * - ``TEP``
+        - bool
+        - Enable TEP investment variables (lines/generators)
+      * - ``limit_flow_rate``
+        - bool
+        - Enable flow rate limits
 
    **Variables**
 
@@ -115,7 +121,8 @@ Creating the OPF model
 
    .. code-block:: python
 
-      model = pyf.OPF_createModel_ACDC(model,grid,PV_set,Price_Zones)
+      from pyflow_acdc.ACDC_OPF_NL_model import OPF_create_NLModel_ACDC
+      model = OPF_create_NLModel_ACDC(model, grid, PV_set=False, Price_Zones=False)
 
 .. _obj_functions:
 
@@ -242,6 +249,21 @@ Tested with:
    .. code-block:: python
 
         results, solver_stats =pyf.pyomo_model_solve(model,grid)
+
+Result Translation Helpers
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: OPF_line_res(model, grid)
+
+   Extracts AC/DC line OPF results from a solved model into pandas-friendly structures.
+
+.. py:function:: OPF_price_priceZone(model, grid)
+
+   Extracts price-zone results from a solved OPF model.
+
+.. py:function:: Translate_pyf_OPF(grid, Price_Zones=False)
+
+   Translates solved OPF variables into `grid` result containers for plotting/export.
 
 
 **References**

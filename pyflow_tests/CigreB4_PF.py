@@ -40,8 +40,8 @@ def run_test():
         conv.c_rect=0
 
 
-    pyf.add_extGrid(grid, 'BaA0')
-    pyf.add_extGrid(grid, 'BaB0')
+    pyf.add_extgrid(grid, 'BaA0')
+    pyf.add_extgrid(grid, 'BaB0')
 
     for conv in DCDC_data.itertuples():
         pyf.add_DCDC_converter(grid,conv.fromNode,conv.toNode,P_MW=conv.P_MW,R_Ohm=conv.R_Ohm,MW_rating=conv.MW_rating)
@@ -50,7 +50,7 @@ def run_test():
     t = pyf.ACDC_sequential(grid, Droop_PF=True,maxIter=500)
     #model, timing_info, model_res,solver_stats=pyf.Optimal_PF(grid)
 
-    # res.All()
+    res.All()
     end_time = time.perf_counter()
     elapsed_time = end_time - start_time
 

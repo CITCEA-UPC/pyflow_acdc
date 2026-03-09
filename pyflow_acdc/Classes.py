@@ -39,6 +39,30 @@ def cartz2pol(z):
     return r, theta
 
 class Grid:
+    DEFAULT_GENERATION_TYPES = [
+        "nuclear",
+        "hard coal",
+        "hydro",
+        "oil",
+        "lignite",
+        "natural gas",
+        "solid biomass",
+        "other",
+        "waste",
+        "biogas",
+        "geothermal",
+        "ccgt",
+        "diesel",
+        "shunt reactor",
+        ]
+
+    DEFAULT_RENEWABLE_TYPES = [
+        "wind",
+        "solar",
+        "offshore wind",
+        "onshore wind",
+    ]
+
     def __init__(self, S_base: float, nodes_AC: list = None, lines_AC: list = None, Converters: list = None, nodes_DC: list = None, lines_DC: list = None):
         
         self.Graph_toPlot= nx.MultiGraph()
@@ -113,6 +137,7 @@ class Grid:
         self.iter_flow_AC = []
         self.iter_flow_DC = []
 
+        self.LCoE = 1
         self.OPF_obj = {
        'Ext_Gen': {'w': 0},
        'Energy_cost': {'w': 0},
@@ -125,11 +150,9 @@ class Grid:
        'Renewable_profit': {'w': 0},
        'Gen_set_dev': {'w': 0}
     }
-        self.OPF_run= False
-        self.TEP_run=False
-        self.MP_TEP_run=False
-
-        self.TEP_res=None
+        self.reset_run_flags()
+    
+        self.TEP_multiScenario_res=None
         self.MP_TEP_res=None
         self.time_series_results = {
             'PF_results': pd.DataFrame(),  # Time_series_res
@@ -148,6 +171,8 @@ class Grid:
             'prices_by_zone': pd.DataFrame()  # Time_series_price
             }
         
+        self.Clustering_information = {}
+
         self.VarPrice = False
         self.OnlyGen = True
         self.CurtCost=False
@@ -181,12 +206,23 @@ class Grid:
         self.RenSources =[]
         self.rs2node = {'DC': {},
                         'AC': {}}
-        
+
+        self.renewable_types = list(Grid.DEFAULT_RENEWABLE_TYPES)
+        self.gen_ac_types = list(Grid.DEFAULT_GENERATION_TYPES)
+        self.gen_dc_types = list(Grid.DEFAULT_GENERATION_TYPES) #currently there is no difference between AC and DC generation types
+        # Single source of truth for generation types.
+        self.generation_types = list(dict.fromkeys(
+                list(self.gen_ac_types) + list(self.renewable_types) + list(self.gen_dc_types)
+                ))
+        # Default per-type limits are derived from the type list.
+        self.generation_type_limits = {gen_type: 1 for gen_type in self.generation_types}
+        self.current_generation_type_limits = {gen_type: 1 for gen_type in self.generation_types}
+        self.TEP_n_periods = None
+                
+
+
         self.Time_series = []
         self.Time_series_dic ={}
-        
-        self.inv_series = []
-        self.inv_series_dic ={}
 
         self.Price_Zones =[]
         self.Price_Zones_dic ={}
@@ -200,7 +236,15 @@ class Grid:
         self.OWPP_node_to_ts={}
         # Node type differentiation
         
-    
+    def reset_run_flags(self):
+        """
+        Helper to clear run-type flags before starting a new analysis.
+        Call this before setting one of OPF_run / TEP_run / MP_TEP_run to True.
+        """
+        self.OPF_run = False
+        self.TEP_run = False
+        self.MP_TEP_run = False
+        
     @property
     def nodes_AC(self):
         return self._nodes_AC
@@ -208,7 +252,7 @@ class Grid:
     # Setter for AC nodes that updates the dictionary
     @nodes_AC.setter
     def nodes_AC(self, new_nodes_AC):
-        self._nodes_AC = new_nodes_AC
+        self._nodes_AC = new_nodes_AC if new_nodes_AC is not None else []
         self._invalidate_node_caches()
 
     # Property for DC nodes
@@ -219,7 +263,7 @@ class Grid:
     # Setter for DC nodes that updates the dictionary
     @nodes_DC.setter
     def nodes_DC(self, new_nodes_DC):
-        self._nodes_DC = new_nodes_DC
+        self._nodes_DC = new_nodes_DC if new_nodes_DC is not None else []
         self._invalidate_DC_caches()  # Invalidate cache when nodes change
         
     # Property to return dictionary of AC nodes
@@ -582,7 +626,7 @@ class Grid:
 
         for line in self.lines_AC + self.lines_AC_exp + self.lines_AC_rec + self.lines_AC_tf + self.lines_AC_ct:
             g=self.Graph_line_to_Grid_index_AC[line]
-            self.rating_grid_AC[g]+=line.MVA_rating
+            self.rating_grid_AC[g]+=line.capacity_MVA
             self.Graph_number_lines_AC[g]+=1
             
         "Slack identification"
@@ -1054,21 +1098,33 @@ class Gen_AC:
         
         node.S_rating += self.capacity_MVA
         
+        #Variable to activate or deactivate the generator in the OPF
+        self.activate_gen_opf = False
+        self.gen_active = 1
+
+        #Variable to have a variable number of generators in the TEP
+        self.np_gen_opf = False
+        self.np_gen_mp = False  # Multi-period TEP: submodel np_gen driven by master (full bounds)
+
         self.np_gen_i = 1
         self.np_gen_b = 1
         self.np_gen = 1
-        self.np_gen_max=3
-        self.np_gen_opf = False
-        self.np_gen_dynamic = [self.np_gen]
-
-        self.activate_gen_opf = False
-        self.gen_active = 1 
+        self.np_gen_max=3   # maximum number of generators to be present at the same time
+        
+        # Used in multi period TEP
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_gen_max],
+            'np_dynamic': [self.np_gen]
+        }
+        
 
         self.lf=linear_cost_factor
         self.qf=quadratic_cost_factor
         self.fc=fixed_cost
 
-        self.Life_time = 30
+        self.life_time = 50
         self.base_cost = installation_cost
         
         if S_rated is not None:
@@ -1166,17 +1222,20 @@ class Gen_DC:
         self.Max_pow_gen=Max_pow_gen
         self.Min_pow_gen=Min_pow_gen
       
+
+        #Variable to have a variable number of generators in the TEP
+        self.np_gen_opf = False
+
         self.np_gen_i = 1
         self.np_gen_b = 1
         self.np_gen = 1
         self.np_gen_max=3
-        self.np_gen_opf = False
-
+        
         self.lf=linear_cost_factor
         self.qf=quadratic_cost_factor
         self.fc=fixed_cost
 
-        self.Life_time = 30
+        self.life_time = 50
         self.base_cost = installation_cost
        
         self.price_zone_link = False
@@ -1241,16 +1300,16 @@ class Ren_Source:
     @property
     def capacity_MVA(self):
        
-        return self.PGi_ren_base*self.S_base
+        return self.Max_S*self.S_base
     
     @property
     def loading(self):
-        return self.apparent_MVA/self.capacity_MVA*100
+        return self.apparent_MVA/(self.capacity_MVA*self.np_rsgen)*100 if self.np_rsgen >0 else 0
     @property
     def apparent_MVA(self):
         return max(abs(self.PGen), abs(self.QGen)) * self.S_base
     
-    def __init__(self,name,node,PGi_ren_base: float,rs_type='Wind',S_base:float=100):
+    def __init__(self,name,node,PGi_ren_base: float,rs_type='Wind',S_base:float=100,installation_cost:float=0,Max_S_factor:float=1):
         self.rsNumber = Ren_Source.rsNumber
         Ren_Source.rsNumber += 1
         
@@ -1259,8 +1318,8 @@ class Ren_Source:
         
         self.curtailable= True
        
-        self.life_time = 30
-        self.S_base = S_base
+        self.life_time = 50
+        self._S_base = S_base
         self.S_base_i = S_base
         
         self.Node=node.name
@@ -1277,9 +1336,28 @@ class Ren_Source:
         self.PGi_ren = 0 
         self._PGi_ren_base=PGi_ren_base
         self._PRGi_available=1
-        self._PRGi_inv_factor =1
+        #self._PRGi_inv_factor =1
         
-        
+
+        #Variable to have a variable number of generators in the TEP
+        self.np_rsgen_opf = False
+        self.np_rsgen_mp = False  # Multi-period TEP: submodel np_rsgen driven by master (full bounds)
+
+        self.np_rsgen_i = 1
+        self.np_rsgen_b = 1
+        self.np_rsgen = 1
+        self.np_rsgen_max=3   # maximum number of generators to be present at the same time
+
+        # Used in multi period TEP
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_rsgen_max],
+            'np_dynamic': [self.np_rsgen]
+        }
+
+        self.base_cost = installation_cost
+
         self.TS_dict = {
             'PRGi_available': None
         }
@@ -1299,7 +1377,10 @@ class Ren_Source:
         self.Qmax=0
         self.Qmin=0
         
-        self.Max_S= PGi_ren_base*1.05
+        self.Max_S= PGi_ren_base*Max_S_factor
+
+        if Max_S_factor is not None:
+            self.cost_perMVA = installation_cost/PGi_ren_base*Max_S_factor*S_base
             
         node.connected_RenSource.append(self)
         node.RenSource=True
@@ -1332,14 +1413,14 @@ class Ren_Source:
         self._PGi_ren_base = value
         self.update_PGi_ren()
 
-    @property
-    def PRGi_inv_factor(self):
-        return self._PRGi_inv_factor
+    #@property
+    #def PRGi_inv_factor(self):
+    #    return self._PRGi_inv_factor
     
-    @PRGi_inv_factor.setter
-    def PRGi_inv_factor(self, value):
-        self._PRGi_inv_factor = value
-        self.update_PGi_ren()
+    #@PRGi_inv_factor.setter
+    #def PRGi_inv_factor(self, value):
+    #    self._PRGi_inv_factor = value
+    #    self.update_PGi_ren()
 
     @property
     def PRGi_available(self):
@@ -1351,7 +1432,7 @@ class Ren_Source:
         self.update_PGi_ren()
      
     def update_PGi_ren(self):
-        self.PGi_ren = self._PGi_ren_base * self._PRGi_available * self._PRGi_inv_factor
+        self.PGi_ren = self._PGi_ren_base * self._PRGi_available #* self._PRGi_inv_factor
    
     
 class Node_AC:  
@@ -1425,7 +1506,7 @@ class Node_AC:
 
         self._PLi_base = Power_load
 
-        self.PLi_linked= True
+        self.PLi_linked= False
         self._PLi_factor =1
         self._PLi_inv_factor=1
         
@@ -1436,6 +1517,9 @@ class Node_AC:
         
         self.inv_dic ={
             'Load' : None
+        }
+        self.investment_decisions = {
+            'Load': []
         }
         
         self.QGi = Reactive_Gained
@@ -1586,7 +1670,7 @@ class Node_DC:
         self.kV_base = kV_base
         
         self.PGi = Power_Gained
-        self.PLi_linked= True
+        self.PLi_linked= False
         self.PLi= Power_load
 
         self._PLi_base = Power_load
@@ -1601,6 +1685,9 @@ class Node_DC:
         
         self.inv_dic ={
             'Load' : None
+        }
+        self.investment_decisions = {
+            'Load': []
         }
         
         self.V = np.copy(self.V_ini)
@@ -1733,7 +1820,8 @@ class Line_AC:
             if cable_database is not None:
                 # Use provided DataFrame, but filter for AC cables if Type column exists
                 if 'Type' in cable_database.columns:
-                    cls._cable_database = cable_database[cable_database['Type'] == 'AC'].copy()
+                    type_norm = cable_database['Type'].astype(str).str.upper().replace({'HVAC': 'AC', 'HVDC': 'DC'})
+                    cls._cable_database = cable_database[type_norm == 'AC'].copy()
                 else:
                     # Assume all are AC if no Type column
                     cls._cable_database = cable_database.copy()
@@ -1754,7 +1842,8 @@ class Line_AC:
                             specs = cable_data[cable_name]
                             
                             # Only include AC cables
-                            if specs.get('Type', 'AC') == 'AC':
+                            typ = str(specs.get('Type', 'AC')).upper()
+                            if typ in ('HVAC', 'AC'):
                                 data_dict[cable_name] = specs
                 
                 if data_dict:
@@ -1791,7 +1880,7 @@ class Line_AC:
         Line_AC.names.remove(self._name)  # Remove the line's name from the set
         
     def get_cable_parameters(self, Cable_type, S_base, Length_km, N_cables,kV_base):
-        from .Class_editor import Cable_parameters
+        from .grid_analysis import Cable_parameters
         """Get cable parameters from the database."""
         # Ensure database is loaded
         if Line_AC._cable_database is None:
@@ -1939,7 +2028,7 @@ class Exp_Line_AC(Line_AC):
         self.kV_base = self.fromNode.kV_base
         self.direction = 'from'
         self.base_cost = 0
-        self.life_time = 25
+        self.life_time = 50
         self.exp_inv=1
         self.cost_perMVAkm = None
         self.phi=0
@@ -1949,9 +2038,13 @@ class Exp_Line_AC(Line_AC):
         self.np_line_b=0  #N_b base attribute
         self.np_line_i= 0 #N_i initial guess
         self.np_line_max = 1 #N_max max number of lines
-        self.np_dynamic = [self.np_line]   
-
         self.np_line_opf=True
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_line_max],
+            'np_dynamic': [self.np_line]
+        }
         self.hover_text = None
 
         self.ts_max_loading = 0
@@ -2049,6 +2142,8 @@ class Size_selection(Line_AC):
     
     @property
     def capacity_MVA(self):
+        if self._active_config == -1:
+            return 0
         return self.MVA_rating_list[self._active_config]
     
     @property
@@ -2511,7 +2606,8 @@ class Line_DC:
             if cable_database is not None:
                 # Use provided DataFrame, but filter for DC cables if Type column exists
                 if 'Type' in cable_database.columns:
-                    cls._cable_database = cable_database[cable_database['Type'] == 'DC'].copy()
+                    type_norm = cable_database['Type'].astype(str).str.upper().replace({'HVAC': 'AC', 'HVDC': 'DC'})
+                    cls._cable_database = cable_database[type_norm == 'DC'].copy()
                 else:
                     # Assume all are DC if no Type column
                     cls._cable_database = cable_database.copy()
@@ -2532,7 +2628,8 @@ class Line_DC:
                             specs = cable_data[cable_name]
                             
                             # Only include DC cables
-                            if specs.get('Type', 'DC') == 'DC':
+                            typ = str(specs.get('Type', 'DC')).upper()
+                            if typ in ('HVDC', 'DC'):
                                 data_dict[cable_name] = specs
                 
                 if data_dict:
@@ -2568,7 +2665,7 @@ class Line_DC:
         return 0.0 if cap == 0 else (self.power_MW / cap) * 100.0
 
     def get_cable_parameters(self, Cable_type, S_base, Length_km, N_cables,kV_base):
-        from .Class_editor import Cable_parameters
+        from .grid_analysis import Cable_parameters
         """Get cable parameters from the database."""
         # Ensure database is loaded
         if Line_DC._cable_database is None:
@@ -2615,7 +2712,12 @@ class Line_DC:
         self.np_line_i= N_cables
         self.np_line_max = N_cables
         self.np_line_opf=False
-        self.np_dynamic = [self.np_line]   
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_line_max],
+            'np_dynamic': [self.np_line]
+        }
 
         self.R = r
         self.MW_rating = MW_rating
@@ -2637,7 +2739,7 @@ class Line_DC:
         self.ts_avg_loading = 0
         
         self.base_cost = 0
-        self.life_time = 25
+        self.life_time = 50
         self.exp_inv=1
         self.cost_perMWkm = None
         self.phi=1
@@ -2765,12 +2867,12 @@ class AC_DC_converter:
         self.Node_DC.type = value  # Update DC_node type when converter type changes
 
     @property
-    def NumConvP(self):
-        return self._NumConvP
+    def np_conv(self):
+        return self._np_conv
 
-    @NumConvP.setter
-    def NumConvP(self, value):
-        self._NumConvP = value
+    @np_conv.setter
+    def np_conv(self, value):
+        self._np_conv = value
         self.Node_DC.Nconv= value
         P_DC = self.P_DC
         P_s = self.P_AC 
@@ -2784,8 +2886,8 @@ class AC_DC_converter:
 
     @property
     def capacity_MVA(self):
-        # Treat non-positive as 0; NumConvP may be 0 before sizing
-        return max(self.MVA_max * getattr(self, 'NumConvP', 1), 0.0)
+        # Treat non-positive as 0; np_conv may be 0 before sizing
+        return max(self.MVA_max * getattr(self, 'np_conv', 1), 0.0)
 
     @property
     def loading(self):
@@ -2865,16 +2967,21 @@ class AC_DC_converter:
         AC_DC_converter.ConvNumber += 1
         # type: (1=P, 2=droop, 3=Slack)
         self.S_base = S_base
-        self._NumConvP= nConvP
+        self._np_conv= nConvP
 
-        self.NumConvP_b= nConvP
-        self.NumConvP_i= nConvP
-        self.NumConvP_max = nConvP
-        self.np_dynamic = [self.NumConvP]
+        self.np_conv_b= nConvP
+        self.np_conv_i= nConvP
+        self.np_conv_max = nConvP
         
-        self.NUmConvP_opf=False
+        self.np_conv_opf=False
+        self.investment_decisions = {
+            'planned_installation': [0],
+            'planned_decomision': [0],
+            'max_inv': [self.np_conv_max],
+            'np_dynamic': [self.np_conv]
+        }
         self.base_cost = 0
-        self.life_time = 25
+        self.life_time = 50
         self.exp_inv=1
         self.cost_perMVA = None
         self.phi=1
@@ -3063,14 +3170,14 @@ class Ren_source_zone:
                 ren_source.Ren_source_zone = self.name
 
     @property
-    def PRGi_inv_factor(self):
-        return self._PRGi_inv_factor
+    def np_rsgen(self):
+        return self.np_rsgen
     
-    @PRGi_inv_factor.setter
-    def PRGi_inv_factor(self, value):
-        self._PRGi_inv_factor = value
+    @np_rsgen.setter
+    def np_rsgen(self, value):
+        self.np_rsgen = value
         for ren_source in self.RenSources:
-            ren_source.PRGi_inv_factor=value
+            ren_source.np_rsgen=value
 
 
     def __init__(self,name=None):
@@ -3079,14 +3186,14 @@ class Ren_source_zone:
            
            self.RenSources=[]
            self._PRGi_available=1
-           self._PRGi_inv_factor=1
+           self._np_rsgen=1
            
            self.TS_dict = {
                'PRGi_available': None
            }
 
            self.inv_dict = {
-               'PRGi_inv_factor': None
+               'np_rsgen': None
            }
            
            if name is None:
@@ -3152,7 +3259,10 @@ class Price_Zone:
     @b.setter
     def b(self, value):
         self._b = value
-        self.calc_import_expand()
+        if self.expand_import:
+            self.calc_import_expand()
+        else:
+            self.calc_elasticity_effect()
 
     @property
     def PGL_min_base(self):
@@ -3264,6 +3374,11 @@ class Price_Zone:
             'c_CG': None,
             'PGL_min': None,
             'PGL_max': None
+        }
+        self.investment_decisions = {
+            'Load': [],
+            'elasticity': [],
+            'import_expand': []
         }
         
         self.df= pd.DataFrame(columns=['time','a', 'b', 'c','price','PGL_min','PGL_max'])        
@@ -3406,33 +3521,3 @@ class TimeSeries:
             self._name = name
 
         TimeSeries.names.add(self.name)
-
-class inv_periods:
-    inv_periods_num = 0
-    names = set()
-    
-    @classmethod
-    def reset_class(cls):
-        cls.inv_periods_num = 0
-        cls.names = set()
-    
-    @property
-    def name(self):
-        return self._name
-
-    def __init__(self, element_type: str, element_name:str, data: float, name=None):
-        self.inv_periods_num = inv_periods.inv_periods_num
-        inv_periods.inv_periods_num += 1
-        
-        
-        self.type = element_type
-        self.element_name=element_name
-        self.data = data
-        
-        s = 1
-        if name is None:
-            self._name = str(self.inv_periods_num)
-        else:
-            self._name = name
-
-        inv_periods.names.add(self.name)

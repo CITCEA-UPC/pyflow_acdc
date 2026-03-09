@@ -3,7 +3,7 @@ Grid Modifications
 
 This module provides functions for modifying existing grids by adding components and zones.
 
-functions are found in pyflow_acdc.Class_editor
+Functions are found in `pyflow_acdc.grid_modifications`.
 
 Add Grid Components
 -------------------
@@ -943,6 +943,83 @@ Add Price Zone
 .. _price_zone_assignments:
 
 
+
+Add DCDC Converter
+^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_DCDC_converter(grid, fromNode, toNode, P_MW=None, Pset=None, R_Ohm=None, r=0.0001, MW_rating=99999, name=None, geometry=None)
+
+   Adds a DC/DC converter between two DC nodes.
+
+Add DC Generator
+^^^^^^^^^^^^^^^^
+
+.. py:function:: add_gen_DC(grid, node_name, gen_name=None, price_zone_link=False, lf=0, qf=0, fc=0, MWmax=99999, MWmin=0, PsetMW=0, fuel_type='Other', geometry=None, installation_cost=0, np_gen=1)
+
+   Adds a generator connected to a DC node.
+
+Add External Grid
+^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_extgrid(grid, node, gen_name=None, price_zone_link=False, lf=0, qf=0, MVAmax=99999, MWmax=None, MVArmin=None, MVArmax=None, Allow_sell=True)
+
+   Adds an external grid equivalent as a generator-like source.
+
+Bulk Add Generators
+^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_generators(grid, Gen_csv, curtailmet_allowed=1)
+
+   Adds multiple generators from tabular input.
+
+Add Renewable Source Zone
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_RenSource_zone(grid, name)
+   :no-index:
+
+   Adds a renewable source zone object.
+
+   See also :doc:`ts_mod`.
+
+Add MTDC Price Zone
+^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_MTDC_price_zone(grid, name, linked_price_zones=None, pricing_strategy='avg')
+
+   Adds an MTDC price zone linked to existing price zones.
+
+Add Offshore Price Zone
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_offshore_price_zone(grid, main_price_zone, name)
+
+   Adds an offshore price zone linked to a main/onshore price zone.
+
+Add Time Series
+^^^^^^^^^^^^^^^
+
+.. py:function:: add_TimeSeries(grid, Time_Series_data, associated=None, TS_type=None, name=None)
+   :no-index:
+
+   Adds time-series data to grid elements.
+
+   See full data-format details in :doc:`ts_mod`.
+
+Add Investment Series
+^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_inv_series(grid, inv_data, associated=None, inv_type=None, name=None)
+
+   Adds dynamic investment-period series data to supported elements.
+
+Add Generator Mix Limits
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: add_gen_mix_limits(grid, mix_data)
+
+   Adds generation-mix constraint data for optimization workflows.
+
 Assign Node to Price Zone
 ^^^^^^^^^^^^^^^^^^^^^^^^^	
 
@@ -975,6 +1052,28 @@ Assign Node to Price Zone
    .. code-block:: python
 
        pyf.assign_nodeToPrice_Zone(grid, "bus1", "AC", "Zone1")
+
+Assign Converter to Price Zone
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: assign_ConvToPrice_Zone(grid, conv_name, new_price_zone_name)
+
+   Assigns an AC/DC converter to a price zone.
+
+Template and Import Helpers
+---------------------------
+
+.. py:function:: create_inv_csv_template(grid, file_path=None, exclude=None)
+
+   Creates a CSV template for dynamic investment-series input.
+
+.. py:function:: create_gen_limit_csv_template(grid, file_path=None)
+
+   Creates a CSV template for generation mix limit input.
+
+.. py:function:: import_orbit_cables(data=None, column_map=None, default_type='AC', name_prefix='NREL', save_yaml=False, source_url='https://github.com/NLRWindSystems/ORBIT/tree/dev/library/cables')
+
+   Imports/normalizes ORBIT-style cable data into the cable database format.
 
 
 Line Modifications

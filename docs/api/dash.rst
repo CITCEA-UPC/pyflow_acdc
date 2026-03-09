@@ -64,11 +64,11 @@ Once the dashboard is created, you can see it in your browser under the url:
     end = 6000
     obj = {'Energy_cost': 1}
 
-    market_prices_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/bcv_dev/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
+    market_prices_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
     TS_MK = pd.read_csv(market_prices_url)
     pyf.add_TimeSeries(grid,TS_MK)
 
-    wind_load_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/bcv_dev/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
+    wind_load_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
     TS_wl = pd.read_csv(wind_load_url)
     pyf.add_TimeSeries(grid,TS_wl)
 

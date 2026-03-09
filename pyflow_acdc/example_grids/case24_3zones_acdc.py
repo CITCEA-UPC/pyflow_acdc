@@ -226,10 +226,7 @@ def case24_3zones_acdc(TEP=False,exp='All',N_b=1,N_i=1,N_max=3,kappa=0.5):
         ]
         
         lines_DC_data.extend(lines_DC_data_extra)
-            
-        lines_AC_data['Cost MEUR'] = lines_AC_data['Cost MEUR'] * kappa/0.5
-        lines_DC_data['Cost MEUR'] = lines_DC_data['Cost MEUR'] * kappa/0.5
-        Converters_ACDC_data['Cost MEUR'] = Converters_ACDC_data['Cost MEUR'] * kappa/0.5
+
     lines_AC = pd.DataFrame(lines_AC_data)    
     nodes_DC = pd.DataFrame(nodes_DC_data)
     lines_DC = pd.DataFrame(lines_DC_data)
@@ -326,6 +323,10 @@ def case24_3zones_acdc(TEP=False,exp='All',N_b=1,N_i=1,N_max=3,kappa=0.5):
     
     
     if TEP==True:
+
+        lines_AC['Cost MEUR'] = lines_AC['Cost MEUR'] * kappa/0.5
+        lines_DC['Cost MEUR'] = lines_DC['Cost MEUR'] * kappa/0.5
+        Converters_ACDC['Cost MEUR'] = Converters_ACDC['Cost MEUR'] * kappa/0.5
         lines_DC.set_index('Line_id', inplace=True)
         Converters_ACDC.set_index('Conv_id', inplace=True)
         if exp == 'All':

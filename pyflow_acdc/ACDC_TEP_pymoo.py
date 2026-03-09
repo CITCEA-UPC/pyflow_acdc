@@ -8,7 +8,7 @@ import time
 import matplotlib.pyplot as plt
 from .ACDC_OPF_NL_model import analyse_grid,ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective
-from .Class_editor import analyse_grid
+from .grid_analysis import analyse_grid
 
 __all__ = [
     'transmission_expansion_pymoo'
@@ -78,12 +78,12 @@ class TEPOuterProblem(ElementwiseProblem):
                 idx += 1
         # Converters (integer variables)
         for c in self.grid.Converters_ACDC:
-            if self.original_NUmConvP_opf.get(c.ConvNumber, False):
-                xl.append(c.NumConvP)
-                xu.append(c.NumConvP_max)
+            if self.original_np_conv_opf.get(c.ConvNumber, False):
+                xl.append(c.np_conv)
+                xu.append(c.np_conv_max)
                 vtype.append(int)
                 bounds.append(f"Conv_{c.ConvNumber}")
-                self.idx_to_object[idx] = (c.ConvNumber, "NumConvP_ACDC")
+                self.idx_to_object[idx] = (c.ConvNumber, "np_conv_ACDC")
                 idx += 1
         # AC repurposing (binary variables)
         for l in self.grid.lines_AC_rec:
@@ -143,7 +143,7 @@ class TEPOuterProblem(ElementwiseProblem):
         self.original_array_opf = {}
 
         self.original_np_line_opf_DC = {}
-        self.original_NUmConvP_opf = {}
+        self.original_np_conv_opf = {}
         
         for g in self.grid.Generators:
             self.original_np_gen_opf[g.genNumber] = g.np_gen_opf
@@ -175,8 +175,8 @@ class TEPOuterProblem(ElementwiseProblem):
     
         # Converters
         for c in self.grid.Converters_ACDC:
-            self.original_NUmConvP_opf[c.ConvNumber] = c.NUmConvP_opf
-            c.NUmConvP_opf = False
+            self.original_np_conv_opf[c.ConvNumber] = c.np_conv_opf
+            c.np_conv_opf = False
 
     def _restore_TEP_flags(self):
         for g in self.grid.Generators:
@@ -194,7 +194,7 @@ class TEPOuterProblem(ElementwiseProblem):
        
 
         for c in self.grid.Converters_ACDC:
-            c.NUmConvP_opf = self.original_NUmConvP_opf[c.ConvNumber]
+            c.np_conv_opf = self.original_np_conv_opf[c.ConvNumber]
     
     def _build_model(self):
         model = pyo.ConcreteModel()
@@ -282,15 +282,15 @@ class TEPOuterProblem(ElementwiseProblem):
             
         def Converter_investments():
             Inv_conv = 0
-            NumConvP_TEP = {k: np.float64(pyo.value(v)) for k, v in self.model.NumConvP.items()}
-            if hasattr(self.model, 'conv') and hasattr(self.model, 'NumConvP'):
+            np_conv_TEP = {k: np.float64(pyo.value(v)) for k, v in self.model.np_conv.items()}
+            if hasattr(self.model, 'conv') and hasattr(self.model, 'np_conv'):
                 for cn in self.model.conv:
                     conv = self.grid.Converters_ACDC[cn]
-                    if self.original_NUmConvP_opf.get(cn, False):
+                    if self.original_np_conv_opf.get(cn, False):
                         if NPV:
-                            Inv_conv += (NumConvP_TEP[cn] - conv.NumConvP) * conv.base_cost
+                            Inv_conv += (np_conv_TEP[cn] - conv.np_conv) * conv.base_cost
                         else:
-                            Inv_conv += (NumConvP_TEP[cn] - conv.NumConvP) * conv.base_cost / conv.life_time_hours
+                            Inv_conv += (np_conv_TEP[cn] - conv.np_conv) * conv.base_cost / conv.life_time_hours
             return Inv_conv
         def DC_Gen_investments():
             Inv_gen = 0
@@ -326,8 +326,8 @@ class TEPOuterProblem(ElementwiseProblem):
                 self.model.NumLinesACP[obj_id].set_value(int(value))
             elif obj_type == 'np_line_DC':
                 self.model.NumLinesDCP[obj_id].set_value(int(value))
-            elif obj_type == 'NumConvP_ACDC':
-                self.model.NumConvP[obj_id].set_value(int(value))
+            elif obj_type == 'np_conv_ACDC':
+                self.model.np_conv[obj_id].set_value(int(value))
             elif obj_type == 'rec_line_AC':
                 self.model.rec_branch[obj_id].set_value(bool(value))
             elif obj_type == 'CSS_AC':

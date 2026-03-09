@@ -1,6 +1,6 @@
 from sklearn.cluster import KMeans, DBSCAN, OPTICS, AgglomerativeClustering, SpectralClustering, HDBSCAN
 from sklearn.metrics import pairwise_distances,davies_bouldin_score
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler,RobustScaler
 from kmedoids import KMedoids
 import os
 if 'MPLBACKEND' not in os.environ:
@@ -69,12 +69,15 @@ TICK_LENGTH = 3
 TICK_WIDTH = 0.8
 INERTIA_PLOT_LIMIT = 100000
 
-def _prepare_scaled_data(data, scaling_data):
+def _prepare_scaled_data(data, scaling_data, scaler_type="robust"):
     if scaling_data is None:
-        scaler = StandardScaler()
+        if scaler_type == "robust":
+            scaler = RobustScaler()
+        else:
+            scaler = StandardScaler()
         data_scaled = scaler.fit_transform(data)
     else:
-        [data_scaled, scaler] = scaling_data
+        data_scaled, scaler = scaling_data
     return data_scaled, scaler
 
 def filter_data(grid, time_series, cv_threshold=0, central_market=[], print_details=False):
@@ -125,6 +128,10 @@ def filter_data(grid, time_series, cv_threshold=0, central_market=[], print_deta
     excluded_ts = []  # Track excluded time series
     columns_to_drop = []
     non_time_series = []
+    # Track which columns are used in clustering vs not used
+    used_in_clustering = set()
+    not_used_in_clustering = set()
+    
     # First collect all valid time series
     for ts in grid.Time_series:
         name = ts.name
@@ -133,9 +140,13 @@ def filter_data(grid, time_series, cv_threshold=0, central_market=[], print_deta
             is_in_central = any(ts.TS_num in pz.TS_dict.values() for pz in PZ_centrals)
             if not is_in_central and ts.type in ['price','Load','PGL_min','PGL_max','a_CG','b_CG','c_CG']:
                 columns_to_drop.append(name)
+                not_used_in_clustering.add(name)
+            else:
+                used_in_clustering.add(name)
         else:
             columns_to_drop.append(name)
             non_time_series.append(name)
+            not_used_in_clustering.add(name)
         if data.empty:
                 data[name] = ts_data
                 expected_length = len(ts_data)
@@ -163,20 +174,22 @@ def filter_data(grid, time_series, cv_threshold=0, central_market=[], print_deta
                 'cv': cv
             }
         
-        # Print sorted by both CV and variance
-        if print_details:
-            print("\nTime series statistics (sorted by CV):")
-            print(f"{'Name':20} {'Mean':>12} {'Std':>12} {'Var':>12} {'CV':>12}")
-            print("-" * 70)
-            for column, stat in sorted(stats.items(), key=lambda x: x[1]['cv']):
-                print(f"{column:20} {stat['mean']:12.6f} {stat['std']:12.6f} {stat['var']:12.6f} {stat['cv']:12.6f}")
+        # Track columns excluded before CV threshold check
+        excluded_before_cv = not_used_in_clustering.copy()
         
         # Filter based on CV threshold
+        cv_excluded_columns = set()
         if cv_threshold > 0:
             for column, stat in stats.items():
-                if stat['cv'] < cv_threshold:
+                if stat['cv'] > cv_threshold:
                     excluded_ts.append((column, stat['cv']))
-                    columns_to_drop.append(column) 
+                    columns_to_drop.append(column)
+                    # Remove from used set if it was there
+                    used_in_clustering.discard(column)
+                    not_used_in_clustering.add(column)
+                    # Only add to cv_excluded_columns if it wasn't already excluded
+                    if column not in excluded_before_cv:
+                        cv_excluded_columns.add(column)
 
         # Scale the remaining data after filtering
         scaler = StandardScaler()
@@ -187,17 +200,135 @@ def filter_data(grid, time_series, cv_threshold=0, central_market=[], print_deta
 
         if columns_to_drop:
             data_scaled = data_scaled.drop(columns=columns_to_drop)
-            if print_details:
-                print(f"\nExcluded {len(excluded_ts)} time series with CV below {cv_threshold}:")
-                for name, cv in excluded_ts:
-                    print(f"- {name}: CV = {cv:.6f}")
-                print(f"\nExcluded {len(non_time_series)} for being outside of user defined time series: {time_series}")
-                for name in non_time_series:
-                    print(f"- {name}")
-                print(f"\nExcluded {len(columns_to_drop)-len(excluded_ts)-len(non_time_series)} time series not in central market {central_market}:")
-                for name in columns_to_drop:
-                    if name not in excluded_ts and name not in non_time_series:
-                        print(f"- {name}")    
+        
+        # Determine final used columns (those that remain in data_scaled)
+        final_used_columns = set(data_scaled.columns) if not data_scaled.empty else set()
+        
+        # Create DataFrame from statistics, separated into used, cv_excluded, and other_excluded
+        stats_rows_used = []
+        stats_rows_cv_excluded = []
+        stats_rows_other_excluded = []
+        
+        for column, stat in stats.items():
+            row_data = {
+                'Name': column,
+                'Mean': stat['mean'],
+                'Std': stat['std'],
+                'Var': stat['var'],
+                'CV': stat['cv']
+            }
+            if column in final_used_columns:
+                stats_rows_used.append(row_data)
+            elif column in cv_excluded_columns:
+                stats_rows_cv_excluded.append(row_data)
+            else:
+                stats_rows_other_excluded.append(row_data)
+        
+        # Sort each group separately by CV
+        stats_rows_used.sort(key=lambda x: x['CV'])
+        stats_rows_cv_excluded.sort(key=lambda x: x['CV'])
+        stats_rows_other_excluded.sort(key=lambda x: x['CV'])
+        
+        # Rename for consistency with rest of code
+        cv_excluded_rows = stats_rows_cv_excluded
+        other_excluded_rows = stats_rows_other_excluded
+        
+        # Combine into one DataFrame with separator rows
+        all_stats_rows = stats_rows_used.copy()
+
+        if cv_excluded_rows or other_excluded_rows:
+            # Add CV excluded rows first (if any)
+            if cv_excluded_rows:
+                all_stats_rows.append({
+                    'Name': '---',
+                    'Mean': '----',
+                    'Std': '--',
+                    'Var': '--',
+                    'CV': '--'
+                })
+                all_stats_rows.append({
+                    'Name': 'Excluded',
+                    'Mean': 'due',
+                    'Std': ' to',
+                    'Var': ' cv_threshold',
+                    'CV': f'{cv_threshold:.2f}'
+                })
+                all_stats_rows.append({
+                    'Name': '---',
+                    'Mean': '----',
+                    'Std': '--',
+                    'Var': '--',
+                    'CV': '--'
+                })
+                all_stats_rows.extend(cv_excluded_rows)
+            
+            # Add other excluded rows (if any)
+            if other_excluded_rows:
+                all_stats_rows.append({
+                    'Name': '---',
+                    'Mean': '----',
+                    'Std': '--',
+                    'Var': '--',
+                    'CV': '--'
+                })
+                all_stats_rows.append({
+                    'Name': 'Not',
+                    'Mean': 'used',
+                    'Std': ' in',
+                    'Var': ' clustering',
+                    'CV': 'analysis'
+                })
+                all_stats_rows.append({
+                    'Name': '---',
+                    'Mean': '----',
+                    'Std': '--',
+                    'Var': '--',
+                    'CV': '--'
+                })
+                all_stats_rows.extend(other_excluded_rows)
+        
+        stats_df = pd.DataFrame(all_stats_rows)
+        stats_df.reset_index(drop=True, inplace=True)
+        
+        # Store in grid object for later access (always save, even if not printed)
+        grid.Clustering_information['Time_series_statistics'] = stats_df
+        
+        # Print sorted by both CV and variance
+        if print_details:
+            print("\nTime series statistics (sorted by CV):")
+            print(f"{'Name':20} {'Mean':>12} {'Std':>12} {'Var':>12} {'CV':>12}")
+            print("-" * 70)
+            # Print used time series
+            for row in stats_rows_used:
+                print(f"{row['Name']:20} {row['Mean']:12.6f} {row['Std']:12.6f} {row['Var']:12.6f} {row['CV']:12.6f}")
+            # Print CV excluded time series
+            if cv_excluded_rows:
+                print("-" * 70)
+                print(f"Excluded due to cv_threshold ({cv_threshold:.2f}):")
+                print(f"{'Name':20} {'Mean':>12} {'Std':>12} {'Var':>12} {'CV':>12}")
+                print("-" * 70)
+                for row in cv_excluded_rows:
+                    print(f"{row['Name']:20} {row['Mean']:12.6f} {row['Std']:12.6f} {row['Var']:12.6f} {row['CV']:12.6f}")
+            # Print other excluded time series
+            if other_excluded_rows:
+                print("-" * 70)
+                print("Time series not used in clustering:")
+                print(f"{'Name':20} {'Mean':>12} {'Std':>12} {'Var':>12} {'CV':>12}")
+                print("-" * 70)
+                for row in other_excluded_rows:
+                    print(f"{row['Name']:20} {row['Mean']:12.6f} {row['Std']:12.6f} {row['Var']:12.6f} {row['CV']:12.6f}")
+        
+        if columns_to_drop and print_details:
+            print(f"\nExcluded {len(excluded_ts)} time series with CV below {cv_threshold}:")
+            for name, cv in excluded_ts:
+                print(f"- {name}: CV = {cv:.6f}")
+            print(f"\nExcluded {len(non_time_series)} for being outside of user defined time series: {time_series}")
+            for name in non_time_series:
+                print(f"- {name}")
+            print(f"\nExcluded {len(columns_to_drop)-len(excluded_ts)-len(non_time_series)} time series not in central market {central_market}:")
+            for name in columns_to_drop:
+                if name not in excluded_ts and name not in non_time_series:
+                    print(f"- {name}")    
     if print_details:
         if data.empty:
             print("Warning: No time series passed the filtering criteria")
@@ -310,7 +441,8 @@ def  identify_correlations(grid,time_series=[], correlation_threshold=0,cv_thres
                         
                         if scale_groups:
                             scaling_factor = np.sqrt(len(group_list))
-                            print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
+                            if print_details:
+                                print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
                             data_scaled[max_var_col] *= scaling_factor
                         
                         columns_to_drop.extend([col for col in group_list if col != max_var_col])
@@ -368,12 +500,14 @@ def  identify_correlations(grid,time_series=[], correlation_threshold=0,cv_thres
                         
                         if scale_groups:
                             scaling_factor = np.sqrt(len(group_list))
-                            print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
+                            if print_details:
+                                print(f"Scaling by sqrt({len(group_list)}) = {scaling_factor:.2f}")
                             data_scaled[max_cor_col] *= scaling_factor
                         
                         columns_to_drop.extend([col for col in group_list if col != max_cor_col])
                 
-                print(f"\nDropping {len(columns_to_drop)} columns from scaled data: {columns_to_drop}")
+                if print_details:
+                    print(f"\nDropping {len(columns_to_drop)} columns from scaled data: {columns_to_drop}")
                 data_scaled = data_scaled.drop(columns=columns_to_drop)
     
         
@@ -481,7 +615,7 @@ def plot_correlation_matrix(corr_matrix, save_path=None):
 
 def cluster_TS(grid, n_clusters, time_series=[], central_market=[], algorithm='Kmeans', 
               cv_threshold=0, correlation_threshold=0.8, print_details=False, 
-              correlation_decisions=[], critical_idx=[], base_critical_ratio=0.5, **kwargs):
+              correlation_decisions=[], critical_idx=[], base_critical_ratio=0.5, scaler_type='robust', **kwargs):
     """
     Main clustering function with enhanced parameter support.
     
@@ -530,10 +664,10 @@ def cluster_TS(grid, n_clusters, time_series=[], central_market=[], algorithm='K
         data_scaled_crit = data_scaled.loc[crit_rows, :]
         data_scaled_rest = data_scaled.loc[rest_rows, :]
 
-        n_crit,crit_clusters, crit_returns, crit_info = _run_clustering_algorithm(grid, n_crit, data_crit, data_scaled_crit, scaler, print_details, algorithm, **kwargs)
+        n_crit,crit_clusters, crit_returns, crit_info = _run_clustering_algorithm(grid, n_crit, data_crit, data_scaled_crit, scaler, print_details, algorithm, scaler_type, **kwargs)
         
         if n_rest > 0 :
-            n_rest,rest_clusters, rest_returns, rest_info = _run_clustering_algorithm(grid, n_rest, data_rest, data_scaled_rest, scaler, print_details, algorithm, **kwargs)
+            n_rest,rest_clusters, rest_returns, rest_info = _run_clustering_algorithm(grid, n_rest, data_rest, data_scaled_rest, scaler, print_details, algorithm, scaler_type, **kwargs)
         
         
             n_clusters = n_crit + n_rest
@@ -567,6 +701,7 @@ def cluster_TS(grid, n_clusters, time_series=[], central_market=[], algorithm='K
     cluster_idx = {k: np.where(labels == k)[0].tolist() for k in np.unique(labels)}
     grid.Clusters[n_clusters]['Cluster idx'] = cluster_idx
     grid.Clusters[n_clusters]['Labels'] = labels
+    grid.Clusters[n_clusters]['Representatives'] = clusters.copy()
 
     for ts in grid.Time_series:
         if not hasattr(ts, 'data_clustered') or not isinstance(ts.data_clustered, dict):
@@ -577,38 +712,38 @@ def cluster_TS(grid, n_clusters, time_series=[], central_market=[], algorithm='K
     data_info = [data, data_scaled, labels]
     return n_clusters, clusters, returns, data_info
 
-def _run_clustering_algorithm(grid, n_clusters, data, data_scaled, scaler, print_details, algorithm, **kwargs):
+def _run_clustering_algorithm(grid, n_clusters, data, data_scaled, scaler, print_details, algorithm, scaler_type='robust', **kwargs):
     if algorithm == 'kmeans':
         use_medoids = kwargs.pop('use_medoids', False)
         clusters, returns, data_info = cluster_Kmeans(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, use_medoids=use_medoids, **kwargs)
+                                                    print_details=print_details, use_medoids=use_medoids, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'kmeans_medoids':
         clusters, returns, data_info = cluster_Kmeans(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, use_medoids=True, **kwargs)
+                                                    print_details=print_details, use_medoids=True, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'ward':
         clusters, returns, data_info = cluster_Ward(grid, n_clusters, data, [data_scaled, scaler], 
-                                                print_details=print_details, **kwargs)
+                                                print_details=print_details, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'kmedoids':
         clusters, returns, data_info = cluster_Kmedoids(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, **kwargs)
+                                                    print_details=print_details, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'pam_hierarchical':
         clusters, returns, data_info = cluster_PAM_Hierarchical(grid, n_clusters, data, [data_scaled, scaler], 
-                                                            print_details=print_details, **kwargs)
+                                                            print_details=print_details, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'spectral':
         clusters, returns, data_info = cluster_Spectral(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, **kwargs)
+                                                    print_details=print_details, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'dbscan':
         n_clusters, clusters, returns, data_info = cluster_DBSCAN(grid, n_clusters, data, [data_scaled, scaler], 
-                                                                print_details=print_details, **kwargs)
+                                                                print_details=print_details, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'optics':
         n_clusters, clusters, returns, data_info = cluster_OPTICS(grid, n_clusters, data, [data_scaled, scaler], 
-                                                                print_details=print_details, **kwargs)    
+                                                                print_details=print_details, scaler_type=scaler_type, **kwargs)    
     elif algorithm == 'hdbscan':
         n_clusters, clusters, returns, data_info = cluster_HDBSCAN(grid, n_clusters, data, [data_scaled, scaler], 
-                                                                print_details=print_details, **kwargs)
+                                                                print_details=print_details, scaler_type=scaler_type, **kwargs)
     return n_clusters,clusters, returns, data_info
 
-def _process_clusters(grid, data, cluster_centers):
+def _process_clusters(grid, data, cluster_centers, representative_indices=None):
     """
     Process clustering results and update grid with cluster information.
     
@@ -620,11 +755,16 @@ def _process_clusters(grid, data, cluster_centers):
         Time series data used for clustering
     cluster_centers : numpy.ndarray
         Array containing the centroids/medoids of each cluster
+    representative_indices : array-like, optional
+        Original data row indices of the representative points (medoids).
+        For k-medoids these are the actual time-step indices; for centroid-
+        based methods this is None (centroids are synthetic).
         
     Returns:
     --------
-    grid : pandapower.Grid
-        Updated grid object with cluster information
+    clusters : pandas.DataFrame
+        DataFrame with cluster representatives, counts, weights, and
+        optionally the representative index.
     """
     new_columns = [col for col in data.columns if col != 'Cluster']
     n_clusters = len(cluster_centers)
@@ -632,32 +772,24 @@ def _process_clusters(grid, data, cluster_centers):
     clusters = pd.DataFrame(cluster_centers, columns=new_columns)
     
     # Calculate cluster counts and weights
+    # Filter out noise points (negative labels) for density-based clustering
     cluster_counts = data['Cluster'].value_counts().sort_index()
-    total_count = len(data)
-    cluster_weights = cluster_counts / total_count
+    cluster_counts = cluster_counts[cluster_counts.index >= 0]  # Remove noise points (-1)
+    total_count = len(data[data['Cluster'] >= 0])  # Only count non-noise points for weights
+    cluster_weights = cluster_counts / total_count if total_count > 0 else cluster_counts * 0
     
     # Add counts and weights to clusters DataFrame
     clusters.insert(0, 'Cluster Count', cluster_counts.values)
     clusters.insert(1, 'Weight', cluster_weights.values)
     
-    
-    # Update grid with cluster weights
-    # grid.Clusters['Weight'][n_clusters] = clusters['Weight'].to_numpy(dtype=float)
-    # grid.Clusters['Cluster Count'][n_clusters] = cluster_counts.values
-    # grid.Clusters['Cluster idx'][n_clusters] = clusters['Cluster'].values
-    # Update time series with clustered data
-    #for ts in grid.Time_series:
-    #    if not hasattr(ts, 'data_clustered') or not isinstance(ts.data_clustered, dict):
-    #        ts.data_clustered = {}
-    #    name = ts.name
-    #    ts.data_clustered[n_clusters] = clusters[name].to_numpy(dtype=float)
-    
+    if representative_indices is not None:
+        clusters.insert(0, 'Rep. Index', representative_indices)
     return clusters
 
 
 def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterpam', 
                     init='build', max_iter=MAX_ITERATIONS, print_details=False, 
-                    random_state=None, metric='euclidean'):
+                    random_state=None, metric='euclidean', scaler_type="robust"):
     """
     Perform K-Medoids clustering on the data.
     
@@ -684,7 +816,7 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
     metric : str, default='euclidean'
         Distance metric ('euclidean', 'manhattan', 'cosine', etc.)
     """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data, scaler_type)
     data_scaled = np.asarray(data_scaled)  # single-point coercion
    
     # Fit KMedoids on scaled data
@@ -696,7 +828,10 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
         random_state=random_state,
         metric=metric
     )
+    # Time only the actual clustering execution
+    start_time = time.perf_counter()
     labels = kmedoids.fit_predict(data_scaled)
+    time_taken = time.perf_counter() - start_time
     
     # Get medoid indices
     medoid_indices = kmedoids.medoid_indices_
@@ -706,25 +841,39 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
     # Print clustering results
     cluster_sizes = pd.Series(labels).value_counts().sort_index().values
     specific_info = {
+        "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
         "Method": method,
         "Initialization": init,
         "Metric": metric,
         "Inertia": kmedoids.inertia_
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "K-medoids", n_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("K-medoids", n_clusters, specific_info)
-    else:
-        # Calculate CoV from cluster sizes
-        cluster_sizes = specific_info["Cluster sizes"]
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("K-medoids", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=medoid_indices)
     return processed_results, [CoV, kmedoids.inertia_], [data_scaled, labels]
 
 
-def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=False, use_medoids=False):
+def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=False, use_medoids=False, scaler_type='robust'):
     """
     Perform K-means clustering on the data.
     
@@ -744,13 +893,17 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
         If True, use actual data points (medoids) as cluster centers
         If False, use means (centroids) as cluster centers
     """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     # Fit KMeans on scaled data (filtered columns)
     kmeans = KMeans(n_clusters=n_clusters)
+    # Time only the actual clustering execution
+    start_time = time.perf_counter()
     labels = kmeans.fit_predict(data_scaled)
+    time_taken = time.perf_counter() - start_time
     
     all_centers = []
+    rep_indices = [] if use_medoids else None
     for i in range(n_clusters):
         cluster_mask = labels == i
         cluster_data = data[cluster_mask]
@@ -762,6 +915,7 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
             medoid_idx = distances.sum(axis=1).argmin()
             cluster_center = cluster_data.iloc[medoid_idx]
             all_centers.append(cluster_center.values)
+            rep_indices.append(cluster_data.index[medoid_idx])
         else:
             # Use mean (centroid)
             cluster_means = cluster_data.mean()
@@ -771,25 +925,40 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
     
     # Print clustering results
     cluster_label = "K-means-medoids" if use_medoids else "K-means"
+    cluster_sizes = pd.Series(labels).value_counts().sort_index().values
+    specific_info = {
+        "Scaler": scaler_type,
+        "Cluster sizes": cluster_sizes,
+        "Inertia": kmeans.inertia_,
+        "n_iter": kmeans.n_iter_,
+        "Center type": "medoids" if use_medoids else "means"
+    }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, cluster_label, n_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        cluster_sizes = pd.Series(labels).value_counts().sort_index().values
-        specific_info = {
-            "Cluster sizes": cluster_sizes,
-            "Inertia": kmeans.inertia_,
-            "n_iter": kmeans.n_iter_,
-            "Center type": "medoids" if use_medoids else "means"
-        }
-        CoV = print_clustering_results(cluster_label, n_clusters, specific_info)
-    else:
-        cluster_sizes = pd.Series(labels).value_counts().values
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results(cluster_label, n_clusters, specific_info)
 
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
 
     return processed_results, [CoV, kmeans.inertia_, kmeans.n_iter_], [data_scaled, labels]
 
-def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False):
+def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False, scaler_type='robust'):
     """
     Perform Ward's hierarchical clustering using AgglomerativeClustering.
     
@@ -802,7 +971,7 @@ def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False)
     data : pandas.DataFrame
         Data to cluster
     """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     # Fit clustering
     ward = AgglomerativeClustering(
@@ -810,7 +979,10 @@ def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False)
         linkage='ward',
         compute_distances=True
     )
+    # Time only the actual clustering execution
+    start_time = time.perf_counter()
     labels = ward.fit_predict(data_scaled)
+    time_taken = time.perf_counter() - start_time
     
     # Calculate cluster centers
     all_centers = []
@@ -828,20 +1000,36 @@ def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False)
     distances = ward.distances_
     
     specific_info = {
+        "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
         "Maximum merge distance": float(max(distances)) if len(distances) > 0 else 0,
         "Average merge distance": float(np.mean(distances)) if len(distances) > 0 else 0
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "Ward hierarchical", n_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("Ward hierarchical", n_clusters, specific_info)
-    else:
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("Ward hierarchical", n_clusters, specific_info)
     
     data['Cluster'] = labels
     processed_results = _process_clusters(grid, data, cluster_centers)
     return processed_results, CoV, [data_scaled, labels]
 
-def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_details=False):
+def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_details=False, scaler_type='robust'):
     """
     Perform PAM-based hierarchical clustering using AgglomerativeClustering.
     
@@ -858,7 +1046,7 @@ def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_de
     print_details : bool
         Whether to print clustering details
     """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     # Fit clustering using manhattan distance (typical for PAM)
     HierarchicalMedoid = AgglomerativeClustering(
@@ -867,7 +1055,10 @@ def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_de
         metric='manhattan',
         compute_distances=True
     )
+    # Time only the actual clustering execution
+    start_time = time.perf_counter()
     labels = HierarchicalMedoid.fit_predict(data_scaled)
+    time_taken = time.perf_counter() - start_time
     
     # Find medoid indices for all clusters
     medoid_indices = []
@@ -892,20 +1083,78 @@ def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_de
     distances = HierarchicalMedoid.distances_
     
     specific_info = {
+        "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
         "Maximum merge distance": float(max(distances)) if len(distances) > 0 else 0,
         "Average merge distance": float(np.mean(distances)) if len(distances) > 0 else 0
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "PAM hierarchical", n_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("PAM hierarchical", n_clusters, specific_info)
-    else:
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("PAM hierarchical", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=medoid_indices)
     return processed_results, CoV, [data_scaled, labels]
 
 
+
+def save_clustering_results(grid, algorithm, n_clusters, specific_info, CoV, time_taken=None):
+    """Helper function to save clustering results to grid.Clustering_information."""
+    if not hasattr(grid, 'Clustering_information'):
+        grid.Clustering_information = {}
+    
+    # Create a dictionary with all clustering information
+    clustering_result = {
+        'algorithm': algorithm,
+        'n_clusters': n_clusters,
+        'CoV': CoV,
+        'specific_info': {}
+    }
+    
+    # Add time taken if provided
+    if time_taken is not None:
+        clustering_result['time taken'] = time_taken
+    
+    # Convert specific_info to a serializable format
+    for key, value in specific_info.items():
+        if isinstance(value, (int, str, float, bool)):
+            clustering_result['specific_info'][key] = value
+        elif isinstance(value, (list, np.ndarray)):
+            clustering_result['specific_info'][key] = list(value)
+            # Also calculate statistics for cluster sizes
+            if key == "Cluster sizes":
+                clustering_result['specific_info']['Cluster sizes average'] = float(np.mean(value))
+                clustering_result['specific_info']['Cluster sizes std'] = float(np.std(value))
+        elif isinstance(value, tuple):
+            clustering_result['specific_info'][key] = {
+                'count': value[0],
+                'percentage': value[1]
+            }
+        else:
+            clustering_result['specific_info'][key] = str(value)
+    
+    # Store in Clustering_information with a key based on algorithm and n_clusters
+    key_name = f'technique_{algorithm}_{n_clusters}'
+    grid.Clustering_information[key_name] = clustering_result
+    
+    # Also store the most recent result for easy access
+    grid.Clustering_information['latest_technique'] = clustering_result
 
 def print_clustering_results(algorithm, n_clusters, specific_info):
     """Helper function to print clustering results in a standardized format."""
@@ -963,7 +1212,7 @@ def run_clustering_analysis(grid, save_path='clustering_results',algorithms = ['
                 time_taken = time.perf_counter() - start_time
 
                 
-                metrics = evaluate_clustering(data_scaled, labels)
+                metrics = _evaluate_clustering(data_scaled, labels)
                 db_score        = metrics['davies_bouldin_combined']
                 value_db_score  = metrics['davies_bouldin_value']
                 season_db_score = metrics['davies_bouldin_seasonal']
@@ -1222,15 +1471,17 @@ def plot_clustered_timeseries_single(ts1,ts2,algorithm,n_clusters,path,labels,ts
 
 
 def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, 
-                  max_eps=np.inf, xi=DEFAULT_XI, print_details=False):
+                  max_eps=np.inf, xi=DEFAULT_XI, print_details=False, scaler_type='robust'):
  
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     # Try different xi values until we get desired number of clusters
     best_labels = None
     best_xi = None
     current_xi = xi
     
+    # Time only the actual clustering execution (the loop)
+    start_time = time.perf_counter()
     while current_xi <= 1.0:
         optics = OPTICS(min_samples=min_samples, max_eps=max_eps, xi=current_xi)
         labels = optics.fit_predict(data_scaled)
@@ -1245,6 +1496,7 @@ def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
             current_xi *= OPTICS_XI_INCREASE  # Increase xi to get fewer clusters
         else:  # No clusters found
             current_xi *= OPTICS_XI_DECREASE  # Decrease xi to get more clusters
+    time_taken = time.perf_counter() - start_time
     
     if best_labels is None:
         print("Warning: Could not find suitable clustering. Try adjusting parameters.")
@@ -1252,45 +1504,68 @@ def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     for i in range(actual_clusters):
         cluster_mask = best_labels == i
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
     # Get cluster sizes and noise info
-    cluster_sizes = pd.Series(best_labels).value_counts().sort_index().values
+    # Filter out noise points (label -1) from cluster sizes
+    cluster_counts_series = pd.Series(best_labels).value_counts().sort_index()
+    cluster_counts_series = cluster_counts_series[cluster_counts_series.index >= 0]
+    cluster_sizes = cluster_counts_series.values
     noise_points = len(data[best_labels == -1])
     noise_percentage = (noise_points / len(data)) * 100
     
     specific_info = {
+        "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
         "Found clusters": actual_clusters,
         "Maximum allowed": n_clusters,
         "Final xi": best_xi,
         "Noise points": (noise_points, noise_percentage)
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, best_labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "OPTICS", actual_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("OPTICS", actual_clusters, specific_info)
-    else:
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("OPTICS", actual_clusters, specific_info)
     
     data['Cluster'] = best_labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
 
-def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, initial_eps=0.5, print_details=False):
+def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, initial_eps=0.5, print_details=False, scaler_type='robust'):
     """
     [Previous docstring remains the same]
     """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     eps = initial_eps
     best_labels = None
     best_eps = None
     
+    # Time only the actual clustering execution (the loop)
+    start_time = time.perf_counter()
     while eps <= DBSCAN_MAX_EPS:
         dbscan = DBSCAN(eps=eps, min_samples=min_samples)
         labels = dbscan.fit_predict(data_scaled)
@@ -1306,6 +1581,7 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
                 eps *= DBSCAN_EPS_MULTIPLIER
         else:
             eps *= DBSCAN_EPS_INCREASE
+    time_taken = time.perf_counter() - start_time
     
     if best_labels is None:
         print("Warning: Could not find any meaningful clusters. Try adjusting parameters.")
@@ -1313,6 +1589,7 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     valid_labels = best_labels[best_labels >= 0]
     unique_clusters = np.unique(valid_labels)
     for i in range(len(unique_clusters)):
@@ -1321,32 +1598,52 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
     # Get cluster sizes and noise info
-    cluster_sizes = pd.Series(best_labels).value_counts().sort_index().values
+    # Filter out noise points (label -1) from cluster sizes
+    cluster_counts_series = pd.Series(best_labels).value_counts().sort_index()
+    cluster_counts_series = cluster_counts_series[cluster_counts_series.index >= 0]
+    cluster_sizes = cluster_counts_series.values
     noise_points = len(data[best_labels == -1])
     noise_percentage = (noise_points / len(data)) * 100
     
     specific_info = {
+        "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
         "Found clusters": actual_clusters,
         "Maximum allowed": n_clusters,
         "Final eps": best_eps,
         "Noise points": (noise_points, noise_percentage)
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, best_labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "DBSCAN", actual_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("DBSCAN", actual_clusters, specific_info)
-    else:
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("DBSCAN", actual_clusters, specific_info)
     
     data['Cluster'] = best_labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
 
 
-def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assign_labels='kmeans', affinity='rbf', gamma=1.0, print_details=False):
+def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assign_labels='kmeans', affinity='nearest_neighbors', gamma=1.0, n_neighbors=10, print_details=False, scaler_type='robust'):
     """
     Perform Spectral clustering on the data.
     
@@ -1362,57 +1659,117 @@ def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assig
         Number of times the k-means algorithm will be run with different centroid seeds
     assign_labels : {'kmeans', 'discretize'}, default='kmeans'
         Strategy to assign labels in the embedding space
-    affinity : {'rbf', 'nearest_neighbors', 'precomputed'}, default='rbf'
-        How to construct the affinity matrix
+    affinity : {'rbf', 'nearest_neighbors', 'precomputed'}, default='nearest_neighbors'
+        How to construct the affinity matrix. Use 'nearest_neighbors' for memory efficiency.
     gamma : float, default=1.0
-        Kernel coefficient for rbf kernel
+        Kernel coefficient for rbf kernel (only used if affinity='rbf')
+    n_neighbors : int, default=10
+        Number of neighbors for nearest_neighbors affinity (only used if affinity='nearest_neighbors')
     """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
-    spectral = SpectralClustering(
-        n_clusters=n_clusters,
-        n_init=n_init,
-        assign_labels=assign_labels,
-        affinity=affinity,
-        gamma=gamma,
-        random_state=DEFAULT_RANDOM_STATE
-    )
+    # For large datasets, use nearest_neighbors to avoid memory issues
+    # This creates a sparse matrix instead of a dense one
+    if affinity == 'rbf' and len(data) > 5000:
+        if print_details:
+            print(f"Warning: Large dataset ({len(data)} points). Switching to 'nearest_neighbors' affinity for memory efficiency.")
+        affinity = 'nearest_neighbors'
     
-    labels = spectral.fit_predict(data_scaled)
+    # Configure spectral clustering
+    spectral_kwargs = {
+        'n_clusters': n_clusters,
+        'n_init': n_init,
+        'assign_labels': assign_labels,
+        'affinity': affinity,
+        'random_state': DEFAULT_RANDOM_STATE
+    }
+    
+    # Add affinity-specific parameters
+    if affinity == 'rbf':
+        spectral_kwargs['gamma'] = gamma
+    elif affinity == 'nearest_neighbors':
+        spectral_kwargs['n_neighbors'] = n_neighbors
+    
+    spectral = SpectralClustering(**spectral_kwargs)
+    
+    # Time only the actual clustering execution
+    start_time = time.perf_counter()
+    try:
+        labels = spectral.fit_predict(data_scaled)
+        time_taken = time.perf_counter() - start_time
+    except MemoryError as e:
+        if print_details:
+            print(f"Memory error during spectral clustering: {e}")
+            print("Try using affinity='nearest_neighbors' or reducing n_neighbors")
+        raise
+    except Exception as e:
+        if print_details:
+            print(f"Error during spectral clustering: {e}")
+        raise
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     for i in range(n_clusters):
         cluster_mask = labels == i
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
     # Get cluster sizes and affinity info
     cluster_sizes = pd.Series(labels).value_counts().sort_index().values
-    affinity_matrix = spectral.affinity_matrix_
-    connectivity = (affinity_matrix > 0).sum() / (affinity_matrix.shape[0] * affinity_matrix.shape[1])
+    
+    # Try to get affinity matrix info (may not be available for all affinity types)
+    try:
+        affinity_matrix = spectral.affinity_matrix_
+        if hasattr(affinity_matrix, 'toarray'):  # Sparse matrix
+            connectivity = (affinity_matrix > 0).sum() / (affinity_matrix.shape[0] * affinity_matrix.shape[1])
+            avg_affinity = float(affinity_matrix.mean())
+        else:  # Dense matrix
+            connectivity = (affinity_matrix > 0).sum() / (affinity_matrix.shape[0] * affinity_matrix.shape[1])
+            avg_affinity = float(affinity_matrix.mean())
+    except AttributeError:
+        connectivity = "N/A"
+        avg_affinity = "N/A"
     
     specific_info = {
+        "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
         "Affinity": affinity,
         "Label assignment": assign_labels,
-        "Gamma": gamma,
-        "Connectivity density": f"{connectivity:.2%}",
-        "Average affinity": f"{affinity_matrix.mean():.4f}"
+        "Gamma": gamma if affinity == 'rbf' else "N/A",
+        "N neighbors": n_neighbors if affinity == 'nearest_neighbors' else "N/A",
+        "Connectivity density": f"{connectivity:.2%}" if connectivity != "N/A" else "N/A",
+        "Average affinity": f"{avg_affinity:.4f}" if avg_affinity != "N/A" else "N/A"
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "Spectral", n_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("Spectral", n_clusters, specific_info)
-    else:
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("Spectral", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return processed_results, CoV, [data_scaled, labels]
 
-def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=5, min_samples=None, cluster_selection_method='eom', print_details=False):
+def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=5, min_samples=None, cluster_selection_method='eom', print_details=False, scaler_type='robust'):
     """
     Perform HDBSCAN clustering on the data.
     
@@ -1431,7 +1788,7 @@ def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=
     cluster_selection_method : {'eom', 'leaf'}, default='eom'
         The method used to select clusters
         """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
 
   
     
@@ -1446,25 +1803,34 @@ def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=
         cluster_selection_method=cluster_selection_method
     )
     
+    # Time only the actual clustering execution
+    start_time = time.perf_counter()
     labels = clusterer.fit_predict(data_scaled)
+    time_taken = time.perf_counter() - start_time
     actual_clusters = len(set(labels[labels >= 0]))
     
     # Calculate cluster centers (medoids) from original data
     all_centers = []
+    rep_indices = []
     for i in range(actual_clusters):
         cluster_mask = labels == i
         cluster_data = data[cluster_mask]
         medoid_idx = find_medoid(cluster_data)
         all_centers.append(data.loc[medoid_idx])
+        rep_indices.append(medoid_idx)
     
     cluster_centers = np.array(all_centers)
     
     # Get cluster sizes and noise info
-    cluster_sizes = pd.Series(labels).value_counts().sort_index().values
+    # Filter out noise points (label -1) from cluster sizes
+    cluster_counts_series = pd.Series(labels).value_counts().sort_index()
+    cluster_counts_series = cluster_counts_series[cluster_counts_series.index >= 0]
+    cluster_sizes = cluster_counts_series.values
     noise_points = len(data[labels == -1])
     noise_percentage = (noise_points / len(data)) * 100
     
     specific_info = {
+        "Scaler": scaler_type,
         "Found clusters": actual_clusters,
         "Target clusters": n_clusters,
         "Cluster sizes": cluster_sizes,
@@ -1474,13 +1840,28 @@ def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=
         "Selection method": cluster_selection_method,
         "Probabilities available": hasattr(clusterer, 'probabilities_')
     }
+    # Calculate CoV from cluster sizes
+    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
+    
+    # Evaluate clustering quality
+    try:
+        db_metrics = _evaluate_clustering(data_scaled, labels)
+        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
+        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
+        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
+    except Exception as e:
+        # If evaluation fails, continue without DB metrics
+        if print_details:
+            print(f"Warning: Could not evaluate clustering quality: {e}")
+    
+    # Save clustering results to grid
+    save_clustering_results(grid, "HDBSCAN", actual_clusters, specific_info, CoV, time_taken)
+    
     if print_details:
-        CoV = print_clustering_results("HDBSCAN", actual_clusters, specific_info)
-    else:
-        CoV = np.std(cluster_sizes)/np.mean(cluster_sizes)
+        print_clustering_results("HDBSCAN", actual_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers)
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
     return actual_clusters, processed_results, CoV, [data_scaled, labels]
 
 def find_medoid(cluster_data):
@@ -1491,7 +1872,7 @@ def find_medoid(cluster_data):
 
 
 
-def evaluate_clustering(data_scaled, labels, time_resolution_hours=DEFAULT_TIME_RESOLUTION_HOURS, 
+def _evaluate_clustering(data_scaled, labels, time_resolution_hours=DEFAULT_TIME_RESOLUTION_HOURS, 
                         seasonal_period_hours=DEFAULT_SEASONAL_PERIOD_HOURS):
     """
     Evaluate time series clustering using standard DB index plus temporal and seasonal components.
@@ -1587,13 +1968,13 @@ def evaluate_clustering(data_scaled, labels, time_resolution_hours=DEFAULT_TIME_
 
 def cluster_Kmedoids_auto(grid, data, scaling_data=None, kmin=2, kmax=20, 
                          method='dynmsc', random_state=None, metric='euclidean', 
-                         print_details=False):
+                         print_details=False, scaler_type='robust'):
     """
     Perform K-Medoids clustering with automatic cluster number selection using DynMSC.
     """
     from kmedoids import dynmsc
     
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data)
+    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     # Compute distance matrix if needed
     if metric != 'precomputed':
@@ -1619,7 +2000,7 @@ def cluster_Kmedoids_auto(grid, data, scaling_data=None, kmin=2, kmax=20,
 
 def compare_kmedoids_methods(grid, n_clusters, data, scaling_data=None, 
                            methods=['fasterpam', 'fastpam1', 'pam', 'alternate'],
-                           metric='euclidean', print_details=False):
+                           metric='euclidean', print_details=False, scaler_type='robust'):
     """
     Compare different K-Medoids methods.
     """
@@ -1630,7 +2011,7 @@ def compare_kmedoids_methods(grid, n_clusters, data, scaling_data=None,
             start_time = time.perf_counter()
             method_results = cluster_Kmedoids(grid, n_clusters, data, scaling_data, 
                                             method=method, metric=metric, 
-                                            print_details=False)
+                                            print_details=False, scaler_type=scaler_type)
             time_taken = time.perf_counter() - start_time
             
             results[method] = {

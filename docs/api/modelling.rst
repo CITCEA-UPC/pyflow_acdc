@@ -983,12 +983,22 @@ Key Attributes:
 
    * - Type
      - Figure for folium plotting
-   * - Wind
+   * - wind
      - .. image:: ../images/wind.svg
          :width: 100
          :alt: Wind source icon
          :align: center
-   * - Solar
+   * - offshore wind
+     - .. image:: ../images/offshore_wind.svg
+         :width: 100
+         :alt: Wind source icon
+         :align: center
+   * - onshore wind
+     - .. image:: ../images/onshore_wind.svg
+         :width: 100
+         :alt: Wind source icon
+         :align: center
+   * - solar
      - .. image:: ../images/solar.svg
          :width: 100
          :alt: Solar source icon
@@ -1055,66 +1065,90 @@ Key Attributes:
    * - Type
      - Figure for folium plotting
      - Default cost
-   * - Hydro
+   * - hydro
      - .. image:: ../images/hydro.svg
-         :width: 100
-         :alt: Hydro source icon
-         :align: center
-     - 
-   * - Nuclear
+          :width: 100
+          :alt: Hydro source icon
+          :align: center
+     -
+   * - nuclear
      - .. image:: ../images/nuclear.svg
-         :width: 100
-         :alt: Nuclear source icon
-         :align: center
-     - 
-   * - Coal
+          :width: 100
+          :alt: Nuclear source icon
+          :align: center
+     -
+   * - hard coal
      - .. image:: ../images/coal.svg
-         :width: 100
-         :alt: Coal source icon
-         :align: center
-     - 
-   * - Solid Biomass
+          :width: 100
+          :alt: Hard Coal source icon
+          :align: center
+     -
+   * - solid biomass
      - .. image:: ../images/Solid_Biomass.svg
-         :width: 100
-         :alt: Solid Biomass source icon
-         :align: center
-     - 
-   * - Geothermal
+          :width: 100
+          :alt: Solid Biomass source icon
+          :align: center
+     -
+   * - geothermal
      - .. image:: ../images/Geothermal.svg
-         :width: 100
-         :alt: Geothermal source icon
-         :align: center
-     - 
-   * - Lignite
+          :width: 100
+          :alt: Geothermal source icon
+          :align: center
+     -
+   * - lignite
      - .. image:: ../images/Lignite.svg
-         :width: 100
-         :alt: Lignite source icon
-         :align: center
-     - 
-   * - Natural Gas
+          :width: 100
+          :alt: Lignite source icon
+          :align: center
+     -
+   * - natural gas
      - .. image:: ../images/Natural_Gas.svg
-         :width: 100
-         :alt: Natural Gas source icon
-         :align: center
-     - 
-   * - Oil
+          :width: 100
+          :alt: Natural Gas source icon
+          :align: center
+     -
+   * - oil
      - .. image:: ../images/Oil.svg
-         :width: 100
-         :alt: Oil source icon
-         :align: center
-     - 
-   * - Waste
+          :width: 100
+          :alt: Oil source icon
+          :align: center
+     -
+   * - waste
      - .. image:: ../images/Waste.svg
-         :width: 100
-         :alt: Waste source icon
-         :align: center
-     - 
-   * - Other
+          :width: 100
+          :alt: Waste source icon
+          :align: center
+     -
+   * - biogas
+     - .. image:: ../images/Biogas.svg
+          :width: 100
+          :alt: Biogas source icon
+          :align: center
+     -
+   * - ccgt
+     - .. image:: ../images/CCGT.svg
+          :width: 100
+          :alt: CCGT source icon
+          :align: center
+     -
+   * - diesel
+     - .. image:: ../images/diesel.svg
+          :width: 100
+          :alt: Diesel source icon
+          :align: center
+     -
+   * - shunt reactor
+     - .. image:: ../images/reactor.svg
+          :width: 100
+          :alt: Shunt reactor source icon
+          :align: center
+     -
+   * - other
      - .. image:: ../images/gen.svg
-         :width: 100
-         :alt: Other source icon
-         :align: center
-     - 
+          :width: 100
+          :alt: Other source icon
+          :align: center
+     -
 
 
 

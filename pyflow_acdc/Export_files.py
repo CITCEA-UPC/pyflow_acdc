@@ -272,7 +272,7 @@ def create_dictionaries(grid):
                     "Droop": float(conv.Droop_rate),
                     "AC_kV_base": float(conv.AC_kV_base),
                     "MVA_rating": float(conv.MVA_max / conv.cn_pol),
-                    "Nconverter": float(conv._NumConvP),
+                    "Nconverter": float(conv._np_conv),
                     "pol": float(conv.cn_pol),
                     "Conv_id": conv.name,
                     "lossa": float(conv.a_conv_og / conv.cn_pol),
@@ -310,7 +310,7 @@ def create_dictionaries(grid):
                         "a":           price_zone.a,
                         "b":           price_zone.b,
                         "c":           price_zone.c,
-                        "import_expand_pu": price_zone.ImportExpand_og,
+                        "import_expand_pu": price_zone.import_expand,
                         "type":'main',
                     })
 
@@ -460,7 +460,7 @@ def {file_name}():
     
 
 
-def save_pickle(grid, path, compress=True, use_dill=True):
+def save_pickle(grid, path, compress=True, use_dill=False):
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     lib = _dill if (use_dill and _dill is not None) else pickle
     protocol = pickle.HIGHEST_PROTOCOL
@@ -605,24 +605,24 @@ def gather_grid_data(grid):
                 "Q_g": conv.P_DC,
                 "islcc": 0, 
                 "Vtar": 1,
-                "rtf": conv.R_t/conv.NumConvP,
-                "xtf": conv.X_t/conv.NumConvP,
+                "rtf": conv.R_t/conv.np_conv,
+                "xtf": conv.X_t/conv.np_conv,
                 "transformer": 1 if conv.R_t != 0 else 0,
                 "tm": 1,
-                "bf": conv.Bf*conv.NumConvP,
+                "bf": conv.Bf*conv.np_conv,
                 "filter": 1 if conv.Bf != 0 else 0,
-                "rc": conv.PR_R/conv.NumConvP,
-                "xc": conv.PR_X/conv.NumConvP,
+                "rc": conv.PR_R/conv.np_conv,
+                "xc": conv.PR_X/conv.np_conv,
                 "reactor": 0,
                 "basekVac": conv.AC_kV_base,
                 "Vmmax": conv.Ucmax,
                 "Vmmin": conv.Ucmin,
                 "Imax": 1.1,
                 "status": 1,
-                "LossA": conv.a_conv_og*conv.NumConvP,
+                "LossA": conv.a_conv_og*conv.np_conv,
                 "LossB": conv.b_conv_og,
-                "LossCrec": conv.c_rect_og/conv.NumConvP,
-                "LossCinv": conv.c_rect_og/conv.NumConvP,
+                "LossCrec": conv.c_rect_og/conv.np_conv,
+                "LossCinv": conv.c_rect_og/conv.np_conv,
                 "droop": conv.Droop_rate,
                 "Pdcset": conv.P_DC,
                 "Vdcset": conv.Node_DC.V,

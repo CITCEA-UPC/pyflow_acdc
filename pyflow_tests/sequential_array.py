@@ -6,15 +6,13 @@ Created on Mon Jul 14 15:13:24 2025
 """
 import pyflow_acdc as pyf
 import pyomo.environ as pyo
-from pathlib import Path
 import time
+from pyflow_acdc.windfarm_loader import load_case_grid_and_geo
 
 cases = {
-    'arcadis_ost'
+    'westermost_rough'
 }
 
-current_file = Path(__file__).resolve()
-path = str(current_file.parent)
 ct= 3
 LCoE = 91
 
@@ -27,15 +25,11 @@ obj = {'Energy_cost': 1}
 FLH = 8760
 WACC = 0.02
 
-def run_case(case,MIP_solver='gurobi'):
+def run_case(case, MIP_solver='gurobi'):
     start_time = time.perf_counter()
-    touple = pyf.Grid_creator.load_pickle(f'{path}/wfarms/{case}.pkl.gz')
-    array_graph,Data,cable_types,final_polygon =touple
 
-    
-    grid, res = pyf.Create_grid_from_turbine_graph(array_graph,Data,cable_types=cable_types,cable_types_allowed=ct,curtailment_allowed=0 ,LCoE=LCoE,MIP_check=False,MIP_solver=MIP_solver,MIP_time=tl,MIP_tee=False,name=case)
-    #model, model_results , timing_info, solver_stats= pyf.Optimal_L_CSS_gurobi(grid,OPEX=True,NPV=True,n_years=25,Hy=FLH,discount_rate=WACC,tee=False,time_limit=tl)
-    
+    grid, res = load_case_grid_and_geo(case)
+    grid.cab_types_allowed = ct
 
     model, summary_results , timing_info, solver_stats,best_i= pyf.sequential_CSS(grid,NPV=True,n_years=25,Hy=FLH,discount_rate=WACC,ObjRule=obj,MIP_solver=MIP_solver,CSS_L_solver='gurobi',CSS_NL_solver='bonmin',max_iter= None,time_limit=tl,NL=NL,tee=tee,fs=fs)
     lines_active_config = {line.lineNumber: line.active_config for line in grid.lines_AC_ct}
@@ -45,15 +39,19 @@ def run_case(case,MIP_solver='gurobi'):
     cable_length = summary_results['cable_length'][best_i]
     path_time = timing_info['Paths']
     css_time = timing_info['CSS']
-    crossing = len(Data['crossing_pairs'])    
+    crossing = len(getattr(grid, 'crossing_groups', []))
+    edges = len(getattr(grid, 'lines_AC_ct', []))
+    turbines = len(getattr(grid, 'RenSources', []))
+    substations = sum(1 for n in getattr(grid, 'nodes_AC', []) if getattr(n, 'type', None) == 'Slack')
         
     total_time = time.perf_counter() - start_time
     
-    #pyf.plot_folium(grid,name=f'{case}',show=True,polygon=final_polygon)
-    return i, total_time, array_graph.number_of_edges(), array_graph.number_of_nodes()-len(Data['turbine']),len(Data['turbine']),obj_value,path_time,css_time,summary_results,crossing,cable_length
+    # pyf.plot_folium(grid, name=f'{case}', show=True, polygon=grid.dev_polygon, linestrings=grid.export_cables)
+    return i, total_time, edges, substations, turbines, obj_value, path_time, css_time, summary_results, crossing, cable_length
 
 def run_test():
-    """Test CIGRE B4 optimal power flow."""
+    
+    mip_solver = MIP_solver
     try:
         import dill
     except ImportError:
@@ -71,9 +69,9 @@ def run_test():
             raise ImportError("Gurobi solver not available")
     except (ImportError, Exception):
         print("Gurobi solver is not available.")
-        MIP_solver = 'glpk'
+        mip_solver = 'glpk'
     for case in cases:
-        i, total_time, edges, subsations, turbines,obj_value,path_time,css_time,summary_results,crossing,cable_length = run_case(case,MIP_solver)
+        i, total_time, edges, subsations, turbines,obj_value,path_time,css_time,summary_results,crossing,cable_length = run_case(case, mip_solver)
         print(f'{case}- iterations {i}, total time {total_time}, edges {edges}, subsations {subsations}, turbines {turbines}, obj_value {obj_value}, path_time {path_time}, css_time {css_time},  crossing {crossing}, cable_length {cable_length}')
     
 if __name__ == "__main__":

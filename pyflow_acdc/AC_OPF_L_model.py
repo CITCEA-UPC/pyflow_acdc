@@ -12,16 +12,18 @@ import time
 
 
 __all__ = [
-    'OPF_create_LModel_ACDC',
+    'OPF_create_LModel_AC',
     'ExportACDC_Lmodel_toPyflowACDC',
 ]
 
 
-def OPF_create_LModel_ACDC(model,grid,TEP=False):
+def OPF_create_LModel_AC(model,grid,TEP=False):
     from .ACDC_OPF import Translate_pyf_OPF 
     
     
-    [AC_info,DC_info,Conv_info,Price_Zone_info,gen_info]=Translate_pyf_OPF(grid)
+    opf_data = Translate_pyf_OPF(grid)
+    AC_info = opf_data['AC_info']
+    gen_info = opf_data['gen_info']
    
     Generation_variables(model,grid,gen_info,TEP)
 
@@ -31,7 +33,7 @@ def OPF_create_LModel_ACDC(model,grid,TEP=False):
     if TEP:
         TEP_variables(model,grid)
     else:
-        TEP_parameters(model,grid,AC_info,DC_info,Conv_info)
+        TEP_parameters(model,grid)
 
 
     AC_constraints(model,grid,AC_info)
@@ -39,12 +41,14 @@ def OPF_create_LModel_ACDC(model,grid,TEP=False):
     
 
 def Generation_variables(model,grid,gen_info,TEP):
-    gen_AC_info,gen_DC_info,P_renSource,lista_rs = gen_info
+    gen_AC_info, gen_DC_info, gen_rs_info = gen_info
     lf,qf,fc,np_gen,lista_gen = gen_AC_info
     lf_DC,qf_DC,fc_DC,np_gen_DC,lista_gen_DC = gen_DC_info
+    P_renSource, np_rsgen, lista_rs = gen_rs_info
     
     model.ren_sources= pyo.Set(initialize=lista_rs)
     model.P_renSource = pyo.Param(model.ren_sources,initialize=P_renSource,mutable=True)
+    model.np_rsgen = pyo.Param(model.ren_sources,initialize=np_rsgen,mutable=True)
 
     def gamma_bounds(model,rs):
         ren_source= grid.RenSources[rs]
@@ -266,7 +270,7 @@ def AC_constraints(model,grid,AC_info):
     
     def Gen_PREN_rule(model,node):
        nAC = grid.nodes_AC[node]
-       P_gen = sum(model.P_renSource[rs.rsNumber]*model.gamma[rs.rsNumber] for rs in nAC.connected_RenSource)                  
+       P_gen = sum(model.P_renSource[rs.rsNumber]*model.gamma[rs.rsNumber]*model.np_rsgen[rs.rsNumber] for rs in nAC.connected_RenSource)                  
        return  model.PGi_ren[node] ==   P_gen
    
     model.Gen_PREN_constraint =pyo.Constraint(model.nodes_AC, rule=Gen_PREN_rule)
@@ -539,20 +543,22 @@ def AC_constraints(model,grid,AC_info):
     
    
     
-def TEP_parameters(model,grid,AC_info,DC_info,Conv_info):
+def TEP_parameters(model,grid):
     
     
     
     from .ACDC_Static_TEP import get_TEP_variables
 
-    conv_var,DC_line_var,AC_line_var,gen_var = get_TEP_variables(grid)
+    tep_vars = get_TEP_variables(grid)
 
-    NumConvP,NumConvP_i,NumConvP_max,S_limit_conv = conv_var
-    P_lineDC_limit,NP_lineDC,NP_lineDC_i,NP_lineDC_max,Line_length = DC_line_var
-    NP_lineAC,NP_lineAC_i,NP_lineAC_max,Line_length,REC_branch,ct_ini = AC_line_var
-    np_gen,np_gen_max,np_gen_DC,np_gen_max_DC = gen_var
-
+    # Extract AC line variables
+    NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
+    REC_branch = tep_vars['ac_lines']['REC_branch']
+    ct_ini = tep_vars['ac_lines']['ct_ini']
     
+    # Extract generator variables
+    np_gen = tep_vars['generators']['np_gen']
+        
     model.np_gen = pyo.Param(model.gen_AC,initialize=np_gen)
     if grid.TEP_AC:    
         model.NumLinesACP = pyo.Param(model.lines_AC_exp ,initialize=NP_lineAC)    
@@ -570,12 +576,19 @@ def TEP_variables(model,grid):
 
     from .ACDC_Static_TEP import get_TEP_variables
 
-    conv_var,DC_line_var,AC_line_var,gen_var = get_TEP_variables(grid)
+    tep_vars = get_TEP_variables(grid)
 
-    NumConvP,NumConvP_i,NumConvP_max,S_limit_conv = conv_var
-    P_lineDC_limit,NP_lineDC,NP_lineDC_i,NP_lineDC_max,Line_length = DC_line_var
-    NP_lineAC,NP_lineAC_i,NP_lineAC_max,Line_length,REC_branch,ct_ini = AC_line_var
-    np_gen,np_gen_max,np_gen_DC,np_gen_max_DC = gen_var    
+    
+    # Extract AC line variables
+    NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
+    NP_lineAC_i = tep_vars['ac_lines']['NP_lineAC_i']
+    NP_lineAC_max = tep_vars['ac_lines']['NP_lineAC_max']
+    REC_branch = tep_vars['ac_lines']['REC_branch']
+    ct_ini = tep_vars['ac_lines']['ct_ini']
+    
+    # Extract generator variables
+    np_gen = tep_vars['generators']['np_gen']
+    np_gen_max = tep_vars['generators']['np_gen_max']
 
     
     "TEP variables"
@@ -642,7 +655,6 @@ def ExportACDC_Lmodel_toPyflowACDC(model,grid, solver_results=None, tee=False):
     Args:
         model: Pyomo model
         grid: Grid object
-        Price_Zones: Price zone information
         TEP: Transmission expansion planning flag
         solver_results: Solver results object (optional, for checking termination condition)
         tee: Boolean to control printing output

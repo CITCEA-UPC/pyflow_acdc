@@ -58,6 +58,21 @@ Cross-sectional time series
 
        pyf.TS_ACDC_PF(grid, start=1, end=24)
 
+Simple Time-Series Power Flow
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: Time_series_PF(grid)
+
+   Runs time-series power flow using the configured grid time-series inputs.
+
+Grid Data Update Helper
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: update_grid_data(grid, ts, idx, price_zone_restrictions=False, use_clusters=False, n_clusters=None)
+
+   Internal helper that applies one time-step (or one clustered state) to grid
+   data before solving PF/OPF routines.
+
 Optimal Power Flow Time Series
 ------------------------------
 
@@ -140,11 +155,11 @@ Cross-sectional time series
        end = 6000
        obj = {'Energy_cost': 1}
 
-       market_prices_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
+       market_prices_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_marketPrices_data_sd2024.csv"
        TS_MK = pd.read_csv(market_prices_url)
        pyf.add_TimeSeries(grid,TS_MK)
 
-       wind_load_url = "https://raw.githubusercontent.com/BernardoCV/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
+       wind_load_url = "https://raw.githubusercontent.com/CITCEA-UPC/pyflow_acdc/main/examples/NS_MTDC_TS/NS_TS_WL_data2024.csv"
        TS_wl = pd.read_csv(wind_load_url)
        pyf.add_TimeSeries(grid,TS_wl)
 

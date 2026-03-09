@@ -63,7 +63,7 @@ Install from PyPI:
 pip install pyflow-acdc
 ```
 
-**Requirements:** Python 3.9 or higher
+**Requirements:** Python 3.10 or higher
 
 ### For Users
 To run examples, download the folder to your repository including the csv folders.
@@ -79,7 +79,7 @@ To run examples, download the folder to your repository including the csv folder
 
 2. Clone the repository:
 ```bash
-git clone https://github.com/BernardoCV/pyflow_acdc.git
+git clone https://github.com/CITCEA-UPC/pyflow_acdc.git
 cd pyflow_acdc
 ```
 

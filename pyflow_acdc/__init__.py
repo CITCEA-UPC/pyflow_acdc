@@ -8,8 +8,9 @@ import importlib.util
 
 # Core imports - required modules
 from .Results_class import *
-from .Class_editor import *
-from .Grid_creator import *
+from .grid_modifications import *
+from .grid_analysis import *
+from .grid_creator import *
 from .Classes import *
 from .Export_files import *
 from .Time_series import *
@@ -38,7 +39,7 @@ __all__ = [
     'add_DCDC_converter',
     'add_gen',
     'add_gen_DC',
-    'add_extGrid',
+    'add_extgrid',
     'add_RenSource',
     'add_generators',
     
@@ -53,12 +54,14 @@ __all__ = [
     
     #Add investment series
     'add_inv_series',
+    'add_gen_mix_limits',
     
     # Grid Creation and Import
     'Create_grid_from_data',
     'Create_grid_from_mat',
     'Create_grid_from_turbine_graph',
     'Extend_grid_from_data',
+    'Create_grid_from_pickle',
     
     # Line Modifications
     'change_line_AC_to_expandable',
@@ -78,7 +81,11 @@ __all__ = [
     'cart2pol',
     'pol2cartz',
     'cartz2pol',
+    'import_orbit_cables',
+    'current_fuel_type_distribution',
     'initialize_pyflowacdc',
+    'create_inv_csv_template',
+    'create_gen_limit_csv_template',
     
     # Power Flow
     'AC_PowerFlow',
@@ -93,8 +100,6 @@ __all__ = [
     'update_grid_data',
     
     # Export
-    'export_results_to_excel',
-    'export_OPF_results_to_excel',
     'save_grid_to_file',
     'save_grid_to_matlab',
     'save_pickle',
@@ -107,13 +112,13 @@ __all__ = [
     'plot_TS_res',
     'save_network_svg',
     'plot_model_feasebility',
+    'plot_3D',
     
     # Market Analysis
     'price_zone_data_pd',
     'price_zone_coef_data',
     'plot_curves',
     'clean_entsoe_data',
-    'update_grid_price_zone_data',
 ]
 
 # Try to import OPF module if pyomo is available
@@ -123,7 +128,7 @@ try:
     # but we need to add them to __all__ only if OPF is available
     __all__.extend([
         'Optimal_PF', 'Optimal_L_PF', 'pyomo_model_solve', 'OPF_obj', 'OPF_line_res',
-        'OPF_price_priceZone', 'OPF_conv_results', 'Translate_pyf_OPF',
+        'OPF_price_priceZone', 'Translate_pyf_OPF',
         'TS_ACDC_OPF', 'TS_ACDC_OPF_parallel', 'results_TS_OPF'
     ])
     HAS_OPF = True
@@ -145,7 +150,7 @@ try:
     # Array_OPT depends on both OPF and Static_TEP modules
     try:
         from .Array_OPT import *
-        __all__.extend(['simple_CSS', 'sequential_CSS', 'MIP_path_graph'])
+        __all__.extend(['simple_CSS', 'sequential_CSS', 'MIP_path_graph', 'simple_assign_cable_types'])
     except ImportError:
         pass
     
@@ -153,8 +158,13 @@ except ImportError:
     HAS_OPF = False
 
 try:
-    from .ACDC_Dynamic_TEP import *
-    __all__.extend(['multi_period_TEP', 'multi_period_MS_TEP'])
+    from .ACDC_MultiPeriod_TEP import *
+    __all__.extend([
+        'multi_period_transmission_expansion',
+        'multi_period_MS_TEP',
+        'export_and_save_inv_period_svgs',
+        'run_opf_for_investment_period',
+    ])
 except ImportError:
     pass
     
@@ -174,10 +184,17 @@ except ImportError:
     
 try:
     from .AC_L_CSS_gurobi import *
-    __all__.extend(['Optimal_L_CSS_gurobi', 'test_master_problem'])
+    __all__.extend(['Optimal_L_CSS_gurobi'])
     HAS_AC_L_CSS_GUROBI = True
 except ImportError:
     HAS_AC_L_CSS_GUROBI = False
+
+try:
+    from .AC_L_CSS_ortools import *
+    __all__.extend(['Optimal_L_CSS_ortools'])
+    HAS_AC_L_CSS_ORTOOLS = True
+except ImportError:
+    HAS_AC_L_CSS_ORTOOLS = False
 
 try:
     from .Mapping import *

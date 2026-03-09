@@ -78,7 +78,7 @@ Converted to PyFlowACDC format from
 
 """
 
-def case39(TEP=False,exp='All',N_b=0,N_i=1,N_max=3,Increase=1,kappa=0.5):       
+def case39(TEP=False,exp='All',N_b=1,N_i=1,N_max=5,Increase=1,kappa=0.5):       
     
     S_base=100
     

@@ -75,7 +75,7 @@ Interactive map
 
        grid,res = pyf.NS_MTDC()
 
-       pyf.OPF_ACDC(grid)
+       pyf.Optimal_PF(grid)
 
        pyf.plot_folium(grid)
 
@@ -92,6 +92,6 @@ Interactive map
 
        grid,res = pyf.NS_MTDC()
 
-       pyf.OPF_ACDC(grid)
+       pyf.Optimal_PF(grid)
 
        pyf.plot_folium(grid,ant_path='All')

@@ -1,0 +1,26 @@
+# Cable specifications
+# These cables are meerly for academic and testing purposes    
+# Units:
+#   - Resistance: ohm/km
+#   - Inductance: mH/km
+#   - Capacitance: µF/km
+#   - Conductance: µS/km
+#   - Current rating: A
+#   - Power rating: MVA
+#   - Nominal voltage: kV
+#   - conductor_size: mm^2
+#   - Cost_per_km: EUR/km
+#   Cost are only to be used for academic purposes as they do not reflect the real cost of the cables
+#   - Type: AC or DC
+CIGRE_B4_145kV:
+  R_Ohm_km: 0.0843
+  L_mH_km: 0.2526
+  C_uF_km: 0.1837
+  G_uS_km: 0.041
+  A_rating: 715.0
+  MVA_rating: 179.57036747470335
+  Nominal_voltage_kV: 145.0
+  conductor_size: null
+  Cost_per_km: 0
+  Type: AC
+  Reference: CIGRE B4

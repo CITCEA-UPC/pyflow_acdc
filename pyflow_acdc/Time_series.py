@@ -13,7 +13,7 @@ from scipy import stats as st
 
 import time
 
-from .Class_editor import analyse_grid, grid_state
+from .grid_analysis import analyse_grid, grid_state
 from .ACDC_PF import AC_PowerFlow, DC_PowerFlow, ACDC_sequential 
 
 
@@ -511,13 +511,18 @@ def TS_ACDC_OPF_parallel(grid,start=1,end=99999,obj=None ,price_zone_restriction
 
                 
 def _modify_parameters(grid,model,Price_Zones):
-    [AC_info,DC_info,_,Price_Zone_info,gen_info]=Translate_pyf_OPF(grid,Price_Zones=Price_Zones)    
+    opf_data = Translate_pyf_OPF(grid,Price_Zones=Price_Zones)
+    AC_info = opf_data['AC_info']
+    DC_info = opf_data['DC_info']
+    Price_Zone_info = opf_data['Price_Zone_info']
+    gen_info = opf_data['gen_info']    
     ACmode = grid.ACmode
     DCmode = grid.DCmode
     AC_Lists, AC_nodes_info, AC_lines_info,EXP_info,REP_info,CT_info = AC_info
     
-    gen_AC_info,gen_DC_info,P_renSource,lista_rs = gen_info
+    gen_AC_info, gen_DC_info, gen_rs_info = gen_info
     lf,qf,fc,np_gen,lista_gen = gen_AC_info
+    P_renSource, np_rsgen, lista_rs = gen_rs_info
     
     
     # lista_nodos_AC, lista_lineas_AC,lista_gen,lista_rs, AC_slack, AC_PV = AC_Lists
@@ -533,7 +538,7 @@ def _modify_parameters(grid,model,Price_Zones):
             
         # Conv_Lists, Conv_Volt = Conv_info
         
-        # lista_conv,NumConvP_i = Conv_Lists
+        # lista_conv,np_conv_i = Conv_Lists
         # u_c_min,u_c_max,S_limit_conv,P_conv_limit = Conv_Volt
     
     _,Price_Zone_lim = Price_Zone_info   
@@ -557,7 +562,7 @@ def _modify_parameters(grid,model,Price_Zones):
             for idx, val in lf.items():
                 model.lf[idx].set_value(val)
         if DCmode:
-            for idx, val in price_dc.items():
+            for idx, val in price_dc.items():   
                  model.price_dc[idx].set_value(val)    
             for idx, val in lf_DC.items():
                 model.lf_dc[idx].set_value(val)
@@ -580,7 +585,7 @@ def _modify_parameters(grid,model,Price_Zones):
     
     
                 
-def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=False,expand=False,print_step=False,limit_flow_rate=True,use_clusters=False,solver='ipopt'):
+def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=False,expand=False,print_step=False,limit_flow_rate=True,use_clusters=False,solver='ipopt',obj_scaling=1.0):
     idx = start-1
     TS_len = len(grid.Time_series[0].data)
     total_solve_time  = 0
@@ -650,7 +655,10 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
         initial_values[var_obj.name] = {index: var_obj[index].value for index in var_obj}
 
     obj_rule= OPF_obj(model,grid,weights_def,OnlyGen=True)
+    if obj_scaling != 1.0:
+        obj_rule = obj_rule / obj_scaling
     model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
 
     if expand:
         for price_zone in grid.Price_Zones:

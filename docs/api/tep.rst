@@ -3,7 +3,7 @@ Transmission Expansion Planning Module
 
 This module provides functions for transmission expansion planning (TEP) analysis of AC/DC hybrid power systems. [1]_
 
-Functions are found in pyflow_acdc.ACDC_TEP
+Functions are found in pyflow_acdc.ACDC_Static_TEP
 
 Transmission Expansion Planning
 -------------------------------
@@ -136,7 +136,53 @@ Running multiple scenario based transmission expansion planning
 
    .. code-block:: python
 
-       model, results, timing, stats, ts_results = pyf.transmission_expansion_TS(grid)
+       model, results, timing, stats, ts_results = pyf.multi_scenario_TEP(grid)
+
+Linear and Sensitivity Utilities
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: linear_transmission_expansion(grid, NPV=True, n_years=25, Hy=8760, discount_rate=0.02, ObjRule=None, solver='gurobi', time_limit=300, tee=False, export=True, fs=False, obj_scaling=1.0)
+
+   Linearized TEP workflow suitable for faster studies and large sweeps.
+
+.. py:function:: alpha_paretto(grid, steps, ObjRule, NPV=True, n_years=25, Hy=8760, discount_rate=0.02, solver='bonmin', time_limit=None, tee=False, save_name=None, obj_scaling=1.0)
+
+   Computes Pareto-like trade-off points by sweeping alpha-style objective mixing.
+
+.. py:function:: rate_sensitivity(grid, steps, ObjRule, min_rate=0.0, max_rate=0.1, NPV=True, n_years=25, Hy=8760, solver='bonmin', time_limit=None, tee=False, obj_scaling=1.0)
+
+   Runs discount-rate sensitivity for TEP objective outcomes.
+
+.. py:function:: kappa_sensitivity(grid, steps, ObjRule, min_kappa=0.0, max_kappa=1.0, NPV=True, n_years=25, Hy=8760, discount_rate=0.02, solver='bonmin', time_limit=None, tee=False, obj_scaling=1.0)
+
+   Runs kappa-weight sensitivity for TEP objective outcomes.
+
+.. py:function:: comprehensive_sensitivity_analysis(grid, ObjRule, alpha_steps=None, rate_steps=None, kappa_steps=None, alpha_range=(0.0, 1.0), rate_range=(0.01, 0.1), kappa_range=(0.0, 1.0), n_years=25, Hy=8760, discount_rate=0.02, solver='bonmin', time_limit=None, tee=False, obj_scaling=1.0)
+
+   Convenience wrapper to execute multiple TEP sensitivity studies.
+
+Element Expansion Helpers
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. py:function:: expand_elements_from_pd(grid, exp_elements)
+
+   Applies expansion definitions from a pandas table.
+
+.. py:function:: repurpose_element_from_pd(grid, rec_elements)
+
+   Applies reconductoring/repurposing definitions from a pandas table.
+
+.. py:function:: update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=None)
+
+   Updates expansion-related attributes of a TEP-enabled element.
+
+.. py:function:: Expand_element(grid, name, n_b=None, n_i=None, n_max=None, life_time=None, base_cost=None, per_unit_cost=None, exp=None, update_grid=True, n_inv_max=None, **legacy_kwargs)
+
+   Enables or updates one element for TEP investment modeling.
+
+.. py:function:: Translate_pd_TEP(grid)
+
+   Builds pandas summaries from solved TEP model variables.
 
 
 .. _TEP_obj_functions:
