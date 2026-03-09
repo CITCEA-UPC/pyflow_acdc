@@ -76,6 +76,8 @@ Gurobi = ["gurobipy"]
 
 plotting = ["kaleido"]
 
+tests = ["pytest"]
+
 All = ["folium",
        "branca",
        "pyomo",
