@@ -6,6 +6,12 @@ Tests the "Creating a Grid" section in usage.rst
 
 import pyflow_acdc as pyf
 
+
+def test_docs_basic_grid_creation():
+    """Pytest entrypoint for docs basic grid creation example."""
+    run_test()
+
+
 def run_test():
     """Test the basic grid creation example from documentation."""
     
