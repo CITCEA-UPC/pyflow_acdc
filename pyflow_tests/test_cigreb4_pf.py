@@ -1,17 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Dec 20 10:55:43 2023
-
-@author: BernardoCastro
-
-This grid is based on the CIGRE B4 test system. DCDC converters have been simplified to a load and a gain in respective nodes.
+This grid is based on the CIGRE B4 test system. DCDC converters have been
+simplified to a load and a gain in respective nodes.
 """
 
 import time
+from pathlib import Path
+
 import pandas as pd
 import pyflow_acdc as pyf
 
-from pathlib import Path
 
 def run_test():
     """Test CIGRE B4 power flow."""
@@ -56,6 +54,12 @@ def run_test():
 
     print ('------')
     print(f'Time elapsed : {elapsed_time}')
+
+
+def test_cigreb4_pf():
+    """Pytest entrypoint for CIGRE B4 power flow test."""
+    run_test()
+
 
 if __name__ == "__main__":
     run_test()

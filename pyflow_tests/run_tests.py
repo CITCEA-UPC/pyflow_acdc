@@ -3,7 +3,7 @@ from pathlib import Path
 import importlib.util
 from io import StringIO
 import contextlib
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import warnings
 import re
 import time
@@ -19,10 +19,14 @@ ALL_CASES = [
     'test_docs_power_flow.py',
     'test_docs_opf_quick.py',
     'test_docs_opf_detailed.py',
+    'test_example_grids_smoke.py',
+    'test_examples_folder_smoke.py',
+    'test_model_build_only.py',
     
     #Power Flow
-    'grid_creation.py',
-    'CigreB4_PF.py',
+    'test_grid_creation.py',
+    'test_cigreb4_pf.py',
+
 
     #OPF
     'DC_OPF.py',
@@ -32,7 +36,7 @@ ALL_CASES = [
     'case24_3zones_acdc_OPF.py',
    
     #loading matlab files
-    'matlab_loader.py',
+    'test_matlab_loader.py',
     #folium
     'folium_test.py',
     
@@ -53,14 +57,25 @@ ALL_CASES = [
     'sequential_array_ortools.py'
 ]
 
+# Solver-dependent OPF tests (opt-in, not in default/CI run)
+OPF_CASES = [
+    'DC_OPF.py',
+    'CigreB4_OPF.py',
+    'case39ac_OPF.py',
+    'case39acdc_OPF.py',
+    'case24_3zones_acdc_OPF.py',
+]
+
 # Quick tests (basic functionality only)
 QUICK_CASES = [
     'test_docs_basic_grid_creation.py',
     'test_docs_add_components.py',
     'test_docs_power_flow.py',
-    'grid_creation.py',
-    'CigreB4_PF.py',
-    'matlab_loader.py',
+    'test_grid_creation.py',
+    'test_cigreb4_pf.py',
+    'test_matlab_loader.py',
+    'test_example_grids_smoke.py',
+    'test_model_build_only.py'
 ]
 
 TEP_CASES = [
@@ -71,9 +86,9 @@ TEP_CASES = [
     'array_sizing.py',
 ]
 
-def run_test_case(case: str, show_output: bool = False) -> tuple[bool, str, List[str]]:
+def run_test_case(case: str, show_output: bool = False) -> Tuple[bool, str, List[str], float]:
     
-    """Run a test case and return (success, error_message, warnings)."""
+    """Run a test case and return (success, error_message, warnings, elapsed_time)."""
     if show_output:
         print(f"\nRunning test case: {case}")
         print("-" * 70)
@@ -84,7 +99,7 @@ def run_test_case(case: str, show_output: bool = False) -> tuple[bool, str, List
     if spec is None or spec.loader is None:
         error_msg = f"Error: Could not load module {case}"
         print(error_msg)
-        return False, error_msg, []
+        return False, error_msg, [], 0
         
     module = importlib.util.module_from_spec(spec)
     
@@ -133,6 +148,7 @@ def main():
     show_output = "--show-output" in args
     quick_mode = "--quick" in args
     tep_mode = "--tep" in args
+    opf_mode = "--opf" in args
     
     # Choose which tests to run
     if quick_mode:
@@ -142,6 +158,9 @@ def main():
     elif tep_mode:
         CASES = TEP_CASES
         print("Running TEP tests")
+    elif opf_mode:
+        CASES = OPF_CASES
+        print("Running OPF tests (solver-dependent)")
     else:
         CASES = ALL_CASES
         print("Running all tests")
@@ -151,7 +170,7 @@ def main():
         print("Showing full output for each test case")
     print("-" * 70)
     
-    results: Dict[str, tuple[bool, str, List[str]]] = {}
+    results: Dict[str, Tuple[bool, str, List[str], float]] = {}
     
     for case in CASES:
         success, error_msg, warnings, elapsed_time = run_test_case(case, show_output)

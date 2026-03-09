@@ -1,5 +1,6 @@
 import pyflow_acdc as pyf
 
+
 def run_test():
     """Test grid creation functionality."""
 
@@ -47,6 +48,12 @@ def run_test():
     pyf.ACDC_sequential(grid)
 
     res.All()
+
+
+def test_grid_creation():
+    """Pytest entrypoint for grid creation test."""
+    run_test()
+
 
 if __name__ == "__main__":
     run_test()

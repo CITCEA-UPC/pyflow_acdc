@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-Created on Mon Nov 11 16:53:11 2024
-
-@author: BernardoCastro
-"""
 
 import pyflow_acdc as pyf
 from pathlib import Path
+
 
 def matlab_loader():
 
@@ -34,6 +30,7 @@ def matlab_loader():
     print(model_res)
     model.obj.display()
 
+
 def run_test():
     """Test MATLAB file loading functionality."""
     try:
@@ -43,6 +40,12 @@ def run_test():
         return
 
     matlab_loader()
+
+
+def test_matlab_loader():
+    """Pytest entrypoint for MATLAB loader test."""
+    run_test()
+
 
 if __name__ == "__main__":
     run_test()
