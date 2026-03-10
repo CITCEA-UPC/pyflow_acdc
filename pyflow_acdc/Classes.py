@@ -2262,6 +2262,8 @@ class Size_selection(Line_AC):
             self.X = self.X_list[self._active_config]
             self.G = self.G_list[self._active_config]
             self.B = self.B_list[self._active_config]
+            self.Z = self.R + self.X * 1j
+            self.Y = self.G + self.B * 1j
             self.MVA_rating = self.MVA_rating_list[self._active_config]
             self.Ybus_branch = self.Ybus_list[self._active_config]  # Use stored matrix
             self.max_active_config = self.MVA_rating_list.index(max(self.MVA_rating_list))
@@ -2272,6 +2274,8 @@ class Size_selection(Line_AC):
         self.X = 0
         self.G = 0
         self.B = 0
+        self.Z = 0 + 0j
+        self.Y = 0 + 0j
         self.MVA_rating = 0
         self.Ybus_branch = np.zeros((2, 2), dtype=complex)  # Zero Ybus matrix
         
