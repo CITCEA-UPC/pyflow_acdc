@@ -1895,8 +1895,10 @@ def plot_3D(grid, show=True, save_path=None, coloring='cable_type',
             cfg = getattr(line, 'active_config', 0)
             color = cable_type_colors[cfg % len(cable_type_colors)]
             width = line_width
-            legend_group = f'type_{cfg}'
-            legend_name = f'Cable type {cfg}'
+            cable_types = getattr(line, 'cable_types', None) or getattr(line, '_cable_types', [])
+            cable_type_name = cable_types[cfg] if 0 <= cfg < len(cable_types) else f'index {cfg}'
+            legend_group = f'type_{cable_type_name}'
+            legend_name = cable_type_name
             show_legend = cfg not in used_configs
             used_configs.add(cfg)
 
