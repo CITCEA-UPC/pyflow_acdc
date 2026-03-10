@@ -39,7 +39,8 @@ ALL_CASES = [
     'test_matlab_loader.py',
     #folium
     'folium_test.py',
-    
+    #plot 
+    'test_plot.py',
     #Transmission Expansion
     'case24_OPF.py',
     #DC
@@ -75,7 +76,8 @@ QUICK_CASES = [
     'test_cigreb4_pf.py',
     'test_matlab_loader.py',
     'test_example_grids_smoke.py',
-    'test_model_build_only.py'
+    'test_model_build_only.py',
+    'test_plot.py',
 ]
 
 TEP_CASES = [

@@ -193,3 +193,16 @@ def test_moray_east_assign_and_plot_outputs(tmp_path):
     assert Path(f"{svg_prefix}.svg").exists(), "SVG export was not created."
     assert html_3d_path.exists(), "3D HTML export was not created."
     assert Path(f"{folium_prefix}.html").exists(), "Folium HTML export was not created."
+
+
+def run_test():
+    """Run plotting tests from the legacy run_tests.py harness."""
+    exit_code = pytest.main([__file__, "-q"])
+    if exit_code == 0:
+        print("tests_plot passed")
+    else:
+        print("tests_plot failed")
+
+
+if __name__ == "__main__":
+    run_test()
