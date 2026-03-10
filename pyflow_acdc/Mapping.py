@@ -482,7 +482,8 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
         
         for _, row in gdf.iterrows():
             
-            coords = [(lat, lon) for lon, lat in row.geometry.coords]  # Folium needs (lat, lon) order
+            # Support both 2D (x,y) and 3D (x,y,z) coordinates.
+            coords = [(pt[1], pt[0]) for pt in row.geometry.coords if len(pt) >= 2]  # Folium needs (lat, lon) order
             
             if ant and row["ant_viable"]:
                 if row["Direction"] == "to":

@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from shapely.geometry import LineString, MultiPolygon, Polygon, shape
 
 from .grid_creator import Create_grid_from_pickle
 
@@ -57,11 +58,20 @@ def _find_geojson(case_name):
 
 def _parse_geojson_context(geojson_path):
     if geojson_path is None:
-        return None, None
+        return [], [], [], []
 
     payload = json.loads(geojson_path.read_text(encoding="utf-8"))
-    polygon = None
+    dev_area_polygons = []
+    exclusion_polygons = []
+    soft_exclusion_polygons = []
     export_lines = []
+
+    def _as_polygon_list(geom_obj):
+        if isinstance(geom_obj, Polygon):
+            return [geom_obj]
+        if isinstance(geom_obj, MultiPolygon):
+            return list(geom_obj.geoms)
+        return []
 
     for feature in payload.get("features", []):
         props = feature.get("properties", {})
@@ -70,15 +80,32 @@ def _parse_geojson_context(geojson_path):
         geom_type = geom.get("type")
         coords = geom.get("coordinates")
 
-        if my_type == "pixel" and geom_type == "Polygon" and coords:
-            polygon = coords[0]
-        elif my_type == "export_cable":
-            if geom_type == "LineString" and coords:
-                export_lines.append(coords)
-            elif geom_type == "MultiLineString" and coords:
-                export_lines.extend(coords)
+        if not coords:
+            continue
 
-    return polygon, export_lines
+        try:
+            geom_obj = shape(geom)
+        except Exception:
+            continue
+
+        if my_type == "pixel":
+            pixel_parts = _as_polygon_list(geom_obj)
+            dev_area_polygons.extend(pixel_parts)
+            # Match create_array_graph_from_geojson behavior: interior rings act as exclusions.
+            for poly in pixel_parts:
+                for interior in poly.interiors:
+                    exclusion_polygons.append(Polygon(interior))
+        elif my_type == "exclusion_zone":
+            exclusion_polygons.extend(_as_polygon_list(geom_obj))
+        elif my_type == "exclusion_zone_soft":
+            soft_exclusion_polygons.extend(_as_polygon_list(geom_obj))
+        elif my_type == "export_cable":
+            if geom_type == "LineString":
+                export_lines.append(geom_obj if isinstance(geom_obj, LineString) else LineString(coords))
+            elif geom_type == "MultiLineString":
+                export_lines.extend(list(geom_obj.geoms))
+
+    return dev_area_polygons, export_lines, exclusion_polygons, soft_exclusion_polygons
 
 
 def load_case_grid_and_geo(case_name, source_tag="gebco"):
@@ -86,11 +113,13 @@ def load_case_grid_and_geo(case_name, source_tag="gebco"):
     grid, res = Create_grid_from_pickle(str(grid_pickle), use_dill=True)
 
     geojson_path = _find_geojson(case_name)
-    polygon, export_lines = _parse_geojson_context(geojson_path)
+    dev_area_polygons, export_lines, exclusion_zones, soft_exclusion_zones = _parse_geojson_context(geojson_path)
 
     # Attach geometry context for plotting helpers.
-    grid.dev_polygon = polygon
+    grid.dev_polygon = dev_area_polygons
     grid.export_cables = export_lines
+    grid.exclusion_zones = exclusion_zones
+    grid.soft_exclusion_zones = soft_exclusion_zones
     
 
     return grid, res
