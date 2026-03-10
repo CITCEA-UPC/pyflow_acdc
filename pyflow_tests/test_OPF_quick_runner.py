@@ -31,7 +31,7 @@ FULL_OPF_TEP_CASE_MODULES = [
 
 
 @pytest.mark.parametrize("module_name", FULL_OPF_TEP_CASE_MODULES)
-def test_opf_tep_lopf_run_test_entrypoints_quick_fake_solve(module_name, monkeypatch):
+def test_opf_tep_lopf_run_test_entrypoints_quick_fake_solve(module_name, monkeypatch, tmp_path):
     pytest.importorskip("pyomo")
     import pyomo.environ as pyo
 
@@ -41,6 +41,8 @@ def test_opf_tep_lopf_run_test_entrypoints_quick_fake_solve(module_name, monkeyp
 
     # Keep in-file dependency guards from short-circuiting quick fake runs.
     monkeypatch.setattr(pyo, "SolverFactory", lambda *args, **kwargs: _AlwaysAvailableSolver())
+    # Keep generated files (e.g. default pyflow output folders/files) out of repo tree.
+    monkeypatch.chdir(tmp_path)
 
     module = importlib.import_module(module_name)
     assert hasattr(module, "run_test"), f"{module_name} does not expose run_test()"
