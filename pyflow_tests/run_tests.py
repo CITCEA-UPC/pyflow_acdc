@@ -10,6 +10,10 @@ import time
 
 # Configuration
 TEST_DIR = Path(__file__).parent
+IGNORED_WARNING_SNIPPETS = [
+    "PytestAssertRewriteWarning",
+    "Module already imported so cannot be rewritten; dash",
+]
 
 # List of test cases to run (in order)
 ALL_CASES = [
@@ -78,6 +82,7 @@ QUICK_CASES = [
     'test_example_grids_smoke.py',
     'test_model_build_only.py',
     'test_plot.py',
+    'test_OPF_quick_runner.py',
 ]
 
 TEP_CASES = [
@@ -129,7 +134,10 @@ def run_test_case(case: str, show_output: bool = False) -> Tuple[bool, str, List
             # Check stdout for explicit warning messages
             for line in stdout_capture.getvalue().split('\n'):
                 if 'Warning' in line or 'warning' in line:
-                    captured_warnings.append(line.strip())
+                    stripped = line.strip()
+                    if any(snippet in stripped for snippet in IGNORED_WARNING_SNIPPETS):
+                        continue
+                    captured_warnings.append(stripped)
             
             stdout_content = stdout_capture.getvalue()
             if 'is not installed' in stdout_content or 'not available' in stdout_content:

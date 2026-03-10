@@ -102,11 +102,49 @@ def case39():
     ]
     lines_AC = pd.DataFrame(lines_AC_data)
 
-    nodes_DC = None
+    nodes_DC_data = [
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '1.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '2.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '3.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '4.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '5.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '6.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '7.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '8.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '9.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None},
+        {'type': 'P', 'Voltage_0': 1.0, 'Power_Gained': 0.0, 'Power_load': 0.0, 'kV_base': 345.0, 'Node_id': '10.0', 'Umin': 0.9, 'Umax': 1.1, 'x_coord': None, 'y_coord': None, 'PZ': None, 'geometry': None}
+    ]
+    nodes_DC = pd.DataFrame(nodes_DC_data)
 
-    lines_DC = None
+    lines_DC_data = [
+        {'fromNode': '1.0', 'toNode': '2.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_1', 'geometry': None},
+        {'fromNode': '2.0', 'toNode': '3.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_2', 'geometry': None},
+        {'fromNode': '1.0', 'toNode': '4.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_3', 'geometry': None},
+        {'fromNode': '2.0', 'toNode': '4.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_4', 'geometry': None},
+        {'fromNode': '2.0', 'toNode': '4.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_5', 'geometry': None},
+        {'fromNode': '1.0', 'toNode': '5.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_6', 'geometry': None},
+        {'fromNode': '5.0', 'toNode': '6.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_7', 'geometry': None},
+        {'fromNode': '5.0', 'toNode': '7.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_8', 'geometry': None},
+        {'fromNode': '7.0', 'toNode': '4.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_9', 'geometry': None},
+        {'fromNode': '4.0', 'toNode': '8.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_10', 'geometry': None},
+        {'fromNode': '8.0', 'toNode': '9.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_11', 'geometry': None},
+        {'fromNode': '8.0', 'toNode': '10.0', 'r': 0.01, 'MW_rating': 100.0, 'kV_base': 345.0, 'Length_km': 1.0, 'Mono_Bi_polar': 'b', 'Line_id': 'L_DC_12', 'geometry': None}
+    ]
+    lines_DC = pd.DataFrame(lines_DC_data)
 
-    Converters_ACDC = None
+    Converters_ACDC_data = [
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '2.0', 'DC_node': '1.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_1', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '9.0', 'DC_node': '2.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_2', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '10.0', 'DC_node': '3.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_3', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '18.0', 'DC_node': '4.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_4', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '26.0', 'DC_node': '5.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_5', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '29.0', 'DC_node': '6.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_6', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '24.0', 'DC_node': '7.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_7', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '14.0', 'DC_node': '8.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_8', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '23.0', 'DC_node': '9.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_9', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None},
+        {'AC_type': 'PQ', 'DC_type': 'P', 'AC_node': '13.0', 'DC_node': '10.0', 'P_AC': -0.6, 'Q_AC': -0.4, 'P_DC': -0.586274, 'T_r': 0.01, 'T_x': 0.01, 'PR_r': 0.01, 'PR_x': 0.01, 'Filter': 0.01, 'Droop': 0.005, 'AC_kV_base': 345.0, 'MVA_rating': 100.0, 'Nconverter': 1.0, 'pol': 1.0, 'Conv_id': 'Conv_10', 'lossa': 1.1033, 'lossb': 0.887, 'losscrect': 2.885, 'losscinv': 2.885, 'Ucmin': 0.9, 'Ucmax': 1.1, 'geometry': None}
+    ]
+    Converters_ACDC = pd.DataFrame(Converters_ACDC_data)
 
     
     # Create the grid

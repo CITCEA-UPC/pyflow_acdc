@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 import pyflow_acdc as pyf
+from pyflow_acdc.Graph_and_plot import update_hovertexts
 from pyflow_acdc.windfarm_loader import load_case_grid_and_geo
 
 
@@ -193,6 +194,25 @@ def test_moray_east_assign_and_plot_outputs(tmp_path):
     assert Path(f"{svg_prefix}.svg").exists(), "SVG export was not created."
     assert html_3d_path.exists(), "3D HTML export was not created."
     assert Path(f"{folium_prefix}.html").exists(), "Folium HTML export was not created."
+
+
+def test_ns_mtdc_generates_hovertexts():
+    grid, _res = pyf.NS_MTDC()
+
+    # Exercise hovertext generation paths on a representative built-in grid.
+    update_hovertexts(grid, "data")
+    update_hovertexts(grid, "inPu")
+    update_hovertexts(grid, "Real")
+
+    assert len(grid.nodes_AC) > 0, "NS_MTDC did not provide AC nodes."
+    assert hasattr(grid.nodes_AC[0], "hover_text") and grid.nodes_AC[0].hover_text
+
+    if getattr(grid, "lines_AC", []):
+        assert hasattr(grid.lines_AC[0], "hover_text") and grid.lines_AC[0].hover_text
+    if getattr(grid, "lines_DC", []):
+        assert hasattr(grid.lines_DC[0], "hover_text") and grid.lines_DC[0].hover_text
+    if getattr(grid, "Converters_ACDC", []):
+        assert hasattr(grid.Converters_ACDC[0], "hover_text") and grid.Converters_ACDC[0].hover_text
 
 
 def run_test():
