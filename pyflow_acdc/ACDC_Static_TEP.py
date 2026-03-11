@@ -1404,7 +1404,8 @@ def get_line_data(t, model, grid):
         for l in grid.lines_DC:
             if l.np_line_opf:
                 ln = l.lineNumber
-                if l.np_line <= 0.00001:
+                n_lines_dc = np.float64(pyo.value(model.scenario_model[t].NumLinesDCP[ln]))
+                if n_lines_dc <= 0.00001:
                     row_data_lines[l.name] = np.nan
                 else:
                     p_to = np.float64(pyo.value(model.scenario_model[t].PDC_to[ln])) * grid.S_base
@@ -1420,14 +1421,15 @@ def get_converter_data(t, model, grid):
     for conv in grid.Converters_ACDC:
         if conv.np_conv_opf:
             cn = conv.ConvNumber
-            if conv.np_conv <= 0.00001:
+            nconv = np.float64(pyo.value(model.scenario_model[t].np_conv[cn]))
+            if nconv <= 0.00001:
                 row_data_conv[conv.name] = np.nan
             else:
                 P_DC = np.float64(pyo.value(model.scenario_model[t].P_conv_DC[conv.Node_DC.nodeNumber])) * grid.S_base
                 P_s  = np.float64(pyo.value(model.scenario_model[t].P_conv_s_AC[cn])) * grid.S_base
                 Q_s  = np.float64(pyo.value(model.scenario_model[t].Q_conv_s_AC[cn])) * grid.S_base
                 S = np.sqrt(P_s**2 + Q_s**2)
-                loading = max(S, abs(P_DC)) / (conv.MVA_max * conv.np_conv) * 100
+                loading = max(S, abs(P_DC)) / (conv.MVA_max * nconv) * 100
                 row_data_conv[conv.name] = np.round(loading, decimals=0)
                 
 
@@ -1456,10 +1458,11 @@ def get_gen_data(t, model, grid):
 
 
 
-def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones):
-    grid.V_AC =np.zeros(grid.nn_AC)
-    grid.Theta_V_AC=np.zeros(grid.nn_AC)
-    grid.V_DC=np.zeros(grid.nn_DC)
+def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,mutate_grid=True):
+    if mutate_grid:
+        grid.V_AC =np.zeros(grid.nn_AC)
+        grid.Theta_V_AC=np.zeros(grid.nn_AC)
+        grid.V_DC=np.zeros(grid.nn_DC)
 
     grid.OPF_run=True  
 
@@ -1534,78 +1537,79 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones)
                 m.PLi_factor = np.float64(sum(grid.Time_series[m.TS_dict['Load']].data[t-1] * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         
     
-    with ThreadPoolExecutor() as executor:
-        # Submit all tasks
-        futures = []
-        futures.extend([executor.submit(process_ac_node, node) for node in grid.nodes_AC])
+    if mutate_grid:
+        with ThreadPoolExecutor() as executor:
+            # Submit all tasks
+            futures = []
+            futures.extend([executor.submit(process_ac_node, node) for node in grid.nodes_AC])
+            
+            if grid.DCmode:
+                futures.extend([executor.submit(process_dc_node, node) for node in grid.nodes_DC])
+            if grid.ACmode and grid.DCmode:
+                futures.extend([executor.submit(process_converter, conv) for conv in grid.Converters_ACDC])
+                
+            if Price_Zones:
+                futures.extend([executor.submit(process_price_zone, m) for m in grid.Price_Zones])
+                
+            futures.extend([executor.submit(process_ren_source, m) for m in grid.RenSources])
+            futures.extend([executor.submit(process_gen, m) for m in grid.Generators])
+            
+            # Wait for all tasks to complete
+            for future in futures:
+                future.result()
+        
+        Pf = np.zeros((grid.nn_AC, 1))
+        Qf = np.zeros((grid.nn_AC, 1))
+        grid.create_Ybus_AC()
+        G = np.real(grid.Ybus_AC_full)
+        B = np.imag(grid.Ybus_AC_full)
+        V = grid.V_AC
+        Theta = grid.Theta_V_AC
+        # Compute differences in voltage angles
+        Theta_diff = Theta[:, None] - Theta
+        
+        # Calculate power flow
+        Pf = (V[:, None] * V * (G * np.cos(Theta_diff) + B * np.sin(Theta_diff))).sum(axis=1)
+        Qf = (V[:, None] * V * (G * np.sin(Theta_diff) - B * np.cos(Theta_diff))).sum(axis=1)
+        
+
+        for node in grid.nodes_AC:
+            i = node.nodeNumber
+            node.P_INJ = Pf[i]
+            node.Q_INJ = Qf[i]
+
+        if grid.TEP_AC:  
+            NumLinesACP_values= {k: np.float64(pyo.value(v)) for k, v in model.NumLinesACP.items()}    
+            for line in grid.lines_AC_exp:
+                line.np_line=NumLinesACP_values[line.lineNumber] 
+        if grid.REC_AC:
+            lines_AC_REP = {k: np.float64(pyo.value(v)) for k, v in model.rec_branch.items()}
+            for line in grid.lines_AC_rec:
+                l = line.lineNumber
+                line.rec_branch = True if lines_AC_REP[l] >= 0.99999 else False
+        if grid.CT_AC:
+            lines_AC_CT = {k: {ct: np.float64(pyo.value(model.ct_branch[k, ct])) for ct in model.ct_set} for k in model.lines_AC_ct}
+            for line in grid.lines_AC_ct:
+                l=line.lineNumber
+                # Check if any conductor type is selected
+                ct_selected = [lines_AC_CT[l][ct] >= 0.90 for ct in model.ct_set]
+                if any(ct_selected):
+                    line.active_config = np.where(ct_selected)[0][0]
+                else:
+                    line.active_config = -1  # or None, or handle appropriately
+                    # This line has no conductor type selected
         
         if grid.DCmode:
-            futures.extend([executor.submit(process_dc_node, node) for node in grid.nodes_DC])
-        if grid.ACmode and grid.DCmode:
-            futures.extend([executor.submit(process_converter, conv) for conv in grid.Converters_ACDC])
-            
-        if Price_Zones:
-            futures.extend([executor.submit(process_price_zone, m) for m in grid.Price_Zones])
-            
-        futures.extend([executor.submit(process_ren_source, m) for m in grid.RenSources])
-        futures.extend([executor.submit(process_gen, m) for m in grid.Generators])
+            NumLinesDCP_values= {k: np.float64(pyo.value(v)) for k, v in model.NumLinesDCP.items()}   
+            for line in grid.lines_DC:
+                line.np_line = NumLinesDCP_values[line.lineNumber]
         
-        # Wait for all tasks to complete
-        for future in futures:
-            future.result()
-    
-    Pf = np.zeros((grid.nn_AC, 1))
-    Qf = np.zeros((grid.nn_AC, 1))
-    grid.create_Ybus_AC()
-    G = np.real(grid.Ybus_AC_full)
-    B = np.imag(grid.Ybus_AC_full)
-    V = grid.V_AC
-    Theta = grid.Theta_V_AC
-    # Compute differences in voltage angles
-    Theta_diff = Theta[:, None] - Theta
-    
-    # Calculate power flow
-    Pf = (V[:, None] * V * (G * np.cos(Theta_diff) + B * np.sin(Theta_diff))).sum(axis=1)
-    Qf = (V[:, None] * V * (G * np.sin(Theta_diff) - B * np.cos(Theta_diff))).sum(axis=1)
-    
 
-    for node in grid.nodes_AC:
-        i = node.nodeNumber
-        node.P_INJ = Pf[i]
-        node.Q_INJ = Qf[i]
-
-    if grid.TEP_AC:  
-        NumLinesACP_values= {k: np.float64(pyo.value(v)) for k, v in model.NumLinesACP.items()}    
-        for line in grid.lines_AC_exp:
-            line.np_line=NumLinesACP_values[line.lineNumber] 
-    if grid.REC_AC:
-        lines_AC_REP = {k: np.float64(pyo.value(v)) for k, v in model.rec_branch.items()}
-        for line in grid.lines_AC_rec:
-            l = line.lineNumber
-            line.rec_branch = True if lines_AC_REP[l] >= 0.99999 else False
-    if grid.CT_AC:
-        lines_AC_CT = {k: {ct: np.float64(pyo.value(model.ct_branch[k, ct])) for ct in model.ct_set} for k in model.lines_AC_ct}
-        for line in grid.lines_AC_ct:
-            l=line.lineNumber
-            # Check if any conductor type is selected
-            ct_selected = [lines_AC_CT[l][ct] >= 0.90 for ct in model.ct_set]
-            if any(ct_selected):
-                line.active_config = np.where(ct_selected)[0][0]
+        for z in grid.RenSource_zones:
+            if clustering:
+                z.PRGi_available = np.float64(sum(grid.Time_series[z.TS_dict['PRGi_available']].data_clustered[n_clusters][t-1] * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)      
             else:
-                line.active_config = -1  # or None, or handle appropriately
-                # This line has no conductor type selected
-    
-    if grid.DCmode:
-        NumLinesDCP_values= {k: np.float64(pyo.value(v)) for k, v in model.NumLinesDCP.items()}   
-        for line in grid.lines_DC:
-            line.np_line = NumLinesDCP_values[line.lineNumber]
-    
-
-    for z in grid.RenSource_zones:
-        if clustering:
-            z.PRGi_available = np.float64(sum(grid.Time_series[z.TS_dict['PRGi_available']].data_clustered[n_clusters][t-1] * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)      
-        else:
-            z.PRGi_available = np.float64(sum(grid.Time_series[z.TS_dict['PRGi_available']].data[t-1] * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
+                z.PRGi_available = np.float64(sum(grid.Time_series[z.TS_dict['PRGi_available']].data[t-1] * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
            
     # Multithreading the time frame processing
     data_rows_PN = []
@@ -1751,8 +1755,9 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones)
     
     
       
-    grid.Line_AC_calc()
-    grid.Line_DC_calc()
+    if mutate_grid:
+        grid.Line_AC_calc()
+        grid.Line_DC_calc()
     
     return TEP_multiScenario_res
 

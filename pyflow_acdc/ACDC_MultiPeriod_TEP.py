@@ -8,7 +8,12 @@ import os
 
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables,ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,calculate_objective_from_model,Optimal_PF
-from .ACDC_Static_TEP import get_TEP_variables,_initialize_MS_STEP_sets_model,create_scenarios
+from .ACDC_Static_TEP import (
+    get_TEP_variables,
+    _initialize_MS_STEP_sets_model,
+    update_grid_scenario_frame,
+    ExportACDC_TEP_MS_toPyflowACDC,
+)
 from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters
 from .Graph_and_plot import save_network_svg, create_geometries
@@ -612,6 +617,7 @@ def multi_period_transmission_expansion(
     callback=False,
     solver_options=None,
     obj_scaling=1.0,
+    alpha=None,
     capex_budget=None,
     nlp_warmstart=False,
 ):
@@ -676,14 +682,14 @@ def multi_period_transmission_expansion(
         
         model.inv_model[i].obj = pyo.Objective(rule=obj_OPF, sense=pyo.minimize)
 
-    _initialize_DTEP_sets_model(model,grid)
+    _initialize_MPTEP_sets_model(model,grid)
     _MP_TEP_variables(model,grid)
     _MP_TEP_constraints(model,grid)
     _MP_GEN_balance_constraints(model,grid)
     _MP_TEP_capex_budget_constraint(model,grid,capex_budget=capex_budget)
     
 
-    net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate)
+    net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate,alpha=alpha)
     if obj_scaling != 1.0:
         net_cost = net_cost / obj_scaling
     model.obj = pyo.Objective(rule=net_cost, sense=pyo.minimize)
@@ -726,7 +732,7 @@ def multi_period_transmission_expansion(
     _save_inv_models(model,grid)
     t4 = time.time()
 
-    inv_objs, inv_opf_objs = calculate_DTEP_objective_from_model(model,grid,weights_def,n_years,discount_rate,multi_scenario=False)
+    inv_objs, inv_opf_objs = calculate_MPTEP_objective_from_model(model,grid,weights_def,n_years,discount_rate,multi_scenario=False)
     
     # Build list of rows then create DataFrame once to avoid concat-on-empty FutureWarning
     obj_rows = []
@@ -736,19 +742,27 @@ def multi_period_transmission_expansion(
         opf_obj = inv_opf_objs[i][0]  # Get first element from the list
         npv_opf_obj = opf_obj*present_value_opf
         inv_obj = inv_objs[i]
-        step_obj = inv_obj + npv_opf_obj
+        economic_step_obj = inv_obj + npv_opf_obj
+        if alpha is None:
+            step_obj = economic_step_obj
+        else:
+            step_obj = alpha * inv_obj + (1 - alpha) * npv_opf_obj
         npv_step_obj = step_obj*present_value_tep
+        npv_economic_step_obj = economic_step_obj*present_value_tep
         obj_rows.append({
             'Investment_Period': i+1,
             'OPF_Objective': opf_obj,
             'NPV_OPF_Objective': npv_opf_obj,
             'TEP_Objective': inv_obj,
             'STEP_Objective': step_obj,
-            'NPV_STEP_Objective': npv_step_obj
+            'NPV_STEP_Objective': npv_step_obj,
+            'STEP_Objective_Economic': economic_step_obj,
+            'NPV_STEP_Objective_Economic': npv_economic_step_obj
         })
     obj_res = pd.DataFrame(obj_rows, columns=['Investment_Period', 'OPF_Objective',
                                               'NPV_OPF_Objective','TEP_Objective',
-                                              'STEP_Objective','NPV_STEP_Objective'])
+                                              'STEP_Objective','NPV_STEP_Objective',
+                                              'STEP_Objective_Economic','NPV_STEP_Objective_Economic'])
     grid.MP_TEP_obj_res = obj_res
     timing_info = {
     "create": t2-t1,
@@ -760,7 +774,7 @@ def multi_period_transmission_expansion(
     
     return model, model_results ,timing_info, solver_stats
     
-def _initialize_DTEP_sets_model(model,grid):    
+def _initialize_MPTEP_sets_model(model,grid):    
 
     if grid.DCmode:
         model.lines_DC = pyo.Set(initialize=list(range(0, grid.nl_DC)))
@@ -848,13 +862,24 @@ def _MP_TEP_capex_budget_constraint(model,grid,capex_budget=None):
 
     model.MP_CAPEX_budget_constraint = pyo.Constraint(model.inv_periods, rule=MP_CAPEX_budget_rule)
 
-def _MP_TEP_obj(model,grid,n_years,discount_rate):
+def _MP_TEP_obj(model,grid,n_years,discount_rate,alpha=None):
+    if alpha is not None:
+        try:
+            alpha = float(alpha)
+        except (TypeError, ValueError):
+            raise ValueError("alpha must be None or a numeric value in [0, 1].")
+        if alpha < 0.0 or alpha > 1.0:
+            raise ValueError("alpha must be in [0, 1].")
     
     net_cost = 0
 
     for i in model.inv_periods:
         inv_cost = _inv_model_obj(model,grid,i)
-        instance_cost = model.inv_model[i].obj.expr + inv_cost
+        opf_cost = model.inv_model[i].obj.expr
+        if alpha is None:
+            instance_cost = opf_cost + inv_cost
+        else:
+            instance_cost = alpha * inv_cost + (1 - alpha) * opf_cost
         net_cost += instance_cost/(1+discount_rate)**(i*n_years)
         model.inv_model[i].obj.deactivate()
 
@@ -885,7 +910,15 @@ def _save_inv_models(model,grid):
     for i in model.inv_periods:
         grid.inv_models[i] = model.inv_model[i]
 
-def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False, *, pre_opt_fuel_type_distribution):
+def export_MP_TEP_results_toPyflowACDC(
+    model,
+    grid,
+    Price_Zones=False,
+    MINLP=False,
+    *,
+    pre_opt_fuel_type_distribution,
+    export_last_opf_state=True,
+):
     
 
     grid.MP_TEP_run=True
@@ -1057,114 +1090,418 @@ def export_MP_TEP_results_toPyflowACDC(model,grid,Price_Zones=False,MINLP=False,
 
     grid.MP_TEP_fuel_type_distribution = fuel_type_dist_by_period
 
-    last_i = max(model.inv_periods)
-    _set_grid_to_multiperiod_state(grid, last_i,Price_Zones)
-    
-    ExportACDC_NLmodel_toPyflowACDC(model.inv_model[last_i],grid,Price_Zones,TEP=True)
+    if export_last_opf_state:
+        last_i = max(model.inv_periods)
+        _set_grid_to_multiperiod_state(grid, last_i,Price_Zones)
+        ExportACDC_NLmodel_toPyflowACDC(model.inv_model[last_i],grid,Price_Zones,TEP=True)
 
     grid.MP_TEP_results = df  
 
-def multi_period_MS_TEP(grid, NPV=True, n_years=10, Hy=8760, 
-                       discount_rate=0.02, clustering_options=None, ObjRule=None, 
-                       solver='bonmin', obj_scaling=1.0):
-    """
-    Multi-period Transmission Expansion Planning with time series clustering.
-    Hierarchical model structure:
-    - Level 1: Investment periods
-    - Level 2: Time frames/scenarios for each investment period
-    """
-    # 1. Initial analysis and setup
-    analyse_grid(grid)
 
+def _resolve_mp_ms_clustering(grid, clustering_options, tee=False):
+    if clustering_options is None:
+        if not grid.Time_series:
+            raise ValueError("No time series available and clustering was not requested.")
+        n_clusters = len(grid.Time_series[0].data)
+        if n_clusters <= 0:
+            raise ValueError("Time series is empty; cannot build scenario frames.")
+        return n_clusters, False
+
+    from .Time_series_clustering import cluster_analysis
+    try:
+        n_clusters, clustering = cluster_analysis(grid, clustering_options)
+    except Exception as exc:
+        raise RuntimeError("Clustering was requested but failed.") from exc
+
+    if not clustering:
+        raise RuntimeError("Clustering was requested but did not produce clustered scenarios.")
+    if n_clusters <= 0:
+        raise ValueError("Clustering returned zero scenarios.")
+    if tee:
+        print(f"Clustering succeeded with {n_clusters} scenarios.")
+    return n_clusters, True
+
+
+def _scenario_weight_for_frame(grid, t, n_clusters, clustering):
+    if clustering:
+        return float(grid.Clusters[n_clusters]['Weight'][t-1])
+    if any(ts.element_name == 'TEP_w' for ts in grid.Time_series):
+        return float(next(ts.data[t-1] for ts in grid.Time_series if ts.element_name == 'TEP_w'))
+    return None
+
+
+def _validate_period_scenario_updates(grid, period_idx, frame_idx, n_clusters, clustering):
+    tol = 1e-8
+    for pz in grid.Price_Zones:
+        expected_elasticity = _inv_decision(pz, 'elasticity')[period_idx]
+        if abs(float(pz.elasticity) - float(expected_elasticity)) > tol:
+            raise ValueError(
+                f"Price zone '{pz.name}' elasticity mismatch at period {period_idx}, frame {frame_idx}."
+            )
+
+    for pz in grid.Price_Zones:
+        expected_pli = float(pz._PLi_base) * float(pz.PLi_factor) * float(pz.PLi_inv_factor)
+        if abs(float(pz.PLi) - expected_pli) > 1e-6:
+            raise ValueError(
+                f"Price zone '{pz.name}' load consistency mismatch at period {period_idx}, frame {frame_idx}."
+            )
+
+    for node in grid.nodes_AC:
+        if node.PLi_linked:
+            continue
+        expected_pli = float(node._PLi_base) * float(node.PLi_factor) * float(node.PLi_inv_factor)
+        if abs(float(node.PLi) - expected_pli) > 1e-6:
+            raise ValueError(
+                f"AC node '{node.name}' load consistency mismatch at period {period_idx}, frame {frame_idx}."
+            )
+
+    for node in grid.nodes_DC:
+        if node.PLi_linked:
+            continue
+        expected_pli = float(node._PLi_base) * float(node.PLi_factor) * float(node.PLi_inv_factor)
+        if abs(float(node.PLi) - expected_pli) > 1e-6:
+            raise ValueError(
+                f"DC node '{node.name}' load consistency mismatch at period {period_idx}, frame {frame_idx}."
+            )
+
+
+def _add_period_ms_link_constraints(period_block, grid):
+    def NP_ACline_link(m, line, t):
+        element = grid.lines_AC_exp[line]
+        if element.np_line_opf:
+            return m.NumLinesACP[line] == m.scenario_model[t].NumLinesACP[line]
+        return pyo.Constraint.Skip
+
+    def NP_line_link(m, line, t):
+        element = grid.lines_DC[line]
+        if element.np_line_opf:
+            return m.NumLinesDCP[line] == m.scenario_model[t].NumLinesDCP[line]
+        return pyo.Constraint.Skip
+
+    def NP_conv_link(m, conv, t):
+        element = grid.Converters_ACDC[conv]
+        if element.np_conv_opf:
+            return m.np_conv[conv] == m.scenario_model[t].np_conv[conv]
+        return pyo.Constraint.Skip
+
+    def NP_ACline_rec_link(m, line, t):
+        element = grid.lines_AC_rec[line]
+        if element.rec_line_opf:
+            return m.rec_branch[line] == m.scenario_model[t].rec_branch[line]
+        return pyo.Constraint.Skip
+
+    def NP_ACline_ct_link(m, line, ct, t):
+        element = grid.lines_AC_ct[line]
+        if element.array_opf:
+            return m.ct_branch[line, ct] == m.scenario_model[t].ct_branch[line, ct]
+        return pyo.Constraint.Skip
+
+    if grid.TEP_AC:
+        period_block.NP_ACline_link_constraint = pyo.Constraint(
+            period_block.lines_AC_exp, period_block.scenario_frames, rule=NP_ACline_link
+        )
+    if grid.DCmode:
+        period_block.NP_line_link_constraint = pyo.Constraint(
+            period_block.lines_DC, period_block.scenario_frames, rule=NP_line_link
+        )
+    if grid.ACmode and grid.DCmode:
+        period_block.NP_conv_link_constraint = pyo.Constraint(
+            period_block.conv, period_block.scenario_frames, rule=NP_conv_link
+        )
+    if grid.REC_AC:
+        period_block.NP_ACline_rec_link_constraint = pyo.Constraint(
+            period_block.lines_AC_rec, period_block.scenario_frames, rule=NP_ACline_rec_link
+        )
+    if grid.CT_AC:
+        period_block.NP_ACline_ct_link_constraint = pyo.Constraint(
+            period_block.lines_AC_ct, period_block.ct_set, period_block.scenario_frames, rule=NP_ACline_ct_link
+        )
+
+
+def _build_period_scenario_block(
+    model,
+    grid,
+    period_idx,
+    base_model,
+    Price_Zones,
+    weights_def,
+    n_clusters,
+    clustering,
+    n_years,
+    Hy,
+    discount_rate,
+    NPV,
+):
+    period_block = model.inv_model[period_idx]
+    period_block.scenario_frames = pyo.Set(initialize=range(1, n_clusters + 1))
+    period_block.scenario_model = pyo.Block(period_block.scenario_frames)
+    # Period block only carries shared TEP decisions; full OPF states live in scenario sub-blocks.
+    _initialize_MS_STEP_sets_model(period_block, grid)
+    TEP_variables(period_block, grid)
+
+    _update_grid_investment_period(grid, period_idx)
+
+    w = {}
+    for t in period_block.scenario_frames:
+        for ts in grid.Time_series:
+            update_grid_scenario_frame(grid, ts, t, n_clusters, clustering)
+        for price_zone in grid.Price_Zones:
+            price_zone.update_a()
+
+        _validate_period_scenario_updates(grid, period_idx, t, n_clusters, clustering)
+
+        sc_block = period_block.scenario_model[t]
+        sc_block.transfer_attributes_from(base_model.clone())
+        _modify_parameters(grid, sc_block, Price_Zones)
+        sc_obj = OPF_obj(sc_block, grid, weights_def, True)
+        sc_block.obj = pyo.Objective(rule=sc_obj, sense=pyo.minimize)
+
+        maybe_weight = _scenario_weight_for_frame(grid, t, n_clusters, clustering)
+        if maybe_weight is None:
+            maybe_weight = 1.0 / float(len(period_block.scenario_frames))
+        w[t] = float(maybe_weight)
+
+    period_block.weights = pyo.Param(period_block.scenario_frames, initialize=w)
+    _add_period_ms_link_constraints(period_block, grid)
+
+    expected_opf = sum(
+        period_block.weights[t] * period_block.scenario_model[t].obj.expr
+        for t in period_block.scenario_frames
+    )
+    for t in period_block.scenario_frames:
+        period_block.scenario_model[t].obj.deactivate()
+
+    scaling_factor = Hy
+    if NPV:
+        scaling_factor *= (1 - (1 + discount_rate) ** -n_years) / discount_rate
+    expected_opf *= scaling_factor
+    period_block.expected_opf = pyo.Expression(expr=expected_opf)
+    period_block.obj = pyo.Objective(expr=period_block.expected_opf, sense=pyo.minimize)
+
+
+
+
+def multi_period_MS_TEP(
+    grid,
+    inv_periods=[],
+    NPV=True,
+    n_years=10,
+    Hy=8760,
+    discount_rate=0.02,
+    clustering_options=None,
+    ObjRule=None,
+    solver='bonmin',
+    time_limit=None,
+    tee=False,
+    callback=False,
+    alpha=None,
+    limit_flow_rate=True,
+    obj_scaling=1.0,
+    solver_options=None,
+    nlp_warmstart=False,
+    capex_budget=None,
+    save_period_svgs=True,
+    period_svg_prefix='grid_MP_MS_TEP',
+):
+    grid.reset_run_flags()
+    analyse_grid(grid)
     weights_def, Price_Zones = obj_w_rule(grid, ObjRule, True)
 
-    # 2. Set grid parameters
+    if alpha is not None:
+        try:
+            alpha = float(alpha)
+        except (TypeError, ValueError):
+            raise ValueError("alpha must be None or a numeric value in [0, 1].")
+        if alpha < 0.0 or alpha > 1.0:
+            raise ValueError("alpha must be in [0, 1].")
+
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate = discount_rate
+
+    if inv_periods:
+        load_factors = np.array(inv_periods, dtype=float)
+        for node in grid.nodes_AC:
+            node.investment_decisions['Load'] = load_factors.copy().tolist()
+        for node in grid.nodes_DC:
+            node.investment_decisions['Load'] = load_factors.copy().tolist()
+
     n_periods = _fill_investment_decisions(grid)
     _validate_grid_for_MP_TEP(grid)
 
-    # 3. Handle time series clustering
-    try:
-        from .Time_series_clustering import cluster_analysis
-        n_clusters,clustering = cluster_analysis(grid,clustering_options)
-    except:
-        n_clusters = len(grid.Time_series[0].data)
-        clustering = False
+    grid.GPR = True if any(any(x != 0 for x in _inv_decision(gen, 'planned_installation')) for gen in grid.Generators) else grid.GPR
+    grid.rs_GPR = True if any(any(x != 0 for x in _inv_decision(ren_source, 'planned_installation')) for ren_source in grid.RenSources) else grid.rs_GPR
+    for gen in grid.Generators:
+        gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in _inv_decision(gen, 'planned_installation'))
+    for rs in grid.RenSources:
+        rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in _inv_decision(rs, 'planned_installation'))
 
-    # 4. Create model sets
+    n_clusters, clustering = _resolve_mp_ms_clustering(grid, clustering_options, tee=tee)
+
     t1 = time.time()
     pre_opt_fuel_type_distribution = current_fuel_type_distribution(grid, output='df')
     model = pyo.ConcreteModel()
     model.name = "MP TEP MS MTDC AC/DC hybrid OPF"
-    
-    # Investment periods
     model.inv_periods = pyo.Set(initialize=list(range(0, n_periods)))
-    
-    # Create hierarchical model structure
-    model.inv_model = pyo.Block(model.inv_periods)  # Level 1: Investment periods
-    for i in model.inv_periods:
-        # Time frames for each investment period
-        model.inv_model[i].scenario_frames = pyo.Set(initialize=range(1, n_clusters + 1))
-        model.inv_model[i].scenario_model = pyo.Block(model.inv_model[i].scenario_frames)  # Level 2: Time frames
+    model.inv_model = pyo.Block(model.inv_periods)
+    #model.clustering = clustering
+    #model.n_clusters = n_clusters
+    grid.TEP_n_periods = n_periods
 
-    # 5. Create base model and clone for each period/time frame
     base_model = pyo.ConcreteModel()
-    OPF_create_NLModel_ACDC(base_model, grid, PV_set=False, Price_Zones=Price_Zones, TEP=True)
+    OPF_create_NLModel_ACDC(
+        base_model, grid, PV_set=False, Price_Zones=Price_Zones, TEP=True, limit_flow_rate=limit_flow_rate
+    )
 
-    create_scenarios(model.inv_model[i],grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy)
+    for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC + grid.RenSources:
+        _calculate_decomision_period(element, n_years)
 
-    _initialize_MS_STEP_sets_model(model,grid)
-    _MP_TEP_variables(model,grid)
-    _MP_GEN_balance_constraints(model,grid)
+    for i in model.inv_periods:
+        _build_period_scenario_block(
+            model,
+            grid,
+            i,
+            base_model,
+            Price_Zones,
+            weights_def,
+            n_clusters,
+            clustering,
+            n_years,
+            Hy,
+            discount_rate,
+            NPV,
+        )
 
-    
-    net_cost = _MP_TEP_obj(model,grid,n_years,discount_rate)
+    _initialize_MPTEP_sets_model(model, grid)
+    _MP_TEP_variables(model, grid)
+    _MP_TEP_constraints(model, grid)
+    _MP_GEN_balance_constraints(model, grid)
+    _MP_TEP_capex_budget_constraint(model, grid, capex_budget=capex_budget)
+
+    net_cost = _MP_TEP_obj(model, grid, n_years, discount_rate, alpha=alpha)
     if obj_scaling != 1.0:
         net_cost = net_cost / obj_scaling
-    model.obj = pyo.Objective(rule=net_cost, sense=pyo.minimize)
+    model.obj = pyo.Objective(expr=net_cost, sense=pyo.minimize)
     model.obj_scaling = obj_scaling
 
-
-    # 10. Solve the model
     t2 = time.time()
-    model_results, solver_stats = pyomo_model_solve(model, grid, solver)
+    model_results, solver_stats = pyomo_model_solve(
+        model, grid, solver, tee=tee, time_limit=time_limit, callback=callback,
+        solver_options=solver_options, nlp_warmstart=nlp_warmstart
+    )
     t3 = time.time()
 
-    # 11. Export results
-    MINLP = False
-    if solver != 'ipopt':
-        MINLP = True
-    TEP_TS_res = export_MP_TEP_results_toPyflowACDC(
+    if not (solver_stats and solver_stats.get('solution_found', False)):
+        termination = solver_stats.get('termination_condition', 'unknown') if solver_stats else 'unknown'
+        solver_message = solver_stats.get('solver_message', '') if solver_stats else ''
+        if tee:
+            print(f"MP-MS-TEP failed: no feasible solution found (termination: {termination}).")
+            if solver_message:
+                print(f"Solver message: {solver_message}")
+        timing_info = {
+            "create": t2 - t1,
+            "solve": solver_stats['time'] if solver_stats else None,
+            "export": 0.0,
+        }
+        return model, model_results, timing_info, solver_stats, {}
+
+    MINLP = solver != 'ipopt'
+    export_MP_TEP_results_toPyflowACDC(
         model,
         grid,
-        Price_Zones,
-        MINLP,
+        Price_Zones=Price_Zones,
+        MINLP=MINLP,
         pre_opt_fuel_type_distribution=pre_opt_fuel_type_distribution,
+        export_last_opf_state=False,
     )
-    t4 = time.time()
+    _save_inv_models(model, grid)
 
-    timing_info = {
-        "create": t2-t1,
-        "solve": solver_stats['time'],
-        "export": t4-t3,
+    mp_ms_period_results = {}
+    period_scenario_grid_res = {}
+    obj_rows = []
+    last_period = max(model.inv_periods)
+    for i in model.inv_periods:
+        period_block = model.inv_model[i]
+        _set_grid_to_multiperiod_state(grid, i, Price_Zones)
+        period_result = ExportACDC_TEP_MS_toPyflowACDC(
+            period_block, grid, n_clusters, clustering, Price_Zones, mutate_grid=False
+        )
+        period_result['Investment_Period'] = int(i)
+        mp_ms_period_results[int(i)] = period_result
+        period_scenario_grid_res[int(i)] = {}
+        for t in period_block.scenario_frames:
+            period_scenario_grid_res[int(i)][int(t)] = {
+                'weight': float(pyo.value(period_block.weights[t])),
+                'opf_objective': float(calculate_objective_from_model(period_block.scenario_model[t], grid, weights_def, True)),
+            }
+
+        present_value_tep = 1 / (1 + discount_rate) ** (i * n_years)
+        inv_obj = pyo.value(_inv_model_obj(model, grid, i))
+        opex_obj = pyo.value(period_block.expected_opf)
+        economic_step_obj = inv_obj + opex_obj
+        if alpha is None:
+            step_obj = economic_step_obj
+        else:
+            step_obj = alpha * inv_obj + (1 - alpha) * opex_obj
+        obj_rows.append({
+            'Investment_Period': int(i) + 1,
+            'TEP_Objective': inv_obj,
+            'OPEX_Objective': opex_obj,
+            'STEP_Objective': step_obj,
+            'NPV_STEP_Objective': step_obj * present_value_tep,
+            'STEP_Objective_Economic': economic_step_obj,
+            'NPV_STEP_Objective_Economic': economic_step_obj * present_value_tep,
+        })
+
+    if save_period_svgs:
+        save_MP_TEP_period_svgs(
+            grid,
+            name_prefix=period_svg_prefix,
+            journal=True,
+            legend=True,
+            Price_Zones=Price_Zones,
+        )
+    
+    _set_grid_to_multiperiod_state(grid, last_period, Price_Zones)
+    ExportACDC_TEP_MS_toPyflowACDC(
+        model.inv_model[last_period], grid, n_clusters, clustering, Price_Zones, mutate_grid=True
+    )
+
+    grid.MP_MS_TEP_obj_res = pd.DataFrame(obj_rows)
+    grid.MP_MS_TEP_results = {
+        'clustering': clustering,
+        'n_clusters': n_clusters,
+        'period_results': mp_ms_period_results,
+        'period_scenario_grid_res': period_scenario_grid_res,
+         'investment_summary': grid.MP_TEP_results,
+        'objective_summary': grid.MP_MS_TEP_obj_res,
     }
 
-    return model, model_results, timing_info, solver_stats, TEP_TS_res  
+    t4 = time.time()
+    timing_info = {
+        "create": t2 - t1,
+        "solve": solver_stats['time'],
+        "export": t4 - t3,
+    }
+    return model, model_results, timing_info, solver_stats, grid.MP_MS_TEP_results
 
 
-def save_MP_TEP_period_svgs(grid, name_prefix='grid_MP_TEP', journal=True, legend=True, square_ratio=False, poly=None, linestrings=None):
+def save_MP_TEP_period_svgs(
+    grid,
+    name_prefix='grid_MP_TEP',
+    journal=True,
+    legend=True,
+    square_ratio=False,
+    poly=None,
+    linestrings=None,
+    Price_Zones=False,
+):
     
     periods = grid.TEP_n_periods
    
     for i in range(periods):
             # From DataFrame by names
-        _set_grid_to_multiperiod_state(grid, i) 
-
-        try:
-            create_geometries(grid)
-        except Exception:
-            pass
+        _set_grid_to_multiperiod_state(grid, i, Price_Zones) 
+        create_geometries(grid)
 
         save_network_svg(
             grid,
@@ -1349,14 +1686,17 @@ def _calculate_decomision_period(element,n_years):
 
     element.decomision_period = math.ceil(element.life_time/n_years)
 
-def calculate_DTEP_objective_from_model(model,grid,weights_def,n_years,discount_rate,multi_scenario=False):
+def calculate_MPTEP_objective_from_model(model,grid,weights_def,n_years,discount_rate,multi_scenario=False):
     inv_objs = {}
     inv_opf_objs = {}
     for i in model.inv_periods:    
         opf_objs = []
         if multi_scenario:
-            for t in model.scenario_frames:
-                opf_obj = calculate_objective_from_model(model.inv_model[i].scenario_model[t],grid,weights_def,True)
+            period_block = model.inv_model[i]
+            if not hasattr(period_block, 'scenario_frames') or not hasattr(period_block, 'scenario_model'):
+                raise ValueError(f"Investment period {i} has no scenario blocks for multi-scenario objective extraction.")
+            for t in period_block.scenario_frames:
+                opf_obj = calculate_objective_from_model(period_block.scenario_model[t],grid,weights_def,True)
                 opf_objs.append(opf_obj)
         else:
             opf_objs = [calculate_objective_from_model(model.inv_model[i],grid,weights_def,True)]
