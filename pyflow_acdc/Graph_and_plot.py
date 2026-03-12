@@ -1133,15 +1133,31 @@ def create_geometries(grid):
                     conv.geometry = LineString([(x1, y1), (x2, y2)])
     
     # Step 6: Create geometries for generators and renewable sources
+    ac_nodes_by_name = {str(n.name): n for n in grid.nodes_AC}
+    dc_nodes_by_name = {str(n.name): n for n in grid.nodes_DC}
     for gen in grid.Generators + grid.RenSources:
         if not hasattr(gen, 'geometry') or gen.geometry is None:
+            node_ref = None
             if hasattr(gen, 'Node_AC'):
-                node = gen.Node_AC
-                if node in pos:
-                    x, y = pos[node]
+                node_ref = gen.Node_AC
+            elif hasattr(gen, 'Node'):
+                node_ref = gen.Node
+
+            if node_ref is None:
+                continue
+
+            # Node refs are sometimes stored as node objects, sometimes as node names.
+            if node_ref in pos:
+                x, y = pos[node_ref]
+                gen.geometry = Point(x, y)
+            else:
+                node_name = str(node_ref)
+                node_obj = ac_nodes_by_name.get(node_name) or dc_nodes_by_name.get(node_name)
+                if node_obj is not None and node_obj in pos:
+                    x, y = pos[node_obj]
                     gen.geometry = Point(x, y)
 
-def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=True, legend=True, square_ratio=False,poly=None,linestrings=None,coloring=None, poly_size=None):
+def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=True, legend=True, square_ratio=False,poly=None,linestrings=None,coloring=None, poly_size=None, tee=False):
     """Save the network as SVG file
     
     Parameters:
@@ -1182,8 +1198,9 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
         
         # If any elements are missing geometries, create them
         if elements_without_geometry:
-            print(f"Creating geometries for {len(elements_without_geometry)} elements without geometries...")
-            print("Missing geometries:", ", ".join(elements_without_geometry))
+            if tee:
+                print(f"Creating geometries for {len(elements_without_geometry)} elements without geometries...")
+                print("Missing geometries:", ", ".join(elements_without_geometry))
             create_geometries(grid)
 
         if journal:
@@ -1195,8 +1212,9 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
             else:
                 height = int(width * 0.8)  # Using 0.8 as a common aspect ratio for journal figures
 
-        print(f"Current working directory: {os.getcwd()}")
-        print(f"Will save as: {os.path.abspath(f'{name}.svg')}")
+        if tee:
+            print(f"Current working directory: {os.getcwd()}")
+            print(f"Will save as: {os.path.abspath(f'{name}.svg')}")
         # Create SVG drawing
         dwg = svgwrite.Drawing(f"{name}.svg", size=(f'{width}px', f'{height}px'), profile='tiny')
         
