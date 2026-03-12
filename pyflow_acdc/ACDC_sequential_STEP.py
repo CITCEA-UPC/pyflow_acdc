@@ -52,6 +52,12 @@ def _iter_dynamic_elements(grid):
         yield name, el, np_attr
 
 
+def _round_dynamic_np_to_nearest_integer(grid):
+    for _, el, np_attr in _iter_dynamic_elements(grid):
+        value = float(getattr(el, np_attr))
+        setattr(el, np_attr, float(int(round(value))))
+
+
 def _snapshot_dynamic_counts(grid):
     snap = {}
     for name, el, np_attr in _iter_dynamic_elements(grid):
@@ -247,6 +253,8 @@ def sequential_STEP(
         }
     fuel_type_dist_by_period = {0: current_fuel_type_distribution(grid, output="df")}
     obj_rows = []
+    aborted = False
+    abort_reason = None
 
     for k in range(n_runs):
         np_before = _snapshot_dynamic_counts(grid)
@@ -259,6 +267,7 @@ def sequential_STEP(
         )
         _apply_sequential_run_np_caps(grid, k, absolute_np_max_by_name)
         _apply_generation_type_limits_from_run(grid, k)
+        _round_dynamic_np_to_nearest_integer(grid)
 
         model, model_res, timing_info, solver_stats = transmission_expansion(
             grid,
@@ -274,6 +283,14 @@ def sequential_STEP(
             solver_options=solver_options,
             obj_scaling=obj_scaling,
         )
+        _round_dynamic_np_to_nearest_integer(grid)
+        if not (solver_stats and solver_stats.get("solution_found", False)):
+            aborted = True
+            termination = solver_stats.get("termination_condition", "unknown") if solver_stats else "unknown"
+            abort_reason = f"run {k + 1} has no feasible solution (termination={termination})"
+            if tee:
+                print(f"Sequential STEP aborted at run {k + 1}: no solution found (termination={termination})")
+            break
 
         _register_future_aged_decommission(
             grid=grid,
@@ -373,5 +390,6 @@ def sequential_STEP(
         ],
     )
     grid.Seq_STEP_fuel_type_distribution = fuel_type_dist_by_period
+
     _restore_absolute_np_caps(element_meta, absolute_np_max_by_name)
     return run_results
