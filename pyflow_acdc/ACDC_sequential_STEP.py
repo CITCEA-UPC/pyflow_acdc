@@ -1,0 +1,238 @@
+import os
+import pandas as pd
+from .grid_analysis import analyse_grid
+from .grid_modifications import add_inv_series, add_gen_mix_limits
+from .ACDC_Static_TEP import transmission_expansion
+from .ACDC_MultiPeriod_TEP import (
+    _fill_investment_decisions,
+    _validate_grid_for_MP_TEP,
+    _update_grid_investment_period,
+    _calculate_decomision_period,
+)
+from .Graph_and_plot import save_network_svg
+
+
+def export_results_to_csv(run_results, export_dir, file_name="sequential_step_results.csv"):
+    """Persist sequential STEP results dict as a pandas CSV."""
+    out_path = os.path.join(export_dir, file_name)
+    df = pd.DataFrame.from_dict(run_results, orient="index")
+    df.index.name = "run_key"
+    df = df.reset_index()
+    df.to_csv(out_path, index=False)
+
+
+def _iter_dynamic_elements(grid):
+    for gen in grid.Generators:
+        yield str(gen.name), gen, "np_gen"
+    for ren in grid.RenSources:
+        yield str(ren.name), ren, "np_rsgen"
+    for line in grid.lines_AC_exp:
+        yield str(line.name), line, "np_line"
+    for line in grid.lines_DC:
+        yield str(line.name), line, "np_line"
+    for conv in grid.Converters_ACDC:
+        yield str(conv.name), conv, "np_conv"
+
+
+def _snapshot_dynamic_counts(grid):
+    snap = {}
+    for name, el, np_attr in _iter_dynamic_elements(grid):
+        snap[name] = float(getattr(el, np_attr))
+    return snap
+
+
+def _series_value_for_run(series, run_idx, label):
+    if isinstance(series, (list, tuple)):
+        if len(series) == 0:
+            raise ValueError(f"{label} has no values.")
+        if len(series) == 1:
+            return float(series[0])
+        if run_idx >= len(series):
+            raise ValueError(f"{label} has length {len(series)}, cannot access run {run_idx}.")
+        return float(series[run_idx])
+    return float(series)
+
+
+def _apply_decommission_for_run(grid, linked_decommission_schedule, run_idx):
+    linked_now = dict(linked_decommission_schedule.pop(int(run_idx), {}))
+    planned_now = {}
+    for name, el, _ in _iter_dynamic_elements(grid):
+        inv = el.investment_decisions
+        if "planned_decomision" in inv:
+            planned_now[name] = _series_value_for_run(
+                inv["planned_decomision"], run_idx, f"{name}:planned_decomision"
+            )
+
+    by_name = {name: (el, np_attr) for name, el, np_attr in _iter_dynamic_elements(grid)}
+    applied = {}
+
+    names_to_apply = set(planned_now.keys()) | set(linked_now.keys())
+    for name in names_to_apply:
+        el, np_attr = by_name.get(name, (None, None))
+        if el is None:
+            raise ValueError(f"Decommission references unknown element '{name}'")
+
+        total_decommission = float(linked_now.get(name, 0.0)) + float(planned_now.get(name, 0.0))
+        if total_decommission < 0:
+            raise ValueError(f"Negative total decommission for '{name}': {total_decommission}")
+        if total_decommission > float(getattr(el, np_attr)) + 1e-9:
+            raise ValueError(
+                f"Decommission exceeds installed stock for '{name}': "
+                f"linked+planned={total_decommission} > installed={float(getattr(el, np_attr))}"
+            )
+        setattr(el, np_attr, float(getattr(el, np_attr)) - total_decommission)
+        applied[name] = total_decommission
+
+    return linked_now, planned_now, applied
+
+
+def _apply_generation_type_limits_from_run(grid, run_idx):
+    if run_idx < 0:
+        raise ValueError(f"run_idx must be >= 0, got {run_idx}")
+
+    for gen_type, series in dict(grid.generation_type_limits).items():
+        if isinstance(series, list):
+            if run_idx >= len(series):
+                raise ValueError(
+                    f"generation_type_limits['{gen_type}'] has length {len(series)}; "
+                    f"cannot access run index {run_idx}"
+                )
+            value = float(series[run_idx])
+        else:
+            value = float(series)
+        grid.current_generation_type_limits[gen_type] = value
+
+
+def _register_future_aged_decommission(grid, run_idx, n_years, decommission_applied_by_name, np_before_by_name, schedule):
+    run_idx = int(run_idx)
+    for name, el, np_attr in _iter_dynamic_elements(grid):
+        np_before = float(np_before_by_name[name])
+        np_after = float(getattr(el, np_attr))
+        decomm_now = float(decommission_applied_by_name.get(name, 0.0))
+
+        installed_now = np_after - (np_before - decomm_now)
+        if installed_now <= 1e-9:
+            continue
+
+        decomision_period = int(el.decomision_period)
+        future_idx = run_idx + decomision_period
+        bucket = schedule.setdefault(future_idx, {})
+        bucket[name] = bucket.get(name, 0.0) + float(installed_now)
+
+
+def sequential_STEP(
+    grid,
+    inv_data=None,
+    mix_data=None,
+    n_years=10,
+    Hy=8760,
+    discount_rate=0.02,
+    ObjRule=None,
+    solver="bonmin",
+    time_limit=None,
+    tee=False,
+    callback=False,
+    solver_options=None,
+    obj_scaling=1.0,
+    export_dir=None,
+    svg_prefix="sequential_STEP",
+    save_svgs=False,
+):
+    """
+    Sequentially solve static transmission expansion one investment period at a time.
+
+    The run sequence emulates MP behavior by applying period-k:
+    - load multiplier
+    - planned + aged decommission
+    - generation-mix limit
+    and then solving `transmission_expansion()` on the updated grid state.
+    """
+    
+    grid.reset_run_flags()
+    analyse_grid(grid)
+
+    if inv_data is not None:
+        add_inv_series(grid, inv_data)
+    if mix_data is not None:
+        add_gen_mix_limits(grid, mix_data)
+
+    n_runs = _fill_investment_decisions(grid)
+    _validate_grid_for_MP_TEP(grid)
+    if n_runs <= 0:
+        raise ValueError("No investment periods found in grid investment decisions.")
+
+    grid.TEP_n_years = n_years
+    grid.TEP_discount_rate = discount_rate
+    grid.TEP_n_periods = n_runs
+
+    grid.GPR = True if any(any(x != 0 for x in gen.investment_decisions["planned_installation"]) for gen in grid.Generators) else grid.GPR
+    grid.rs_GPR = True if any(any(x != 0 for x in ren.investment_decisions["planned_installation"]) for ren in grid.RenSources) else grid.rs_GPR
+    for gen in grid.Generators:
+        gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in gen.investment_decisions["planned_installation"])
+    for rs in grid.RenSources:
+        rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in rs.investment_decisions["planned_installation"])
+
+    for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC + grid.RenSources:
+        _calculate_decomision_period(element, n_years)
+
+    if export_dir is not None:
+        os.makedirs(export_dir, exist_ok=True)
+
+    aged_decommission_schedule = {}
+    run_results = {}
+
+    for k in range(n_runs):
+        np_before = _snapshot_dynamic_counts(grid)
+
+        _update_grid_investment_period(grid, k)
+        load_multiplier = None
+
+        linked_now, planned_now, applied_decommission = _apply_decommission_for_run(
+            grid, aged_decommission_schedule, k
+        )
+        _apply_generation_type_limits_from_run(grid, k)
+
+        model, model_res, timing_info, solver_stats = transmission_expansion(
+            grid,
+            NPV=True,
+            n_years=n_years,
+            Hy=Hy,
+            discount_rate=discount_rate,
+            ObjRule=ObjRule,
+            solver=solver,
+            time_limit=time_limit,
+            tee=tee,
+            callback=callback,
+            solver_options=solver_options,
+            obj_scaling=obj_scaling,
+        )
+
+        _register_future_aged_decommission(
+            grid=grid,
+            run_idx=k,
+            n_years=n_years,
+            decommission_applied_by_name=applied_decommission,
+            np_before_by_name=np_before,
+            schedule=aged_decommission_schedule,
+        )
+
+        if save_svgs and export_dir is not None:
+            save_network_svg(grid, name=os.path.join(export_dir, f"{svg_prefix}_{k+1}"))
+
+        run_results[k] = {
+            "run": k + 1,
+            "csv_row_index": k + 2,
+            "load_multiplier": load_multiplier,
+            "model": model,
+            "model_res": model_res,
+            "timing_info": timing_info,
+            "solver_stats": solver_stats,
+            "decommission_applied": applied_decommission,
+            "linked_decommission_requested": linked_now,
+            "planned_decommission_requested": planned_now,
+            "linked_decommission_requested_total": float(sum(linked_now.values())) if linked_now else 0.0,
+            "linked_decommission_applied_total": float(sum(linked_now.values())) if linked_now else 0.0,
+        }
+        if export_dir is not None:
+            export_results_to_csv(run_results, export_dir)
+    return run_results

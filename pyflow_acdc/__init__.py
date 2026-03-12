@@ -144,6 +144,11 @@ try:
             'alpha_paretto', 'rate_sensitivity', 'kappa_sensitivity',
             'comprehensive_sensitivity_analysis'
         ])
+        try:
+            from .ACDC_sequential_STEP import *
+            __all__.append('sequential_STEP')
+        except ImportError:
+            pass
     except ImportError:
         pass
     

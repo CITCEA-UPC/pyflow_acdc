@@ -504,10 +504,10 @@ def _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule,PV_set=False):
 
 def GEN_balance_constraints(model,grid):
     
-    if all(v == 1 for v in grid.generation_type_limits.values()):
+    if all(v == 1 for v in grid.current_generation_type_limits.values()):
         return  # All limits are 1, no constraints needed
     
-    gen_type_limits = {k.lower(): v for k, v in grid.generation_type_limits.items()}
+    gen_type_limits = {k.lower(): v for k, v in grid.current_generation_type_limits.items()}
     model.gen_types = pyo.Set(initialize=list(gen_type_limits.keys()))
     model.gen_type_limits = pyo.Param(model.gen_types,initialize=gen_type_limits)
     
