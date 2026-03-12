@@ -35,6 +35,18 @@ def _iter_dynamic_elements_typed(grid):
         yield str(conv.name), conv, "np_conv", "ACDC Conv"
 
 
+def _max_attr_from_np_attr(np_attr):
+    if np_attr == "np_gen":
+        return "np_gen_max"
+    if np_attr == "np_rsgen":
+        return "np_rsgen_max"
+    if np_attr == "np_line":
+        return "np_line_max"
+    if np_attr == "np_conv":
+        return "np_conv_max"
+    raise ValueError(f"Unsupported dynamic np attribute: {np_attr}")
+
+
 def _iter_dynamic_elements(grid):
     for name, el, np_attr, _ in _iter_dynamic_elements_typed(grid):
         yield name, el, np_attr
@@ -112,6 +124,34 @@ def _apply_generation_type_limits_from_run(grid, run_idx):
         grid.current_generation_type_limits[gen_type] = value
 
 
+def _apply_sequential_run_np_caps(grid, run_idx, absolute_np_max_by_name):
+    for name, el, np_attr in _iter_dynamic_elements(grid):
+        max_attr = _max_attr_from_np_attr(np_attr)
+        if not hasattr(el, max_attr):
+            continue
+
+        current_stock = float(getattr(el, np_attr))
+        absolute_max = float(absolute_np_max_by_name.get(name, getattr(el, max_attr)))
+
+        max_inv_series = el.investment_decisions.get("max_inv") if isinstance(el.investment_decisions, dict) else None
+        if max_inv_series is None:
+            setattr(el, max_attr, absolute_max)
+            continue
+
+        install_max = _series_value_for_run(max_inv_series, run_idx, f"{name}:max_inv")
+        run_max = min(current_stock + install_max, absolute_max)
+        setattr(el, max_attr, run_max)
+
+
+def _restore_absolute_np_caps(element_meta, absolute_np_max_by_name):
+    for name, meta in element_meta.items():
+        el = meta["element"]
+        np_attr = meta["np_attr"]
+        max_attr = _max_attr_from_np_attr(np_attr)
+        if hasattr(el, max_attr) and name in absolute_np_max_by_name:
+            setattr(el, max_attr, float(absolute_np_max_by_name[name]))
+
+
 def _register_future_aged_decommission(grid, run_idx, n_years, decommission_applied_by_name, np_before_by_name, schedule):
     run_idx = int(run_idx)
     for name, el, np_attr in _iter_dynamic_elements(grid):
@@ -174,12 +214,15 @@ def sequential_STEP(
     grid.TEP_discount_rate = discount_rate
     grid.TEP_n_periods = n_runs
 
-    grid.GPR = True if any(any(x != 0 for x in gen.investment_decisions["planned_installation"]) for gen in grid.Generators) else grid.GPR
-    grid.rs_GPR = True if any(any(x != 0 for x in ren.investment_decisions["planned_installation"]) for ren in grid.RenSources) else grid.rs_GPR
     for gen in grid.Generators:
-        gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in gen.investment_decisions["planned_installation"])
+        gen.np_gen_opf = bool(gen.np_gen_opf or any(x != 0 for x in gen.investment_decisions["planned_installation"]))
+        gen.np_gen_mp = False
     for rs in grid.RenSources:
-        rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in rs.investment_decisions["planned_installation"])
+        rs.np_rsgen_opf = bool(rs.np_rsgen_opf or any(x != 0 for x in rs.investment_decisions["planned_installation"]))
+        rs.np_rsgen_mp = False
+
+    grid.GPR = any(gen.np_gen_opf for gen in grid.Generators)
+    grid.rs_GPR = any(rs.np_rsgen_opf for rs in grid.RenSources)
 
     for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC + grid.RenSources:
         _calculate_decomision_period(element, n_years)
@@ -190,9 +233,12 @@ def sequential_STEP(
     aged_decommission_schedule = {}
     run_results = {}
     pre_existing_by_name = _snapshot_dynamic_counts(grid)
+    absolute_np_max_by_name = {}
     element_meta = {}
     report_rows = {}
     for name, el, np_attr, type_name in _iter_dynamic_elements_typed(grid):
+        max_attr = _max_attr_from_np_attr(np_attr)
+        absolute_np_max_by_name[name] = float(getattr(el, max_attr, getattr(el, np_attr)))
         element_meta[name] = {"element": el, "np_attr": np_attr, "type": type_name}
         report_rows[name] = {
             "Element": name,
@@ -211,6 +257,7 @@ def sequential_STEP(
         linked_now, planned_now, applied_decommission = _apply_decommission_for_run(
             grid, aged_decommission_schedule, k
         )
+        _apply_sequential_run_np_caps(grid, k, absolute_np_max_by_name)
         _apply_generation_type_limits_from_run(grid, k)
 
         model, model_res, timing_info, solver_stats = transmission_expansion(
@@ -326,4 +373,5 @@ def sequential_STEP(
         ],
     )
     grid.Seq_STEP_fuel_type_distribution = fuel_type_dist_by_period
+    _restore_absolute_np_caps(element_meta, absolute_np_max_by_name)
     return run_results
