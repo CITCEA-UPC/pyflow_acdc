@@ -77,6 +77,12 @@ def _series_value_for_run(series, run_idx, label):
     return float(series)
 
 
+def _series_has_positive(series):
+    if isinstance(series, (list, tuple)):
+        return any(float(v) > 0 for v in series)
+    return float(series) > 0
+
+
 def _apply_decommission_for_run(grid, linked_decommission_schedule, run_idx):
     linked_now = dict(linked_decommission_schedule.pop(int(run_idx), {}))
     planned_now = {}
@@ -221,10 +227,14 @@ def sequential_STEP(
     grid.TEP_n_periods = n_runs
 
     for gen in grid.Generators:
-        gen.np_gen_opf = bool(gen.np_gen_opf or any(x != 0 for x in gen.investment_decisions["planned_installation"]))
+        planned_positive = _series_has_positive(gen.investment_decisions.get("planned_installation", 0.0))
+        max_inv_positive = _series_has_positive(gen.investment_decisions.get("max_inv", 0.0))
+        gen.np_gen_opf = bool(gen.np_gen_opf or planned_positive or max_inv_positive)
         gen.np_gen_mp = False
     for rs in grid.RenSources:
-        rs.np_rsgen_opf = bool(rs.np_rsgen_opf or any(x != 0 for x in rs.investment_decisions["planned_installation"]))
+        planned_positive = _series_has_positive(rs.investment_decisions.get("planned_installation", 0.0))
+        max_inv_positive = _series_has_positive(rs.investment_decisions.get("max_inv", 0.0))
+        rs.np_rsgen_opf = bool(rs.np_rsgen_opf or planned_positive or max_inv_positive)
         rs.np_rsgen_mp = False
 
     grid.GPR = any(gen.np_gen_opf for gen in grid.Generators)

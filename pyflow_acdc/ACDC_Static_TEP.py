@@ -493,6 +493,9 @@ def _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule,PV_set=False):
     model.name = "TEP MTDC AC/DC hybrid OPF"
 
     OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True)
+    limits_map = getattr(grid, "current_generation_type_limits", {}) or {}
+    if any(float(v) != 1.0 for v in limits_map.values()):
+        GEN_balance_constraints(model, grid)
     
 
     obj_TEP = TEP_obj(model,grid,NPV)

@@ -2126,6 +2126,11 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
             np_gen_values = {k: np.float64(pyo.value(v)) for k, v in model.np_gen.items()}
             for gen in grid.Generators:
                 gen.np_gen = np_gen_values[gen.genNumber]
+
+        if grid.rs_GPR:
+            np_rsgen_values = {k: np.float64(pyo.value(v)) for k, v in model.np_rsgen.items()}
+            for rs in grid.RenSources:
+                rs.np_rsgen = np_rsgen_values[rs.rsNumber]
         
         if grid.TEP_AC:
             lines_AC_TEP = {k: np.float64(pyo.value(v)) for k, v in model.NumLinesACP.items()}
