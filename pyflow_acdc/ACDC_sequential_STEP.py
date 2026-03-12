@@ -89,6 +89,7 @@ def _apply_decommission_for_run(grid, linked_decommission_schedule, run_idx):
                 f"requested={total_decommission} > current={current_stock}"
             )
         setattr(el, np_attr, current_stock - total_decommission)
+        print(f"Base np for optimal solution {current_stock - total_decommission} of {name}")
         applied[name] = total_decommission
 
     return linked_now, planned_now, applied
