@@ -111,6 +111,10 @@ class Results:
             self.MP_TEP_results(print_table=print_table)
             self.MP_TEP_obj_res(print_table=print_table)
             self.MP_TEP_fuel_type_distribution(print_table=print_table)
+        if getattr(self.Grid, "Seq_STEP_run", False):
+            self.Seq_STEP_results(print_table=print_table)
+            self.Seq_STEP_obj_res(print_table=print_table)
+            self.Seq_STEP_fuel_type_distribution(print_table=print_table)
         # Final separator for All() run
         print('------')
 
@@ -2148,6 +2152,89 @@ class Results:
             print('')
 
         return stacked_df
+
+    def _render_seq_step_with_mp_renderer(
+        self,
+        *,
+        seq_attr,
+        mp_attr,
+        mp_method,
+        mp_table_prefix,
+        seq_table_prefix,
+        print_table=True,
+    ):
+        seq_payload = getattr(self.Grid, seq_attr, None)
+        if seq_payload is None:
+            return None
+
+        had_mp_attr = hasattr(self.Grid, mp_attr)
+        previous_mp_payload = getattr(self.Grid, mp_attr, None) if had_mp_attr else None
+        tables_before = set(self.tables.keys())
+        setattr(self.Grid, mp_attr, seq_payload)
+
+        try:
+            out = mp_method(print_table=print_table)
+        finally:
+            if had_mp_attr:
+                setattr(self.Grid, mp_attr, previous_mp_payload)
+            else:
+                delattr(self.Grid, mp_attr)
+
+        new_mp_keys = [
+            key for key in list(self.tables.keys())
+            if key.startswith(mp_table_prefix) and key not in tables_before
+        ]
+        for key in new_mp_keys:
+            mapped_key = f"{seq_table_prefix}{key[len(mp_table_prefix):]}"
+            self.tables[mapped_key] = self.tables[key]
+            del self.tables[key]
+
+        return out
+
+    def Seq_STEP_results(self, print_table=True):
+        df = getattr(self.Grid, "Seq_STEP_results", None)
+        if df is None:
+            if print_table:
+                print("No Seq_STEP_results found")
+            return df
+        return self._render_seq_step_with_mp_renderer(
+            seq_attr="Seq_STEP_results",
+            mp_attr="MP_TEP_results",
+            mp_method=self.MP_TEP_results,
+            mp_table_prefix="MP_TEP_results",
+            seq_table_prefix="Seq_STEP_results",
+            print_table=print_table,
+        )
+
+    def Seq_STEP_obj_res(self, print_table=True):
+        df = getattr(self.Grid, "Seq_STEP_obj_res", None)
+        if df is None:
+            if print_table:
+                print("No Seq_STEP_obj_res found")
+            return df
+        return self._render_seq_step_with_mp_renderer(
+            seq_attr="Seq_STEP_obj_res",
+            mp_attr="MP_TEP_obj_res",
+            mp_method=self.MP_TEP_obj_res,
+            mp_table_prefix="MP_TEP_obj_res",
+            seq_table_prefix="Seq_STEP_obj_res",
+            print_table=print_table,
+        )
+
+    def Seq_STEP_fuel_type_distribution(self, print_table=True):
+        dist = getattr(self.Grid, "Seq_STEP_fuel_type_distribution", None)
+        if dist is None:
+            if print_table:
+                print("No Seq_STEP_fuel_type_distribution found")
+            return dist
+        return self._render_seq_step_with_mp_renderer(
+            seq_attr="Seq_STEP_fuel_type_distribution",
+            mp_attr="MP_TEP_fuel_type_distribution",
+            mp_method=self.MP_TEP_fuel_type_distribution,
+            mp_table_prefix="MP_TEP_fuel_type_distribution",
+            seq_table_prefix="Seq_STEP_fuel_type_distribution",
+            print_table=print_table,
+        )
 
     def Price_Zone(self, print_table=True):
         rows = []

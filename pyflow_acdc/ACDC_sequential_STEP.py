@@ -1,6 +1,7 @@
 import os
 import pandas as pd
-from .grid_analysis import analyse_grid
+import pyomo.environ as pyo
+from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .grid_modifications import add_inv_series, add_gen_mix_limits
 from .ACDC_Static_TEP import transmission_expansion
 from .ACDC_MultiPeriod_TEP import (
@@ -21,17 +22,22 @@ def export_results_to_csv(run_results, export_dir, file_name="sequential_step_re
     df.to_csv(out_path, index=False)
 
 
-def _iter_dynamic_elements(grid):
+def _iter_dynamic_elements_typed(grid):
     for gen in grid.Generators:
-        yield str(gen.name), gen, "np_gen"
+        yield str(gen.name), gen, "np_gen", "Generator"
     for ren in grid.RenSources:
-        yield str(ren.name), ren, "np_rsgen"
+        yield str(ren.name), ren, "np_rsgen", "Renewable Source"
     for line in grid.lines_AC_exp:
-        yield str(line.name), line, "np_line"
+        yield str(line.name), line, "np_line", "AC Line"
     for line in grid.lines_DC:
-        yield str(line.name), line, "np_line"
+        yield str(line.name), line, "np_line", "DC Line"
     for conv in grid.Converters_ACDC:
-        yield str(conv.name), conv, "np_conv"
+        yield str(conv.name), conv, "np_conv", "ACDC Conv"
+
+
+def _iter_dynamic_elements(grid):
+    for name, el, np_attr, _ in _iter_dynamic_elements_typed(grid):
+        yield name, el, np_attr
 
 
 def _snapshot_dynamic_counts(grid):
@@ -75,12 +81,14 @@ def _apply_decommission_for_run(grid, linked_decommission_schedule, run_idx):
         total_decommission = float(linked_now.get(name, 0.0)) + float(planned_now.get(name, 0.0))
         if total_decommission < 0:
             raise ValueError(f"Negative total decommission for '{name}': {total_decommission}")
-        if total_decommission > float(getattr(el, np_attr)) + 1e-9:
+
+        current_stock = float(getattr(el, np_attr))
+        if total_decommission > current_stock + 1e-9:
             raise ValueError(
-                f"Decommission exceeds installed stock for '{name}': "
-                f"linked+planned={total_decommission} > installed={float(getattr(el, np_attr))}"
+                f"Decommission exceeds current stock for '{name}': "
+                f"requested={total_decommission} > current={current_stock}"
             )
-        setattr(el, np_attr, float(getattr(el, np_attr)) - total_decommission)
+        setattr(el, np_attr, current_stock - total_decommission)
         applied[name] = total_decommission
 
     return linked_now, planned_now, applied
@@ -110,14 +118,14 @@ def _register_future_aged_decommission(grid, run_idx, n_years, decommission_appl
         np_after = float(getattr(el, np_attr))
         decomm_now = float(decommission_applied_by_name.get(name, 0.0))
 
-        installed_now = np_after - (np_before - decomm_now)
-        if installed_now <= 1e-9:
+        added_now = np_after - (np_before - decomm_now)
+        if added_now <= 1e-9:
             continue
 
         decomision_period = int(el.decomision_period)
         future_idx = run_idx + decomision_period
         bucket = schedule.setdefault(future_idx, {})
-        bucket[name] = bucket.get(name, 0.0) + float(installed_now)
+        bucket[name] = bucket.get(name, 0.0) + float(added_now)
 
 
 def sequential_STEP(
@@ -180,6 +188,18 @@ def sequential_STEP(
 
     aged_decommission_schedule = {}
     run_results = {}
+    pre_existing_by_name = _snapshot_dynamic_counts(grid)
+    element_meta = {}
+    report_rows = {}
+    for name, el, np_attr, type_name in _iter_dynamic_elements_typed(grid):
+        element_meta[name] = {"element": el, "np_attr": np_attr, "type": type_name}
+        report_rows[name] = {
+            "Element": name,
+            "Type": type_name,
+            "Pre Existing": pre_existing_by_name.get(name, 0.0),
+        }
+    fuel_type_dist_by_period = {0: current_fuel_type_distribution(grid, output="df")}
+    obj_rows = []
 
     for k in range(n_runs):
         np_before = _snapshot_dynamic_counts(grid)
@@ -233,6 +253,76 @@ def sequential_STEP(
             "linked_decommission_requested_total": float(sum(linked_now.values())) if linked_now else 0.0,
             "linked_decommission_applied_total": float(sum(linked_now.values())) if linked_now else 0.0,
         }
+
+        period = k + 1
+        np_after = _snapshot_dynamic_counts(grid)
+        for name, row in report_rows.items():
+            decommissioned = float(applied_decommission.get(name, 0.0))
+            installed = float(np_after[name]) - (float(np_before[name]) - decommissioned)
+            if abs(installed) <= 1e-9:
+                installed = 0.0
+            active = float(np_after[name])
+            base_cost = float(getattr(element_meta[name]["element"], "base_cost", 0.0) or 0.0)
+            cost = installed * base_cost
+
+            row[f"Decommissioned_{period}"] = decommissioned
+            row[f"Installed_{period}"] = installed
+            row[f"Active_{period}"] = active
+            row[f"Cost_{period}"] = cost
+
+        fuel_type_dist_by_period[period] = current_fuel_type_distribution(grid, output="df")
+
+        opf_obj = sum(float(x.get("v", 0.0)) for x in grid.OPF_obj.values())
+        npv_opf_obj = sum(float(x.get("NPV", 0.0)) for x in grid.OPF_obj.values())
+
+        tep_obj = float(pyo.value(model.obj) * getattr(model, "obj_scaling", 1.0))
+        present_value_tep = 1 / (1 + discount_rate) ** (k * n_years)
+        obj_rows.append(
+            {
+                "Investment_Period": period,
+                "OPF_Objective": opf_obj,
+                "NPV_OPF_Objective": npv_opf_obj,
+                "TEP_Objective": tep_obj,
+                "STEP_Objective": tep_obj,
+                "NPV_STEP_Objective": tep_obj * present_value_tep,
+                "STEP_Objective_Economic": tep_obj,
+                "NPV_STEP_Objective_Economic": tep_obj * present_value_tep,
+            }
+        )
+
         if export_dir is not None:
             export_results_to_csv(run_results, export_dir)
+
+    seq_results_df = pd.DataFrame(list(report_rows.values()))
+    if not seq_results_df.empty:
+        cost_cols = [f"Cost_{i+1}" for i in range(n_runs) if f"Cost_{i+1}" in seq_results_df.columns]
+        seq_results_df["Total_Cost"] = seq_results_df[cost_cols].sum(axis=1) if cost_cols else 0.0
+
+        total_row = {}
+        for col in seq_results_df.columns:
+            if col == "Element":
+                total_row[col] = "Total cost"
+            elif "Cost" in col:
+                total_row[col] = seq_results_df[col].sum()
+            else:
+                total_row[col] = ""
+        seq_results_df = pd.concat([seq_results_df, pd.DataFrame([total_row])], ignore_index=True)
+
+    grid.sequential_STEP_run_results = run_results
+    grid.Seq_STEP_run = True
+    grid.Seq_STEP_results = seq_results_df
+    grid.Seq_STEP_obj_res = pd.DataFrame(
+        obj_rows,
+        columns=[
+            "Investment_Period",
+            "OPF_Objective",
+            "NPV_OPF_Objective",
+            "TEP_Objective",
+            "STEP_Objective",
+            "NPV_STEP_Objective",
+            "STEP_Objective_Economic",
+            "NPV_STEP_Objective_Economic",
+        ],
+    )
+    grid.Seq_STEP_fuel_type_distribution = fuel_type_dist_by_period
     return run_results
