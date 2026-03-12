@@ -1183,6 +1183,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
         # If any elements are missing geometries, create them
         if elements_without_geometry:
             print(f"Creating geometries for {len(elements_without_geometry)} elements without geometries...")
+            print("Missing geometries:", ", ".join(elements_without_geometry))
             create_geometries(grid)
 
         if journal:
