@@ -9,6 +9,7 @@ from .ACDC_MultiPeriod_TEP import (
     _validate_grid_for_MP_TEP,
     _update_grid_investment_period,
     _calculate_decomision_period,
+    _deactivate_non_pre_existing_loads
 )
 from .Graph_and_plot import save_network_svg
 
@@ -217,6 +218,15 @@ def sequential_STEP(
     if mix_data is not None:
         add_gen_mix_limits(grid, mix_data)
 
+    for gen in grid.Generators:
+        planned_positive = _series_has_positive(gen.investment_decisions.get("planned_installation", 0.0))
+        gen.np_gen_opf = bool(gen.np_gen_opf or planned_positive)
+        gen.np_gen_mp = False
+    for rs in grid.RenSources:
+        planned_positive = _series_has_positive(rs.investment_decisions.get("planned_installation", 0.0))
+        rs.np_rsgen_opf = bool(rs.np_rsgen_opf or planned_positive)
+        rs.np_rsgen_mp = False
+
     n_runs = _fill_investment_decisions(grid)
     _validate_grid_for_MP_TEP(grid)
     if n_runs <= 0:
@@ -225,17 +235,6 @@ def sequential_STEP(
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate = discount_rate
     grid.TEP_n_periods = n_runs
-
-    for gen in grid.Generators:
-        planned_positive = _series_has_positive(gen.investment_decisions.get("planned_installation", 0.0))
-        max_inv_positive = _series_has_positive(gen.investment_decisions.get("max_inv", 0.0))
-        gen.np_gen_opf = bool(gen.np_gen_opf or planned_positive or max_inv_positive)
-        gen.np_gen_mp = False
-    for rs in grid.RenSources:
-        planned_positive = _series_has_positive(rs.investment_decisions.get("planned_installation", 0.0))
-        max_inv_positive = _series_has_positive(rs.investment_decisions.get("max_inv", 0.0))
-        rs.np_rsgen_opf = bool(rs.np_rsgen_opf or planned_positive or max_inv_positive)
-        rs.np_rsgen_mp = False
 
     grid.GPR = any(gen.np_gen_opf for gen in grid.Generators)
     grid.rs_GPR = any(rs.np_rsgen_opf for rs in grid.RenSources)
@@ -261,6 +260,8 @@ def sequential_STEP(
             "Type": type_name,
             "Pre Existing": pre_existing_by_name.get(name, 0.0),
         }
+
+    _deactivate_non_pre_existing_loads(grid)
     fuel_type_dist_by_period = {0: current_fuel_type_distribution(grid, output="df")}
     obj_rows = []
     aborted = False

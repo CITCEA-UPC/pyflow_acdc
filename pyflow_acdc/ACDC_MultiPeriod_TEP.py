@@ -111,6 +111,17 @@ def _fill_investment_decisions(grid):
             )
         return values_list
 
+    def _dynamic_max_cap(element):
+        if hasattr(element, "np_gen_max"):
+            return float(element.np_gen_max)
+        if hasattr(element, "np_rsgen_max"):
+            return float(element.np_rsgen_max)
+        if hasattr(element, "np_line_max"):
+            return float(element.np_line_max)
+        if hasattr(element, "np_conv_max"):
+            return float(element.np_conv_max)
+        return None
+
     # Normalize object-owned investment decisions.
     for element in _iter_elements():
         for key, values in list(element.investment_decisions.items()):
@@ -118,6 +129,12 @@ def _fill_investment_decisions(grid):
                 values,
                 f"{element.name}:{key}"
             )
+
+        # Keep per-period investment caps consistent with static max stock.
+        cap = _dynamic_max_cap(element)
+        if cap is not None:
+            max_inv = [float(v) for v in element.investment_decisions["max_inv"]]
+            element.investment_decisions["max_inv"] = [min(v, cap) for v in max_inv]
     return target_len
 
 def _update_grid_investment_period(grid, i):
@@ -347,12 +364,29 @@ def _MP_TEP_variables(model,grid):
     tep_vars = get_TEP_variables(grid)
     np_gen_max_install={}
     for gen in grid.Generators:
-        max_inv = _inv_decision(gen, 'max_inv')
-        np_gen_max_install[gen.genNumber] = max(max_inv) if len(max_inv) > 0 else gen.np_gen_max
+        vals = _inv_decision(gen, 'max_inv')
+        for i in model.inv_periods:
+            np_gen_max_install[(gen.genNumber, i)] = vals[i]
     np_rsgen_max_install={}
     for rs in grid.RenSources:
-        max_inv = _inv_decision(rs, 'max_inv')
-        np_rsgen_max_install[rs.rsNumber] = max(max_inv) if len(max_inv) > 0 else rs.np_rsgen_max
+        vals = _inv_decision(rs, 'max_inv')
+        for i in model.inv_periods:
+            np_rsgen_max_install[(rs.rsNumber, i)] = vals[i]
+    np_acline_max_install = {}
+    for line in grid.lines_AC_exp:
+        vals = _inv_decision(line, 'max_inv')
+        for i in model.inv_periods:
+            np_acline_max_install[(line.lineNumber, i)] = vals[i]
+    np_dcline_max_install = {}
+    for line in grid.lines_DC:
+        vals = _inv_decision(line, 'max_inv')
+        for i in model.inv_periods:
+            np_dcline_max_install[(line.lineNumber, i)] = vals[i]
+    np_conv_max_install = {}
+    for conv in grid.Converters_ACDC:
+        vals = _inv_decision(conv, 'max_inv')
+        for i in model.inv_periods:
+            np_conv_max_install[(conv.ConvNumber, i)] = vals[i]
 
     def planned_installation_rsgen_init(model, rs, i):
         return _inv_decision(grid.RenSources[rs], 'planned_installation')[i]
@@ -374,11 +408,11 @@ def _MP_TEP_variables(model,grid):
         def np_rsgen_bounds(model,rs,i):
             return (0,np_rsgen_max[rs])
         def np_rsgen_bounds_install(model,rs,i):
-            return (0,np_rsgen_max_install[rs])
+            return (0,np_rsgen_max_install[(rs, i)])
         def np_rsgen_bounds_install_opt(model,rs,i):
             ren_source = grid.RenSources[rs]
             if ren_source.np_rsgen_opf:
-                return (-model.planned_installation_rsgen[rs, i], np_rsgen_max_install[rs])
+                return (-model.planned_installation_rsgen[rs, i], np_rsgen_max_install[(rs, i)])
             else:
                 return (0,0)  
         def np_rsgen_i(model, rs, i):
@@ -400,11 +434,11 @@ def _MP_TEP_variables(model,grid):
             return (0,np_gen_max[g])
 
         def np_gen_bounds_install(model,g,i):
-            return (0,np_gen_max_install[g])
+            return (0,np_gen_max_install[(g, i)])
         def np_gen_bounds_install_opt(model,g,i):
             gen = grid.Generators[g]
             if gen.np_gen_opf:
-                return (-model.planned_installation_gen[g, i], np_gen_max_install[g])
+                return (-model.planned_installation_gen[g, i], np_gen_max_install[(g, i)])
             else:
                 return (0,0)
         def np_gen_i(model, g, i):
@@ -424,11 +458,11 @@ def _MP_TEP_variables(model,grid):
             def MP_AC_line_bounds(model,l,i):
                 return (0,NP_lineAC_max[l])
             def MP_AC_line_bounds_install(model,l,i):
-                return (0,NP_lineAC_max[l])
+                return (0,np_acline_max_install[(l, i)])
             def MP_AC_line_bounds_install_opt(model,l,i):
                 line = grid.lines_AC_exp[l]
                 if line.np_line_opf:
-                    return (-model.planned_installation_ACline[l, i], NP_lineAC_max[l])
+                    return (-model.planned_installation_ACline[l, i], np_acline_max_install[(l, i)])
                 else:
                     return (0,0)
             def NP_lineAC_i(model, l, i):
@@ -446,11 +480,11 @@ def _MP_TEP_variables(model,grid):
         def MP_DC_line_bounds(model,l,i):
             return (0,NP_lineDC_max[l])
         def MP_DC_line_bounds_install(model,l,i):
-            return (0,NP_lineDC_max[l])
+            return (0,np_dcline_max_install[(l, i)])
         def MP_DC_line_bounds_install_opt(model,l,i):
             line = grid.lines_DC[l]
             if line.np_line_opf:
-                return (-model.planned_installation_DCline[l, i], NP_lineDC_max[l])
+                return (-model.planned_installation_DCline[l, i], np_dcline_max_install[(l, i)])
             else:
                 return (0,0)
         def NP_lineDC_i(model, l, i):
@@ -468,11 +502,11 @@ def _MP_TEP_variables(model,grid):
         def MP_Conv_bounds(model,c,i):
             return (0,np_conv_max[c])
         def MP_Conv_bounds_install(model,c,i):
-            return (0,np_conv_max[c])
+            return (0,np_conv_max_install[(c, i)])
         def MP_Conv_bounds_install_opt(model,c,i):
             conv = grid.Converters_ACDC[c]
             if conv.np_conv_opf:
-                return (-model.planned_installation_Conv[c, i], np_conv_max[c])
+                return (-model.planned_installation_Conv[c, i], np_conv_max_install[(c, i)])
             else:
                 return (0,0)
         def np_conv_i(model, c, i):
@@ -651,6 +685,7 @@ def multi_period_transmission_expansion(
         rs.np_rsgen_mp = rs.np_rsgen_opf or any(x != 0 for x in _inv_decision(rs, 'planned_installation'))
     
     t1=time.time()
+    _deactivate_non_pre_existing_loads(grid)
     pre_opt_fuel_type_distribution = current_fuel_type_distribution(grid, output='df')
 
     model = pyo.ConcreteModel()
@@ -1706,3 +1741,21 @@ def calculate_MPTEP_objective_from_model(model,grid,weights_def,n_years,discount
         inv_objs[i] = tep_obj_value
         inv_opf_objs[i] = opf_objs
     return inv_objs, inv_opf_objs
+
+def _deactivate_non_pre_existing_loads(grid):
+    for price_zone in grid.Price_Zones:
+        inv0_load = price_zone.investment_decisions["Load"][0]
+        if inv0_load == 0.0:
+            price_zone.PLi_inv_factor = 0.0
+    for node in grid.nodes_AC:
+        if node.PLi_linked:
+            continue
+        inv0_load = node.investment_decisions["Load"][0]
+        if inv0_load == 0.0:
+            node.PLi_inv_factor = 0.0
+    for node in grid.nodes_DC:
+        if node.PLi_linked:
+            continue
+        inv0_load = node.investment_decisions["Load"][0]
+        if inv0_load == 0.0:
+            node.PLi_inv_factor = 0.0
