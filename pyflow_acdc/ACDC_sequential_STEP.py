@@ -199,6 +199,7 @@ def sequential_STEP(
     export_dir=None,
     svg_prefix="sequential_STEP",
     save_svgs=False,
+    export_steps=False
 ):
     """
     Sequentially solve static transmission expansion one investment period at a time.
@@ -294,6 +295,10 @@ def sequential_STEP(
             solver_options=solver_options,
             obj_scaling=obj_scaling,
         )
+        if export_steps:
+            from Results_class import Results
+            res = Results(grid)
+            res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx")
         _round_dynamic_np_to_nearest_integer(grid)
         if not (solver_stats and solver_stats.get("solution_found", False)):
             aborted = True
