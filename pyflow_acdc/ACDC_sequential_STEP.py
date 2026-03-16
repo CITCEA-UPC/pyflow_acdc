@@ -296,7 +296,7 @@ def sequential_STEP(
             obj_scaling=obj_scaling,
         )
         if export_steps:
-            from Results_class import Results
+            from .Results_class import Results
             res = Results(grid)
             res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx")
         _round_dynamic_np_to_nearest_integer(grid)
