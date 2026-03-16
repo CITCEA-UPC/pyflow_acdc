@@ -1128,60 +1128,42 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 opt.options[param_name] = param_value
 
         try:
-            results = opt.solve(model, tee=tee)
+            if solver == 'bonmin':
+                # Avoid Pyomo hard-failing on non-ok status while still keeping
+                # access to incumbent information in results.
+                results = opt.solve(model, tee=tee, load_solutions=False)
+                try:
+                    if len(getattr(results, 'solution', [])) > 0:
+                        model.solutions.load_from(results)
+                except Exception:
+                    pass
+            else:
+                results = opt.solve(model, tee=tee)
         except Exception as e:
             error_msg = str(e)
-            recovered_results = None
-            recovered_solution = False
-            recovered_best_objective = None
-
-            # Some MINLP solvers can finish with an incumbent but raise while
-            # Pyomo tries to load results with non-ok solver status.
-            if "bad status" in error_msg.lower():
-                try:
-                    recovered_results = opt.solve(model, tee=tee, load_solutions=False)
-                    recovered_best_objective = (
-                        getattr(recovered_results.problem, 'upper_bound', None)
-                        if recovered_results
-                        else None
-                    )
-                    recovered_solution = bool(
-                        recovered_results
-                        and len(getattr(recovered_results, "solution", [])) > 0
-                    )
-                    if recovered_solution:
-                        try:
-                            model.solutions.load_from(recovered_results)
-                        except Exception:
-                            # Keep the incumbent signal even if loading fails.
-                            pass
-                except Exception:
-                    recovered_results = None
-                    recovered_solution = False
-
-            recovered_has_incumbent = False
-            if recovered_best_objective is not None:
-                try:
-                    recovered_has_incumbent = bool(np.isfinite(float(recovered_best_objective)))
-                except (TypeError, ValueError):
-                    recovered_has_incumbent = False
-
             print(f"  Solver crashed: {e}")
+
+            model_has_solution = False
+            try:
+                model_has_solution = len(getattr(model.solutions, '_entry', [])) > 0
+            except Exception:
+                model_has_solution = False
+
             solver_stats = {
                 'solver': solver,
                 'iterations': None,
-                'best_objective': recovered_best_objective,
-                'lower_bound': getattr(recovered_results.problem, 'lower_bound', None) if recovered_results else None,
-                'time': getattr(recovered_results.solver, 'time', None) if recovered_results else None,
-                'termination_condition': str(recovered_results.solver.termination_condition) if recovered_results else 'error',
+                'best_objective': None,
+                'lower_bound': None,
+                'time': None,
+                'termination_condition': 'error',
                 'solver_message': error_msg,
                 'feasible_solutions': feasible_solutions,
                 'all_solutions': all_solutions,
                 'bound_solutions': bound_solutions,
-                'solution_found': recovered_solution or recovered_has_incumbent or len(feasible_solutions) > 0,
+                'solution_found': model_has_solution or len(feasible_solutions) > 0,
                 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
             }
-            return recovered_results, solver_stats
+            return None, solver_stats
 
     obj_scaling = getattr(model, 'obj_scaling', 1.0)
 
@@ -1245,6 +1227,12 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     # being interpreted as a successful MINLP solve.
     if solver == 'bonmin':
         has_solution = _has_results_solution(results) or len(feasible_solutions) > 0
+        if not has_solution:
+            ub = solver_stats.get('best_objective', None)
+            try:
+                has_solution = np.isfinite(float(ub))
+            except (TypeError, ValueError):
+                has_solution = False
     else:
         has_solution = _has_solution(results, model) or len(feasible_solutions) > 0
     tc = results.solver.termination_condition if results else None

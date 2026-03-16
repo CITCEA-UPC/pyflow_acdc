@@ -301,6 +301,8 @@ def sequential_STEP(
             res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
             res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx",print_table=False)
         _round_dynamic_np_to_nearest_integer(grid)
+        termination = str(solver_stats.get("termination_condition", "unknown")).lower() if solver_stats else "unknown"
+
         best_obj_finite = False
         if solver_stats:
             best_obj = solver_stats.get("best_objective", None)
@@ -310,21 +312,36 @@ def sequential_STEP(
                     best_obj_finite = (best_obj_val == best_obj_val) and abs(best_obj_val) < 1e30
                 except (TypeError, ValueError):
                     best_obj_finite = False
+
+        has_results_solution = False
+        if model_res is not None:
+            try:
+                has_results_solution = len(getattr(model_res, "solution", [])) > 0
+            except Exception:
+                has_results_solution = False
+
         has_feasible_solution = bool(
-            solver_stats
-            and (
-                solver_stats.get("solution_found", False)
-                or len(solver_stats.get("feasible_solutions", []) or []) > 0
-                or best_obj_finite
-            )
+            (solver_stats and solver_stats.get("solution_found", False))
+            or has_results_solution
+            or best_obj_finite
         )
-        if not has_feasible_solution:
+
+        explicit_no_solution = any(
+            key in termination
+            for key in ("infeasible", "invalidproblem", "unbounded", "no solution")
+        )
+
+        if explicit_no_solution and not has_feasible_solution:
             aborted = True
-            termination = solver_stats.get("termination_condition", "unknown") if solver_stats else "unknown"
             abort_reason = f"run {k + 1} has no feasible solution (termination={termination})"
             if tee:
                 print(f"Sequential STEP aborted at run {k + 1}: no solution found (termination={termination})")
             break
+        elif (not has_feasible_solution) and tee:
+            print(
+                f"Sequential STEP run {k + 1}: solver ended with termination={termination} "
+                "and no explicit feasible evidence; continuing (no hard abort)."
+            )
 
         _register_future_aged_decommission(
             grid=grid,
@@ -384,7 +401,7 @@ def sequential_STEP(
                 "TEP_Objective": tep_obj,
                 "STEP_Objective": tep_obj,
                 "NPV_STEP_Objective": tep_obj * present_value_tep,
-                "STEP_Objective_Economic": tep_obj,
+                "STEP_Objective_Economic": tep_obj, 
                 "NPV_STEP_Objective_Economic": tep_obj * present_value_tep,
             }
         )
