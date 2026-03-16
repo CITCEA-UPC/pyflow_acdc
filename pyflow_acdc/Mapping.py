@@ -109,7 +109,24 @@ def create_geometries(grid):
         if gen.x_coord is not None and gen.y_coord is not None and gen.geometry is None:
             gen.geometry = Point(gen.x_coord, gen.y_coord)
 
-def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=None,linestrings=None,ant_path='None',clustering=True,coloring=None,show=True,planar=False,scale_gen=False,base_icon_size=24,plot_load=True,show_all=False):
+def plot_folium(
+    grid,
+    text='data',
+    name=None,
+    tiles="CartoDB Positron",
+    polygon=None,
+    linestrings=None,
+    ant_path='None',
+    clustering=True,
+    coloring=None,
+    show=True,
+    planar=False,
+    scale_gen=False,
+    base_icon_size=24,
+    plot_load=True,
+    show_all=False,
+    add_marine_regions_wms=False,
+):
     # "OpenStreetMap",     "CartoDB Positron"     "Cartodb dark_matter" 
     if name is None:
         name = grid.name
@@ -537,6 +554,18 @@ def plot_folium(grid, text='data', name=None,tiles="CartoDB Positron",polygon=No
     else:
         # Standard tile layer
         m = folium.Map(location=map_center, tiles=tiles, zoom_start=5)
+
+    if add_marine_regions_wms:
+        folium.raster_layers.WmsTileLayer(
+            url="https://geo.vliz.be/geoserver/MarineRegions/wms",
+            layers="MarineRegions:eez_boundaries",
+            fmt="image/png",
+            transparent=True,
+            attr="Marine Regions",
+            name="Marine Regions EEZ",
+            overlay=True,
+            control=True,
+        ).add_to(m)
     
     # Function to add nodes with filtering by type and zone
     def add_nodes(gdf, tech_name):

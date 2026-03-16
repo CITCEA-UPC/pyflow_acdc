@@ -301,11 +301,21 @@ def sequential_STEP(
             res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
             res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx",print_table=False)
         _round_dynamic_np_to_nearest_integer(grid)
+        best_obj_finite = False
+        if solver_stats:
+            best_obj = solver_stats.get("best_objective", None)
+            if best_obj is not None:
+                try:
+                    best_obj_val = float(best_obj)
+                    best_obj_finite = (best_obj_val == best_obj_val) and abs(best_obj_val) < 1e30
+                except (TypeError, ValueError):
+                    best_obj_finite = False
         has_feasible_solution = bool(
             solver_stats
             and (
                 solver_stats.get("solution_found", False)
                 or len(solver_stats.get("feasible_solutions", []) or []) > 0
+                or best_obj_finite
             )
         )
         if not has_feasible_solution:

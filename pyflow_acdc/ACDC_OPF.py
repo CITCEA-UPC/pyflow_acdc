@@ -1133,12 +1133,18 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             error_msg = str(e)
             recovered_results = None
             recovered_solution = False
+            recovered_best_objective = None
 
             # Some MINLP solvers can finish with an incumbent but raise while
             # Pyomo tries to load results with non-ok solver status.
             if "bad status" in error_msg.lower():
                 try:
                     recovered_results = opt.solve(model, tee=tee, load_solutions=False)
+                    recovered_best_objective = (
+                        getattr(recovered_results.problem, 'upper_bound', None)
+                        if recovered_results
+                        else None
+                    )
                     recovered_solution = bool(
                         recovered_results
                         and len(getattr(recovered_results, "solution", [])) > 0
@@ -1153,11 +1159,18 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                     recovered_results = None
                     recovered_solution = False
 
+            recovered_has_incumbent = False
+            if recovered_best_objective is not None:
+                try:
+                    recovered_has_incumbent = bool(np.isfinite(float(recovered_best_objective)))
+                except (TypeError, ValueError):
+                    recovered_has_incumbent = False
+
             print(f"  Solver crashed: {e}")
             solver_stats = {
                 'solver': solver,
                 'iterations': None,
-                'best_objective': getattr(recovered_results.problem, 'upper_bound', None) if recovered_results else None,
+                'best_objective': recovered_best_objective,
                 'lower_bound': getattr(recovered_results.problem, 'lower_bound', None) if recovered_results else None,
                 'time': getattr(recovered_results.solver, 'time', None) if recovered_results else None,
                 'termination_condition': str(recovered_results.solver.termination_condition) if recovered_results else 'error',
@@ -1165,7 +1178,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 'feasible_solutions': feasible_solutions,
                 'all_solutions': all_solutions,
                 'bound_solutions': bound_solutions,
-                'solution_found': recovered_solution or len(feasible_solutions) > 0,
+                'solution_found': recovered_solution or recovered_has_incumbent or len(feasible_solutions) > 0,
                 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
             }
             return recovered_results, solver_stats
