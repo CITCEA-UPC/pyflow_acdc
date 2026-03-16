@@ -1130,14 +1130,45 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         try:
             results = opt.solve(model, tee=tee)
         except Exception as e:
+            error_msg = str(e)
+            recovered_results = None
+            recovered_solution = False
+
+            # Some MINLP solvers can finish with an incumbent but raise while
+            # Pyomo tries to load results with non-ok solver status.
+            if "bad status" in error_msg.lower():
+                try:
+                    recovered_results = opt.solve(model, tee=tee, load_solutions=False)
+                    recovered_solution = bool(
+                        recovered_results
+                        and len(getattr(recovered_results, "solution", [])) > 0
+                    )
+                    if recovered_solution:
+                        try:
+                            model.solutions.load_from(recovered_results)
+                        except Exception:
+                            # Keep the incumbent signal even if loading fails.
+                            pass
+                except Exception:
+                    recovered_results = None
+                    recovered_solution = False
+
             print(f"  Solver crashed: {e}")
             solver_stats = {
-            'solver': solver, 'iterations': None, 'best_objective': None,
-            'time': None, 'termination_condition': 'error',
-            'solver_message': 'Solver crashed', 'feasible_solutions': [],
-            'all_solutions': [], 'bound_solutions': [], 'solution_found': False, 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
-        }
-            return None, solver_stats
+                'solver': solver,
+                'iterations': None,
+                'best_objective': getattr(recovered_results.problem, 'upper_bound', None) if recovered_results else None,
+                'lower_bound': getattr(recovered_results.problem, 'lower_bound', None) if recovered_results else None,
+                'time': getattr(recovered_results.solver, 'time', None) if recovered_results else None,
+                'termination_condition': str(recovered_results.solver.termination_condition) if recovered_results else 'error',
+                'solver_message': error_msg,
+                'feasible_solutions': feasible_solutions,
+                'all_solutions': all_solutions,
+                'bound_solutions': bound_solutions,
+                'solution_found': recovered_solution or len(feasible_solutions) > 0,
+                'obj_scaling': getattr(model, 'obj_scaling', 1.0),
+            }
+            return recovered_results, solver_stats
 
     obj_scaling = getattr(model, 'obj_scaling', 1.0)
 

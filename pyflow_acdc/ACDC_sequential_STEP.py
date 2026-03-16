@@ -298,9 +298,17 @@ def sequential_STEP(
         if export_steps:
             from .Results_class import Results
             res = Results(grid)
-            res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx")
+            res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
+            res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx",print_table=False)
         _round_dynamic_np_to_nearest_integer(grid)
-        if not (solver_stats and solver_stats.get("solution_found", False)):
+        has_feasible_solution = bool(
+            solver_stats
+            and (
+                solver_stats.get("solution_found", False)
+                or len(solver_stats.get("feasible_solutions", []) or []) > 0
+            )
+        )
+        if not has_feasible_solution:
             aborted = True
             termination = solver_stats.get("termination_condition", "unknown") if solver_stats else "unknown"
             abort_reason = f"run {k + 1} has no feasible solution (termination={termination})"

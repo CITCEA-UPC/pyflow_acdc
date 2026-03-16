@@ -1670,6 +1670,19 @@ class Results:
                     rows.append([element, "Generator" ,ini,np.round(opt, decimals=2),maxn,
                                  float(np.round(pr, decimals=0)), float(cost)])
 
+        for ren in self.Grid.RenSources:
+            if ren.np_rsgen_opf:
+                if (ren.np_rsgen-ren.np_rsgen_b)>0.01:
+                    element = ren.name
+                    ini = ren.np_rsgen_b
+                    opt = ren.np_rsgen
+                    pr = ren.Max_S * ren.np_rsgen * self.Grid.S_base
+                    cost = (opt-ini) * ren.base_cost
+                    tot += cost
+                    maxn = ren.np_rsgen_max
+                    rows.append([element, "Ren Generator", ini, np.round(opt, decimals=2), maxn,
+                                 float(np.round(pr, decimals=0)), float(cost)])
+
         rows.append(["Total", "" ,"","", "", "", float(tot)])
 
         df = pd.DataFrame(rows, columns=[
