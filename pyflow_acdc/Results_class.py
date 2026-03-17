@@ -47,7 +47,7 @@ class Results:
             print(method_name)
     # def export(self):
 
-    def All(self, decimals=None, export_location=None, export_type=None,print_table=True, file_name=None):
+    def All(self, decimals=None, export_location=None, export_type=None,print_table=True, file_name=None,opt_exit=True):
         # Allow overriding configuration for this run
         if decimals is not None:
             self.dec = decimals
@@ -61,7 +61,27 @@ class Results:
             if export_location is None:
                 self.export_location = "pyflowacdc_res"
                 os.makedirs(self.export_location, exist_ok=True)
-      
+
+        # Pull latest prebuilt Pyomo model results table persisted by pyomo_model_solve.
+        df_pyomo = getattr(self.Grid, "_last_pyomo_model_results_table", None)
+        if isinstance(df_pyomo, pd.DataFrame):
+            self.tables["Pyomo_Model_Results"] = df_pyomo.copy()
+            if print_table and not df_pyomo.empty:
+                print('--------------')
+                print('Pyomo Model Results')
+                print('')
+                table = pt()
+                table.field_names = ['Property', 'Value']
+                table.align['Property'] = 'l'
+                table.align['Value'] = 'r'
+                row = df_pyomo.iloc[0].to_dict()
+                for key, val in row.items():
+                    table.add_row([key, val])
+                print(table)
+            if opt_exit and not df_pyomo.empty and "Solution Found" in df_pyomo.columns:
+                solution_found = bool(df_pyomo["Solution Found"].iloc[0])
+                if not solution_found:
+                    return
         if self.Grid.Clustering_information != {}:
             self.Clustering_results(print_table=print_table)
         if self.Grid.nodes_AC != []:
@@ -2639,31 +2659,13 @@ class Results:
 
         return df_combined
 
-    def pyomo_model_results(self, model, solver_stats=None, model_results=None, print_table=True):
-        """
-        Extract and display solver/model information from a solved Pyomo model.
-
-        Parameters
-        ----------
-        model : pyomo.ConcreteModel
-            The solved Pyomo model.
-        solver_stats : dict, optional
-            Dictionary returned by pyomo_model_solve (contains time, termination, etc.).
-        model_results : pyomo SolverResults, optional
-            Raw Pyomo solver results object returned by pyomo_model_solve.
-        print_table : bool
-            Whether to print a PrettyTable summary.
-
-        Returns
-        -------
-        df : pd.DataFrame
-            Single-row DataFrame with all solver/model statistics.
-        """
+    @staticmethod
+    def _build_pyomo_model_results_df(model, solver_stats=None, model_results=None, decimals=2):
+        """Build Pyomo model summary table and raw row dict."""
         try:
             import pyomo.environ as pyo
         except ImportError:
-            print("Pyomo is not installed — cannot extract model results.")
-            return pd.DataFrame()
+            return pd.DataFrame(), {}
 
         obj_scaling = getattr(model, 'obj_scaling', 1.0)
 
@@ -2680,7 +2682,6 @@ class Results:
         # --- Model dimensions ---
         n_vars = sum(len(v) for v in model.component_objects(pyo.Var, active=True))
         n_constraints = sum(len(c) for c in model.component_objects(pyo.Constraint, active=True))
-        n_objectives = sum(1 for _ in model.component_objects(pyo.Objective, active=True))
 
         # Count integer/binary variables
         n_integer = 0
@@ -2756,18 +2757,18 @@ class Results:
         row['Run Status'] = 'ok' if solution_found else 'failed'
 
         if obj_scaling != 1.0:
-            row['Objective (scaled)'] = np.round(obj_value_scaled, decimals=self.dec) if obj_value_scaled is not None else None
-            row['Objective (real)'] = np.round(obj_value_real, decimals=self.dec) if obj_value_real is not None else None
+            row['Objective (scaled)'] = np.round(obj_value_scaled, decimals=decimals) if obj_value_scaled is not None else None
+            row['Objective (real)'] = np.round(obj_value_real, decimals=decimals) if obj_value_real is not None else None
             row['Obj Scaling'] = f'{obj_scaling:.0e}'
         else:
-            row['Objective'] = np.round(obj_value_real, decimals=self.dec) if obj_value_real is not None else None
+            row['Objective'] = np.round(obj_value_real, decimals=decimals) if obj_value_real is not None else None
 
-        row['Solve Time (s)'] = np.round(solve_time, decimals=self.dec) if solve_time is not None else None
+        row['Solve Time (s)'] = np.round(solve_time, decimals=decimals) if solve_time is not None else None
 
         if lower_bound is not None:
-            row['Lower Bound'] = np.round(lower_bound, decimals=self.dec)
+            row['Lower Bound'] = np.round(lower_bound, decimals=decimals)
         if upper_bound is not None:
-            row['Upper Bound'] = np.round(upper_bound, decimals=self.dec)
+            row['Upper Bound'] = np.round(upper_bound, decimals=decimals)
         if gap is not None and np.isfinite(gap):
             row['Gap'] = np.round(gap, decimals=6)
         if has_callback:
@@ -2782,6 +2783,40 @@ class Results:
         row['Constraints'] = n_constraints
 
         df = pd.DataFrame([row])
+        return df, row
+
+    def pyomo_model_results(self, model, solver_stats=None, model_results=None, print_table=True):
+        """
+        Extract and display solver/model information from a solved Pyomo model.
+
+        Parameters
+        ----------
+        model : pyomo.ConcreteModel
+            The solved Pyomo model.
+        solver_stats : dict, optional
+            Dictionary returned by pyomo_model_solve (contains time, termination, etc.).
+        model_results : pyomo SolverResults, optional
+            Raw Pyomo solver results object returned by pyomo_model_solve.
+        print_table : bool
+            Whether to print a PrettyTable summary.
+
+        Returns
+        -------
+        df : pd.DataFrame
+            Single-row DataFrame with all solver/model statistics.
+        """
+        try:
+            import pyomo.environ as pyo
+        except ImportError:
+            print("Pyomo is not installed — cannot extract model results.")
+            return pd.DataFrame()
+
+        df, row = self._build_pyomo_model_results_df(
+            model=model,
+            solver_stats=solver_stats,
+            model_results=model_results,
+            decimals=self.dec,
+        )
         self.tables["Pyomo_Model_Results"] = df
 
         if print_table:

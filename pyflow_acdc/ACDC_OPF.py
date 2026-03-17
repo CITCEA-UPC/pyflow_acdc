@@ -908,25 +908,25 @@ def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_pat
     start = time.perf_counter()
     
     # Always write to log file, use Pyomo's tee to control console output.
-    # For Bonmin, disable autoload so Pyomo does not raise on status=error
-    # before we can parse logs and recover the last feasible incumbent.
+    # For Bonmin/HiGHS, disable autoload so Pyomo does not raise when no
+    # solution is available to load. We then load manually if a solution exists.
     solve_kwargs = {'tee': tee_console}
-    if solver_name == 'bonmin':
+    if solver_name in ('bonmin', 'highs'):
         solve_kwargs['load_solutions'] = False
     if solver_name == 'bonmin':
         solve_kwargs['logfile'] = log_path
     results = opt.solve(model, **solve_kwargs)
 
-    # Bonmin-specific incumbent recovery when solver exits with status=error.
-    if solver_name == 'bonmin':
+    # Manual incumbent recovery when autoload is disabled.
+    if solver_name in ('bonmin', 'highs'):
         try:
             solution_list = getattr(results, 'solution', None)
             if solution_list is not None and len(solution_list) > 0:
                 original_status = getattr(results.solver, 'status', None)
-                if original_status == SolverStatus.error:
+                if solver_name == 'bonmin' and original_status == SolverStatus.error:
                     results.solver.status = SolverStatus.warning
                 model.solutions.load_from(results)
-                if original_status == SolverStatus.error:
+                if solver_name == 'bonmin' and original_status == SolverStatus.error:
                     results.solver.status = original_status
         except Exception as exc:
             if tee_console:
@@ -970,6 +970,23 @@ def reset_to_initialize(model, initial_values):
         if var_obj.name in initial_values:
             for index in var_obj:
                 var_obj[index].set_value(initial_values[var_obj.name].get(index, 0))
+
+def _store_pyomo_results_on_grid(grid_obj, model_obj, results_obj, solver_stats):
+    """Persist latest Pyomo model results table on grid for Results.All()."""
+    if grid_obj is None:
+        return
+    try:
+        from .Results_class import Results
+        df, _ = Results._build_pyomo_model_results_df(
+            model=model_obj,
+            solver_stats=solver_stats,
+            model_results=results_obj,
+            decimals=2,
+        )
+        grid_obj._last_pyomo_model_results_table = df
+    except Exception:
+        # Never break solve flow due to reporting persistence.
+        pass
 
 
 def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=None, callback=False, 
@@ -1128,7 +1145,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 opt.options[param_name] = param_value
 
         try:
-            if solver == 'bonmin':
+            if solver in ('bonmin', 'highs'):
                 # Avoid Pyomo hard-failing on non-ok status while still keeping
                 # access to incumbent information in results.
                 results = opt.solve(model, tee=tee, load_solutions=False)
@@ -1163,6 +1180,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 'solution_found': model_has_solution or len(feasible_solutions) > 0,
                 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
             }
+            _store_pyomo_results_on_grid(grid, model, None, solver_stats)
             return None, solver_stats
 
     obj_scaling = getattr(model, 'obj_scaling', 1.0)
@@ -1190,66 +1208,70 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'obj_scaling': obj_scaling,
     }
 
-    def _has_solution(results_obj, model_obj):
-        """Simple feasibility signal: solver/model has at least one solution entry."""
-        if results_obj is not None:
-            try:
-                if len(getattr(results_obj, 'solution', [])) > 0:
-                    return True
-            except Exception:
-                pass
-        if model_obj is not None:
-            try:
-                if len(model_obj.solutions) > 0:
-                    return True
-            except Exception:
-                try:
-                    if len(getattr(model_obj.solutions, '_entry', [])) > 0:
-                        return True
-                except Exception:
-                    pass
-        return False
-    
-    def _has_results_solution(results_obj):
-        """Strict feasibility signal from solver results only."""
-        if results_obj is not None:
-            try:
-                if len(getattr(results_obj, 'solution', [])) > 0:
-                    return True
-            except Exception:
-                pass
-        return False
+    def _is_finite_number(value):
+        try:
+            return bool(np.isfinite(float(value)))
+        except (TypeError, ValueError):
+            return False
 
-    # For BONMIN, require evidence from BONMIN outputs only:
-    # - results.solution from the BONMIN solve
-    # - parsed feasible/incumbent stream (callback/log parsing path)
-    # This avoids stale model.solutions entries (e.g., from NLP warm-start IPOPT)
-    # being interpreted as a successful MINLP solve.
-    if solver == 'bonmin':
-        has_solution = _has_results_solution(results) or len(feasible_solutions) > 0
-        if not has_solution:
-            ub = solver_stats.get('best_objective', None)
-            try:
-                has_solution = np.isfinite(float(ub))
-            except (TypeError, ValueError):
-                has_solution = False
-    else:
-        has_solution = _has_solution(results, model) or len(feasible_solutions) > 0
+    def _model_has_loaded_solution(model_obj):
+        if model_obj is None:
+            return False
+        try:
+            if len(getattr(model_obj.solutions, '_entry', [])) > 0:
+                return True
+        except Exception:
+            pass
+        try:
+            return len(model_obj.solutions) > 0
+        except Exception:
+            return False
+
+    has_results_solution = False
+    if results is not None:
+        try:
+            has_results_solution = len(getattr(results, 'solution', [])) > 0
+        except Exception:
+            has_results_solution = False
+
+    has_callback_solution = len(feasible_solutions) > 0
+    has_loaded_model_solution = _model_has_loaded_solution(model)
+    has_bound_incumbent = _is_finite_number(solver_stats.get('best_objective', None))
+    has_bound_info = has_bound_incumbent and _is_finite_number(solver_stats.get('lower_bound', None))
+
     tc = results.solver.termination_condition if results else None
+    status = results.solver.status if results else None
+    tc_text = str(tc).lower() if tc is not None else ''
+    explicit_no_solution = (
+        tc in (pyo.TerminationCondition.infeasible, pyo.TerminationCondition.unbounded, pyo.TerminationCondition.invalidProblem)
+        or 'infeasible' in tc_text
+        or 'unbounded' in tc_text
+        or 'invalid' in tc_text
+        or 'no solution' in tc_text
+    )
+    positive_exit = (
+        status == SolverStatus.ok
+        and not explicit_no_solution
+    )
 
-    if tc == pyo.TerminationCondition.infeasible:
-        solver_stats['solution_found'] = False
-    elif tc in (pyo.TerminationCondition.optimal, pyo.TerminationCondition.feasible):
-        solver_stats['solution_found'] = True
-    else:
-        # Covers maxIterations/maxTimeLimit/unknown/error-with-incumbent cases.
-        solver_stats['solution_found'] = has_solution
+    incumbent_evidence = (
+        has_results_solution
+        or has_callback_solution
+        or has_loaded_model_solution
+        or has_bound_incumbent
+    )
+
+    solver_stats['solution_found'] = bool(
+        (positive_exit and has_bound_info)
+        or (not explicit_no_solution and incumbent_evidence)
+    )
 
     if results and results.solver.termination_condition == pyo.TerminationCondition.infeasible:
         if not suppress_warnings:
             logging.getLogger('pyomo').setLevel(logging.INFO)
             log_infeasible_constraints(model)
 
+    _store_pyomo_results_on_grid(grid, model, results, solver_stats)
     return results, solver_stats
 
 
