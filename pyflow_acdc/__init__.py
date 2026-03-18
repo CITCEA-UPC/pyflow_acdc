@@ -217,21 +217,36 @@ try:
 except ImportError:
     HAS_CLUSTERING = False
 
-# Dynamically load all .py files in the 'cases/' folder
-case_folder = Path(__file__).parent / "example_grids"
+# Dynamically load all .py files in the example_grids folders.
+_cases_root = Path(__file__).parent / "example_grids"
+_case_folders = [
+    _cases_root,
+    _cases_root / "PF",
+    _cases_root / "OPF",
+    _cases_root / "TEP",
+    _cases_root / "Wind_Array",
+]
 
 # Namespace for all loaded cases
 cases = {}
 
-# Load each .py file in the cases folder
-for case_file in case_folder.glob("*.py"):
-    module_name = case_file.stem  # Get the file name without extension
-    spec = importlib.util.spec_from_file_location(module_name, case_file)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    
-    # Add all public functions from the module to the `cases` namespace
-    cases.update({name: obj for name, obj in vars(module).items() if not name.startswith("_")})
+# Load each .py case module from configured folders
+for folder in _case_folders:
+    if not folder.exists():
+        continue
+
+    for case_file in sorted(folder.glob("*.py")):
+        if case_file.name == "__init__.py":
+            continue
+
+        rel_module = case_file.relative_to(_cases_root).with_suffix("")
+        module_name = "__".join(rel_module.parts)
+        spec = importlib.util.spec_from_file_location(module_name, case_file)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        # Add all public functions from the module to the `cases` namespace
+        cases.update({name: obj for name, obj in vars(module).items() if not name.startswith("_")})
 
 # Optional: Add all cases to this module's global namespace
 globals().update(cases)    

@@ -419,25 +419,25 @@ def {file_name}():
     # If nodes_AC code exists, add the code for assigning price zones to nodes_AC
         if data_dict["nodes_AC"]:
             main_code += f"""
-        # Assign Price Zones to Nodes
-        for index, row in nodes_AC.iterrows():
-            node_name = nodes_AC.at[index, 'Node_id']
-            price_zone = nodes_AC.at[index, 'PZ']
-            ACDC = 'AC'
-            if price_zone is not None:
-                pyf.assign_nodeToPrice_Zone(grid, node_name, price_zone,ACDC)
-        """
+    # Assign Price Zones to Nodes
+    for index, row in nodes_AC.iterrows():
+        node_name = nodes_AC.at[index, 'Node_id']
+        price_zone = nodes_AC.at[index, 'PZ']
+        ACDC = 'AC'
+        if price_zone is not None:
+            pyf.assign_nodeToPrice_Zone(grid, node_name, price_zone,ACDC)
+    """
     
     # If nodes_DC code exists, add the code for assigning price zones to nodes_DC
         if data_dict["nodes_DC"]:
             main_code += f"""
-        for index, row in nodes_DC.iterrows():
-            node_name = nodes_DC.at[index, 'Node_id']
-            price_zone = nodes_DC.at[index, 'PZ']
-            ACDC = 'DC'
-            if price_zone is not None:
-                pyf.assign_nodeToPrice_Zone(grid, node_name, price_zone,ACDC)
-        """
+    for index, row in nodes_DC.iterrows():
+        node_name = nodes_DC.at[index, 'Node_id']
+        price_zone = nodes_DC.at[index, 'PZ']
+        ACDC = 'DC'
+        if price_zone is not None:
+            pyf.assign_nodeToPrice_Zone(grid, node_name, price_zone,ACDC)
+    """
     
     
     main_code+=f"""

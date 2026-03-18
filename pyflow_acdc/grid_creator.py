@@ -890,7 +890,7 @@ def Create_grid_from_mat(matfile):
     
     
     if 'bus' in data:
-        num_data_columns = len(data['bus'][0])
+        num_data_columns = data['bus'].shape[1] if data['bus'].ndim > 1 else 0
         if num_data_columns > len(bus_columns):
             # Add extra column names if needed
             extra_columns = [f"extra_column_{i}" for i in range(num_data_columns - len(bus_columns))]
@@ -903,7 +903,7 @@ def Create_grid_from_mat(matfile):
         AC_node_data = None
     
     if 'branch' in data:
-        num_data_columns = len(data['branch'][0])
+        num_data_columns = data['branch'].shape[1] if data['branch'].ndim > 1 else 0
         if num_data_columns > len(branch_columns):
             # Add extra column names if needed
             extra_columns = [f"extra_column_{i}" for i in range(num_data_columns - len(branch_columns))]
@@ -921,7 +921,7 @@ def Create_grid_from_mat(matfile):
         EXP_line_data = None
 
     if 'gen' in data:
-        num_data_columns = len(data['gen'][0])
+        num_data_columns = data['gen'].shape[1] if data['gen'].ndim > 1 else 0
         if num_data_columns > len(gen_columns):
             # Add extra column names if needed
             extra_columns = [f"extra_column_{i}" for i in range(num_data_columns - len(gen_columns))]
@@ -929,7 +929,13 @@ def Create_grid_from_mat(matfile):
         else:
             # Use only the required number of columns from gen_columns
             gen_columns = gen_columns[:num_data_columns]
-        Gen_data = pd.DataFrame(data['gen'], columns=gen_columns)  
+        Gen_data = pd.DataFrame(data['gen'], columns=gen_columns)
+        # Keep generator bus IDs consistent with normalized AC node IDs
+        # (e.g. convert 30.0 -> 30 before later str(...) matching).
+        if 'bus' in Gen_data.columns:
+            Gen_data['bus'] = Gen_data['bus'].apply(
+                lambda v: int(v) if pd.notna(v) and float(v).is_integer() else v
+            )
     else:
         Gen_data = None
     
@@ -959,7 +965,7 @@ def Create_grid_from_mat(matfile):
         Gen_data_cost = None
 
     if 'busdc' in data:
-        num_data_columns = len(data['busdc'][0])
+        num_data_columns = data['busdc'].shape[1] if data['busdc'].ndim > 1 else 0
         if num_data_columns > len(busdc_columns):
             # Add extra column names if needed
             extra_columns = [f"extra_column_{i}" for i in range(num_data_columns - len(busdc_columns))]
@@ -972,7 +978,7 @@ def Create_grid_from_mat(matfile):
         DC_node_data = None
 
     if 'busdc_ne' in data:
-        num_data_columns = len(data['busdc_ne'][0])
+        num_data_columns = data['busdc_ne'].shape[1] if data['busdc_ne'].ndim > 1 else 0
         if num_data_columns > len(candidate_dc_bus):
             # Add extra column names if needed
             extra_columns = [f"extra_column_{i}" for i in range(num_data_columns - len(candidate_dc_bus))]
@@ -1030,6 +1036,13 @@ def Create_grid_from_mat(matfile):
         AC_lines_list = None
     else:
         "AC nodes data sorting"
+        # MAT files often store bus identifiers as floats (e.g. 1.0). Normalize
+        # integer-like identifiers to ints so downstream strict name matching
+        # stays consistent with generator/branch bus references.
+        if 'bus_i' in AC_node_data.columns:
+            AC_node_data['bus_i'] = AC_node_data['bus_i'].apply(
+                lambda v: int(v) if pd.notna(v) and float(v).is_integer() else v
+            )
         AC_node_data = AC_node_data.set_index('bus_i')
         AC_nodes = {}
         for index, row in AC_node_data.iterrows():

@@ -7,7 +7,16 @@ This case is built uppon the data of
 
 H. Barrios, A. Roehder, H. Natemeyer and A. Schnettler, "A benchmark case for network expansion methods," 2015 IEEE Eindhoven PowerTech, Eindhoven, Netherlands, 2015, pp. 1-6, doi: 10.1109/PTC.2015.7232601. keywords: {Load modeling;Time series analysis;Biological system modeling;Load flow;Generators;Poles and towers;Wind;Power system planning;Power system economics;RES integration;hybrid AC/DC Systems},
 
+and used in the following paper:
 
+Bernardo Castro Valerio, Marc Cheah-Mane, Vinicius A. Lacerda, Pieter Gebraad, Oriol Gomis-Bellmunt,
+Transmission expansion planning for hybrid AC/DC grids using a mixed-integer non-linear programming approach,
+International Journal of Electrical Power & Energy Systems,
+Volume 174,
+2026,
+111459,
+ISSN 0142-0615,
+https://doi.org/10.1016/j.ijepes.2025.111459.
 
 """
 current_file = Path(__file__).resolve()

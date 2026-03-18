@@ -1,7 +1,27 @@
 import pyflow_acdc as pyf
 import pandas as pd
 
+"""
+This case has been modified to include Transmision expansion costs for work
 
+Bernardo Castro Valerio, Marc Cheah-Mane, Vinicius A. Lacerda, Pieter Gebraad, Oriol Gomis-Bellmunt,
+Transmission expansion planning for hybrid AC/DC grids using a mixed-integer non-linear programming approach,
+International Journal of Electrical Power & Energy Systems,
+Volume 174,
+2026,
+111459,
+ISSN 0142-0615,
+https://doi.org/10.1016/j.ijepes.2025.111459.
+
+TEP information obtained from:
+
+TNEP of meshed HVDC grids: 'AC', 'DC' and convex formulations
+Jay Dave (jay.dave@kuleuven.be), Hakan Ergun , Ting An , Jingjing Lu , and Dirk Van Hertem
+https://doi.org/10.1049/iet-gtd.2019.0383
+
+
+
+"""
 def case118_TEP_DC(exp='All',N_b=0,N_i=1,N_max=1):    
     
     S_base=100

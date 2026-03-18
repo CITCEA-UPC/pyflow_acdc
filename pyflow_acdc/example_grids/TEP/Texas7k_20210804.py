@@ -3,7 +3,27 @@
 import pyflow_acdc as pyf
 import pandas as pd
 
+"""
+This case has been modified to include Transmision expansion costs for work
 
+Bernardo Castro Valerio, Marc Cheah-Mane, Vinicius A. Lacerda, Pieter Gebraad, Oriol Gomis-Bellmunt,
+Transmission expansion planning for hybrid AC/DC grids using a mixed-integer non-linear programming approach,
+International Journal of Electrical Power & Energy Systems,
+Volume 174,
+2026,
+111459,
+ISSN 0142-0615,
+https://doi.org/10.1016/j.ijepes.2025.111459.
+
+Source information obtained from:
+
+Birchfield AB, Xu T, Gegner KM, Shetye KS, Overbye TJ. Grid structural characteristics as validation criteria for synthetic networks. IEEE Trans Power Syst 2017;32(4):3258–65. http://dx.doi.org/10.1109/TPWRS.2016.2616385. 
+Gegner KM, Birchfield AB, Xu T, Shetye KS, Overbye TJ. A methodology for the creation of geographically realistic synthetic power flow models. In: 2016 IEEE power and energy conference at illinois. PECI, 2016, p. 1–6. http://dx.doi.org/ 10.1109/PECI.2016.7459256. 
+Xu T, Birchfield AB, Gegner KM, Shetye KS, Overbye TJ. Application of largescale synthetic power system models for energy economic studies. In: Proceedings of the 50th hawaii international conference on system sciences. 2017, URL http://hdl.handle.net/10125/41535.
+
+original source can be implemented for optimal power flow by setting TEP=False.
+
+"""
 def Texas7k_20210804(TEP=False,exp='All',N_b=1,N_i=1,N_max=3,kappa=1):    
     
     S_base=100

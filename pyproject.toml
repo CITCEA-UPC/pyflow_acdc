@@ -98,7 +98,15 @@ packages = ["pyflow_acdc","pyflow_tests"]
 "pyflow_acdc" = [
     "folium_images/*.png",
     "Cable_database/*.yaml",
-    "example_grids/*.py"
+    "example_grids/*.py",
+    "example_grids/PF/*.py",
+    "example_grids/OPF/*.py",
+    "example_grids/TEP/*.py",
+    "example_grids/TEP/*.csv",
+    "example_grids/Wind_Array/*.py",
+    "example_grids/wind_farm_data/*.py",
+    "example_grids/wind_farm_data/*.pkl.gz",
+    "example_grids/wind_farm_data/*.geojson"
 ]
 
 [project.scripts]

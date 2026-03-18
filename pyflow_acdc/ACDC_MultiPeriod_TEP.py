@@ -329,7 +329,7 @@ def _MP_GEN_balance_constraints(model, grid):
             if normalize_type(gen.gen_type) != gen_type:
                 continue
             g = gen.genNumber
-            if grid.GPR:
+            if grid.GPR and g in model.gen_AC:
                 gen_capacity += gen.Max_pow_gen * model.np_gen[g, i]
             else:
                 gen_capacity += gen.Max_pow_gen * gen.np_gen
@@ -339,7 +339,7 @@ def _MP_GEN_balance_constraints(model, grid):
             if normalize_type(rs.rs_type) != gen_type:
                 continue
             r = rs.rsNumber
-            if grid.rs_GPR:
+            if grid.rs_GPR and r in model.ren_sources:
                 ren_capacity += rs.PGi_ren_base * model.np_rsgen[r, i]
             else:
                 ren_capacity += rs.PGi_ren_base * rs.np_rsgen
@@ -362,31 +362,37 @@ def _MP_GEN_balance_constraints(model, grid):
 def _MP_TEP_variables(model,grid):
     
     tep_vars = get_TEP_variables(grid)
+    gen_set = list(model.gen_AC) if hasattr(model, "gen_AC") else []
+    rs_set = list(model.ren_sources) if hasattr(model, "ren_sources") else []
+    ac_line_set = list(model.lines_AC_exp) if hasattr(model, "lines_AC_exp") else []
+    dc_line_set = list(model.lines_DC) if hasattr(model, "lines_DC") else []
+    conv_set = list(model.conv) if hasattr(model, "conv") else []
+
     np_gen_max_install={}
-    for gen in grid.Generators:
-        vals = _inv_decision(gen, 'max_inv')
+    for g in gen_set:
+        vals = _inv_decision(grid.Generators[g], 'max_inv')
         for i in model.inv_periods:
-            np_gen_max_install[(gen.genNumber, i)] = vals[i]
+            np_gen_max_install[(g, i)] = vals[i]
     np_rsgen_max_install={}
-    for rs in grid.RenSources:
-        vals = _inv_decision(rs, 'max_inv')
+    for r in rs_set:
+        vals = _inv_decision(grid.RenSources[r], 'max_inv')
         for i in model.inv_periods:
-            np_rsgen_max_install[(rs.rsNumber, i)] = vals[i]
+            np_rsgen_max_install[(r, i)] = vals[i]
     np_acline_max_install = {}
-    for line in grid.lines_AC_exp:
-        vals = _inv_decision(line, 'max_inv')
+    for l in ac_line_set:
+        vals = _inv_decision(grid.lines_AC_exp[l], 'max_inv')
         for i in model.inv_periods:
-            np_acline_max_install[(line.lineNumber, i)] = vals[i]
+            np_acline_max_install[(l, i)] = vals[i]
     np_dcline_max_install = {}
-    for line in grid.lines_DC:
-        vals = _inv_decision(line, 'max_inv')
+    for l in dc_line_set:
+        vals = _inv_decision(grid.lines_DC[l], 'max_inv')
         for i in model.inv_periods:
-            np_dcline_max_install[(line.lineNumber, i)] = vals[i]
+            np_dcline_max_install[(l, i)] = vals[i]
     np_conv_max_install = {}
-    for conv in grid.Converters_ACDC:
-        vals = _inv_decision(conv, 'max_inv')
+    for c in conv_set:
+        vals = _inv_decision(grid.Converters_ACDC[c], 'max_inv')
         for i in model.inv_periods:
-            np_conv_max_install[(conv.ConvNumber, i)] = vals[i]
+            np_conv_max_install[(c, i)] = vals[i]
 
     def planned_installation_rsgen_init(model, rs, i):
         return _inv_decision(grid.RenSources[rs], 'planned_installation')[i]
@@ -676,8 +682,14 @@ def multi_period_transmission_expansion(
     
     _validate_grid_for_MP_TEP(grid)
 
-    grid.GPR = True if any(any(x != 0 for x in _inv_decision(gen, 'planned_installation')) for gen in grid.Generators) else grid.GPR
-    grid.rs_GPR = True if any(any(x != 0 for x in _inv_decision(ren_source, 'planned_installation')) for ren_source in grid.RenSources) else grid.rs_GPR
+    grid.GPR = bool(grid.GPR) or any(
+        gen.np_gen_opf or any(x != 0 for x in _inv_decision(gen, 'planned_installation'))
+        for gen in grid.Generators
+    )
+    grid.rs_GPR = bool(grid.rs_GPR) or any(
+        rs.np_rsgen_opf or any(x != 0 for x in _inv_decision(rs, 'planned_installation'))
+        for rs in grid.RenSources
+    )
     
     for gen in grid.Generators:
         gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in _inv_decision(gen, 'planned_installation'))
@@ -812,15 +824,25 @@ def multi_period_transmission_expansion(
 def _initialize_MPTEP_sets_model(model,grid):    
 
     if grid.DCmode:
-        model.lines_DC = pyo.Set(initialize=list(range(0, grid.nl_DC)))
+        model.lines_DC = pyo.Set(
+            initialize=[i for i, line in enumerate(grid.lines_DC) if line.np_line_opf]
+        )
     if grid.ACmode and grid.DCmode:
-        model.conv = pyo.Set(initialize=list(range(0, grid.nconv)))
+        model.conv = pyo.Set(
+            initialize=[i for i, conv in enumerate(grid.Converters_ACDC) if conv.np_conv_opf]
+        )
     if grid.TEP_AC:
-        model.lines_AC_exp = pyo.Set(initialize=list(range(0,grid.nle_AC)))
+        model.lines_AC_exp = pyo.Set(
+            initialize=[i for i, line in enumerate(grid.lines_AC_exp) if line.np_line_opf]
+        )
     if grid.GPR:
-        model.gen_AC = pyo.Set(initialize=list(range(0,grid.n_gen)))
+        model.gen_AC = pyo.Set(
+            initialize=[i for i, gen in enumerate(grid.Generators) if getattr(gen, "np_gen_mp", False)]
+        )
     if grid.rs_GPR:
-        model.ren_sources = pyo.Set(initialize=list(range(0,grid.n_ren)))
+        model.ren_sources = pyo.Set(
+            initialize=[i for i, rs in enumerate(grid.RenSources) if getattr(rs, "np_rsgen_mp", False)]
+        )
 
 def _inv_model_obj(model,grid,i):
     inv_gen= 0
@@ -1363,8 +1385,14 @@ def multi_period_MS_TEP(
     n_periods = _fill_investment_decisions(grid)
     _validate_grid_for_MP_TEP(grid)
 
-    grid.GPR = True if any(any(x != 0 for x in _inv_decision(gen, 'planned_installation')) for gen in grid.Generators) else grid.GPR
-    grid.rs_GPR = True if any(any(x != 0 for x in _inv_decision(ren_source, 'planned_installation')) for ren_source in grid.RenSources) else grid.rs_GPR
+    grid.GPR = bool(grid.GPR) or any(
+        gen.np_gen_opf or any(x != 0 for x in _inv_decision(gen, 'planned_installation'))
+        for gen in grid.Generators
+    )
+    grid.rs_GPR = bool(grid.rs_GPR) or any(
+        rs.np_rsgen_opf or any(x != 0 for x in _inv_decision(rs, 'planned_installation'))
+        for rs in grid.RenSources
+    )
     for gen in grid.Generators:
         gen.np_gen_mp = gen.np_gen_opf or any(x != 0 for x in _inv_decision(gen, 'planned_installation'))
     for rs in grid.RenSources:
