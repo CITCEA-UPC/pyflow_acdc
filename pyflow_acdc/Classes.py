@@ -1132,9 +1132,13 @@ class Gen_AC:
             self.cost_perMVA = installation_cost/S_rated
         elif Max_pow_gen >0:
             self.cost_perMVA = installation_cost/Max_pow_gen
-        else:
+        elif max (abs(Min_pow_genR),abs(Max_pow_genR)) >0:
             Q_rate = max (abs(Min_pow_genR),abs(Max_pow_genR))
             self.cost_perMVA = installation_cost/Q_rate
+        elif abs(Min_pow_gen) >0:
+            self.cost_perMVA = installation_cost/abs(Min_pow_gen)
+        else:
+            self.cost_perMVA = installation_cost
             
             
         self.price_zone_link = False
