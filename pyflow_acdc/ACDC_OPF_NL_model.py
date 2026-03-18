@@ -192,8 +192,17 @@ def AC_variables(model,grid,AC_info,PV_set,limit_flow_rate=1):
         model.AC_PVs     = pyo.Set(initialize=AC_PV)
             
     "AC Variables"
+    # Clamp AC voltage initialization to variable bounds to avoid Pyomo W1002 warnings.
+    V_ini_AC_clipped = {
+        node: min(max(V_ini_AC[node], u_min_ac[node]), u_max_ac[node])
+        for node in lista_nodos_AC
+    }
     #AC nodes variables
-    model.V_AC       = pyo.Var(model.nodes_AC, bounds=lambda model, node: (u_min_ac[node], u_max_ac[node]), initialize=V_ini_AC)
+    model.V_AC       = pyo.Var(
+        model.nodes_AC,
+        bounds=lambda model, node: (u_min_ac[node], u_max_ac[node]),
+        initialize=V_ini_AC_clipped,
+    )
     model.thetha_AC  = pyo.Var(model.nodes_AC, bounds=(-1.6, 1.6), initialize=Theta_ini)
 
     model.P_known_AC = pyo.Param(model.nodes_AC, initialize=P_know,mutable=True)
