@@ -704,14 +704,19 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
         t_modelupdate = t2-t1
         
         results, solver_stats = pyomo_model_solve(model,grid,solver,suppress_warnings=True)
-        if results.solver.termination_condition == pyo.TerminationCondition.infeasible:
+        termination_condition = str((solver_stats or {}).get('termination_condition') or '').lower()
+        solution_found = bool((solver_stats or {}).get('solution_found', False))
+        if (results is None) or (not solution_found):
             infeasible += 1
             inf_list.append(idx+1)
             if print_step:
-                print(f"{idx+1} infeasible")
+                reason = termination_condition if termination_condition else 'solver error'
+                print(f"{idx+1} skipped ({reason})")
             idx += 1
             continue
-        t_modelsolve = solver_stats['time']
+        t_modelsolve = (solver_stats or {}).get('time')
+        if t_modelsolve is None:
+            t_modelsolve = 0.0
         
         total_update_time+= t_modelupdate
         total_solve_time += t_modelsolve
@@ -773,8 +778,8 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
                             Time_series_Opt_res_P_Load,Time_series_price)
     
-    av_t_modelsolve = total_solve_time / count
-    av_t_modelupdate=total_update_time / count
+    av_t_modelsolve = total_solve_time / count if count else 0.0
+    av_t_modelupdate=total_update_time / count if count else 0.0
     
     save_TS_to_grid (grid,touple,infeasible)
     
@@ -803,7 +808,12 @@ def save_TS_to_grid (grid,touple,infeasible):
     Time_series_Opt_res_P_Load,Time_series_price)= touple
 
     def to_dataframe(data):
-        return pd.DataFrame(data).set_index('time')
+        df = pd.DataFrame(data)
+        if df.empty:
+            return pd.DataFrame()
+        if 'time' in df.columns:
+            return df.set_index('time')
+        return df
     
     grid.time_series_results['converter_p_dc'] = to_dataframe(Time_series_Opt_res_P_conv_DC)
     grid.time_series_results['converter_q_ac'] = to_dataframe(Time_series_Opt_res_Q_conv_AC)
@@ -881,7 +891,8 @@ def save_TS_to_grid (grid,touple,infeasible):
          Ext_Gen_joined[f'{prefix}'] =grid.time_series_results['real_power_opf'][cols].sum(axis=1)
          
          
-    Ext_Gen_joined  = Ext_Gen_joined[[col for col in Ext_Gen_joined.columns if col != 'RenSource'] + ['RenSource']]
+    if 'RenSource' in Ext_Gen_joined.columns:
+        Ext_Gen_joined  = Ext_Gen_joined[[col for col in Ext_Gen_joined.columns if col != 'RenSource'] + ['RenSource']]
     grid.ts_infeasible_count = infeasible
     grid.time_series_results['real_load_by_zone']  = Ext_Load_joined
     grid.time_series_results['real_power_by_zone'] = Ext_Gen_joined

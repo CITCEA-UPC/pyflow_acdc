@@ -1,5 +1,6 @@
 import pyflow_acdc as pyf
 import pandas as pd
+from pyflow_acdc.Graph_Dash import create_dash_app
 
 def ts_dash():
     [grid,results] = pyf.NS_MTDC()
@@ -16,9 +17,13 @@ def ts_dash():
     TS_wl = pd.read_csv(wind_load_url)
     pyf.add_TimeSeries(grid,TS_wl)
 
-    times=pyf.TS_ACDC_OPF(grid,start,end,ObjRule=obj)  
+    pyf.TS_ACDC_OPF(grid,start,end,ObjRule=obj)
 
-    print('Time series OPF completed')
+    app = create_dash_app(grid)
+    assert app.layout is not None
+    assert app.callback_map
+
+    print('Time series OPF completed and Dash app created')
 
 def run_test():
     """Test time series dash functionality."""
