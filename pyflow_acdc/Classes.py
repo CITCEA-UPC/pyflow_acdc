@@ -1106,6 +1106,7 @@ class Gen_AC:
         #Variable to have a variable number of generators in the TEP
         self.np_gen_opf = False
         self.np_gen_mp = False  # Multi-period TEP: submodel np_gen driven by master (full bounds)
+        self.planned_installation = 0
 
         self.np_gen_i = 1
         self.np_gen_b = 1
@@ -1114,7 +1115,7 @@ class Gen_AC:
         
         # Used in multi period TEP
         self.investment_decisions = {
-            'planned_installation': [0],
+            'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_gen_max],
             'np_dynamic': [self.np_gen]
@@ -1230,6 +1231,7 @@ class Gen_DC:
 
         #Variable to have a variable number of generators in the TEP
         self.np_gen_opf = False
+        self.planned_installation = 0
 
         self.np_gen_i = 1
         self.np_gen_b = 1
@@ -1347,6 +1349,7 @@ class Ren_Source:
         #Variable to have a variable number of generators in the TEP
         self.np_rsgen_opf = False
         self.np_rsgen_mp = False  # Multi-period TEP: submodel np_rsgen driven by master (full bounds)
+        self.planned_installation = 0
 
         self.np_rsgen_i = 1
         self.np_rsgen_b = 1
@@ -1355,7 +1358,7 @@ class Ren_Source:
 
         # Used in multi period TEP
         self.investment_decisions = {
-            'planned_installation': [0],
+            'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_rsgen_max],
             'np_dynamic': [self.np_rsgen]
@@ -2044,8 +2047,9 @@ class Exp_Line_AC(Line_AC):
         self.np_line_i= 0 #N_i initial guess
         self.np_line_max = 1 #N_max max number of lines
         self.np_line_opf=True
+        self.planned_installation = 0
         self.investment_decisions = {
-            'planned_installation': [0],
+            'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_line_max],
             'np_dynamic': [self.np_line]
@@ -2077,6 +2081,7 @@ class rec_Line_AC(Line_AC):
 
         self.rec_branch = False
         self.rec_line_opf=True
+        self.planned_installation = 0
 
         self.R_new = r_new
         self.X_new = x_new
@@ -2234,6 +2239,7 @@ class Size_selection(Line_AC):
             
         # Add array-specific attributes
         self.array_opf = True  # Flag for optimization
+        self.planned_installation = 0
 
         if name is None:
             self._name = str(self.lineNumber)
@@ -2721,8 +2727,9 @@ class Line_DC:
         self.np_line_i= N_cables
         self.np_line_max = N_cables
         self.np_line_opf=False
+        self.planned_installation = 0
         self.investment_decisions = {
-            'planned_installation': [0],
+            'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_line_max],
             'np_dynamic': [self.np_line]
@@ -2983,8 +2990,9 @@ class AC_DC_converter:
         self.np_conv_max = nConvP
         
         self.np_conv_opf=False
+        self.planned_installation = 0
         self.investment_decisions = {
-            'planned_installation': [0],
+            'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_conv_max],
             'np_dynamic': [self.np_conv]

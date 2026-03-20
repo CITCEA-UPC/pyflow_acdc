@@ -14,32 +14,37 @@ __all__ = [
     'run_dash'
 ]
 
+def _get_df_and_label(grid, plotting_choice):
+    if plotting_choice == 'Curtailment':
+        return grid.time_series_results['curtailment'] * 100, 'Curtailment %'
+    if plotting_choice in ['Power Generation by generator', 'Power Generation by generator area chart']:
+        return grid.time_series_results['real_power_opf'] * grid.S_base, 'Power Generation (MW)'
+    if plotting_choice in ['Power Generation by price zone', 'Power Generation by price zone area chart']:
+        return grid.time_series_results['real_power_by_zone'] * grid.S_base, 'Power Generation (MW)'
+    if plotting_choice == 'Market Prices':
+        df = grid.time_series_results['prices_by_zone']
+        df = df.loc[:, ~df.columns.str.startswith('o_')]
+        return df, 'Market Prices (€/MWh)'
+    if plotting_choice == 'AC line loading':
+        return grid.time_series_results['ac_line_loading'] * 100, 'AC Line Loading %'
+    if plotting_choice == 'DC line loading':
+        return grid.time_series_results['dc_line_loading'] * 100, 'DC Line Loading %'
+    if plotting_choice == 'AC/DC Converters':
+        return grid.time_series_results['converter_loading'] * 100, 'AC/DC Converters loading %'
+    return None, ''
+
 def plot_TS_res(grid, plotting_choice, selected_rows, x_limits=None, y_limits=None):
     # Select the appropriate DataFrame based on plotting_choice
    
-    
-    if plotting_choice == 'Curtailment':
-        df = grid.time_series_results['curtailment']* 100
-        y_label = 'Curtailment %'
-    elif plotting_choice in ['Power Generation by generator','Power Generation by generator area chart']:
-        df = grid.time_series_results['real_power_opf']*grid.S_base
-        y_label = 'Power Generation (MW)'
-    elif plotting_choice in ['Power Generation by price zone','Power Generation by price zone area chart'] :
-        df = grid.time_series_results['real_power_by_zone']*grid.S_base
-        y_label = 'Power Generation (MW)'
-    elif plotting_choice == 'Market Prices':
-        df = grid.time_series_results['prices_by_zone']
-        df = df.loc[:, ~df.columns.str.startswith('o_')]   
-        y_label = 'Market Prices (€/MWh)'
-    elif plotting_choice == 'AC line loading':
-        df = grid.time_series_results['ac_line_loading']* 100
-        y_label = 'AC Line Loading %'
-    elif plotting_choice == 'DC line loading':
-        df = grid.time_series_results['dc_line_loading']* 100
-        y_label = 'DC Line Loading %'
-    elif plotting_choice == 'AC/DC Converters':
-        df = grid.time_series_results['converter_loading']*100
-        y_label = 'AC/DC Converters loading %'
+    df, y_label = _get_df_and_label(grid, plotting_choice)
+    if df is None or df.empty:
+        fig = go.Figure()
+        fig.update_layout(
+            title=f"Time Series: {plotting_choice}",
+            xaxis_title="Time",
+            yaxis_title=y_label if y_label else "Value"
+        )
+        return fig
 
     time = df.index
 
@@ -281,21 +286,10 @@ def create_dash_app(grid):
     )
     def update_subplot_options(plotting_choice_1, plotting_choice_2):
         def get_columns(plotting_choice):
-            if plotting_choice == 'Curtailment':
-                return grid.time_series_results['curtailment'].columns.tolist()
-            elif plotting_choice in ['Power Generation by generator','Power Generation by generator area chart']:
-                return grid.time_series_results['real_power_opf'].columns.tolist()
-            elif plotting_choice in ['Power Generation by price zone','Power Generation by price zone area chart']:
-                return grid.time_series_results['real_power_by_zone'].columns.tolist()
-            elif plotting_choice == 'Market Prices':
-                return grid.time_series_results['prices_by_zone'].columns.tolist()
-            elif plotting_choice == 'AC line loading':
-                return grid.time_series_results['ac_line_loading'].columns.tolist()
-            elif plotting_choice == 'DC line loading':
-                return grid.time_series_results['dc_line_loading'].columns.tolist()
-            elif plotting_choice == 'AC/DC Converters':
-                return grid.time_series_results['converter_loading'].columns.tolist()
-            return []
+            df, _ = _get_df_and_label(grid, plotting_choice)
+            if df is None or df.empty:
+                return []
+            return df.columns.tolist()
 
         cols_1 = get_columns(plotting_choice_1)
         cols_2 = get_columns(plotting_choice_2)
@@ -315,21 +309,8 @@ def create_dash_app(grid):
     )
     def update_limits(plotting_choice_1, plotting_choice_2):
         def get_limits(plotting_choice):
-            if plotting_choice == 'Curtailment':
-                data = grid.time_series_results['curtailment']* 100
-            elif plotting_choice in ['Power Generation by generator','Power Generation by generator area chart']:
-                data = grid.time_series_results['real_power_opf']*grid.S_base
-            elif plotting_choice in ['Power Generation by price zone','Power Generation by price zone area chart']:
-                data = grid.time_series_results['real_power_by_zone']*grid.S_base
-            elif plotting_choice == 'Market Prices':
-                data = grid.time_series_results['prices_by_zone']
-            elif plotting_choice == 'AC line loading':
-                data = grid.time_series_results['ac_line_loading']* 100
-            elif plotting_choice == 'DC line loading':
-                data = grid.time_series_results['dc_line_loading']* 100
-            elif plotting_choice == 'AC/DC Converters':
-                data = grid.time_series_results['converter_loading']*100
-            else:
+            data, _ = _get_df_and_label(grid, plotting_choice)
+            if data is None:
                 return 0, 1
 
             if not data.empty:
@@ -382,7 +363,7 @@ def create_dash_app(grid):
 
     return app
 
-def run_dash(grid):
+def run_dash(grid, debug=True, use_reloader=False):
     app = create_dash_app(grid)
-    app.run(debug=True)
+    app.run(debug=debug, use_reloader=use_reloader)
 

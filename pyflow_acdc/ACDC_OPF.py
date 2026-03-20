@@ -969,7 +969,25 @@ def reset_to_initialize(model, initial_values):
     for var_obj in model.component_objects(pyo.Var, active=True):
         if var_obj.name in initial_values:
             for index in var_obj:
-                var_obj[index].set_value(initial_values[var_obj.name].get(index, 0))
+                var_data = var_obj[index]
+                value = initial_values[var_obj.name].get(index, 0)
+
+                # Keep reset robust: project tiny numerical drift back inside bounds.
+                lb = pyo.value(var_data.lb) if var_data.lb is not None else None
+                ub = pyo.value(var_data.ub) if var_data.ub is not None else None
+
+                if value is None:
+                    raise ValueError(
+                        f"reset_to_initialize got None for {var_obj.name}[{index}] "
+                        f"(lb={lb}, ub={ub}). Model variable is not initialized."
+                    )
+
+                if lb is not None and value < lb:
+                    value = lb
+                if ub is not None and value > ub:
+                    value = ub
+
+                var_data.set_value(value)
 
 def _store_pyomo_results_on_grid(grid_obj, model_obj, results_obj, solver_stats):
     """Persist latest Pyomo model results table on grid for Results.All()."""

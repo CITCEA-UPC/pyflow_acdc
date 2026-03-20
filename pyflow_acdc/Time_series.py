@@ -585,8 +585,25 @@ def _modify_parameters(grid,model,Price_Zones):
     
     
                 
-def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=False,expand=False,print_step=False,limit_flow_rate=True,use_clusters=False,solver='ipopt',obj_scaling=1.0):
+def TS_ACDC_OPF(
+    grid,
+    start=1,
+    end=99999,
+    ObjRule=None,
+    price_zone_restrictions=False,
+    expand=False,
+    print_step=False,
+    limit_flow_rate=True,
+    use_clusters=False,
+    solver='ipopt',
+    obj_scaling=1.0,
+    warm_start_mode='roll',
+    export_to_grid=True,
+):
     idx = start-1
+    warm_start_mode = str(warm_start_mode).lower()
+    if warm_start_mode not in ('roll', 'hard'):
+        raise ValueError("warm_start_mode must be either 'roll' or 'hard'")
     TS_len = len(grid.Time_series[0].data)
     total_solve_time  = 0
     total_update_time = 0
@@ -640,25 +657,32 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
         grid.CurtCost=True
         
         
-    model = pyo.ConcreteModel()
-    model.name="TS AC/DC hybrid OPF"
-    
-    analyse_grid(grid)
-       
-    t1 = time.perf_counter()
-    OPF_create_NLModel_ACDC(model,grid,PV_set,price_zone_restrictions,limit_flow_rate=limit_flow_rate)
-    t2 = time.perf_counter()  
-    t_modelcreate = t2-t1
-    
-    initial_values = {}
-    for var_obj in model.component_objects(pyo.Var, active=True):
-        initial_values[var_obj.name] = {index: var_obj[index].value for index in var_obj}
+    def _snapshot_initial_values(model_obj):
+        values = {}
+        for var_obj in model_obj.component_objects(pyo.Var, active=True):
+            values[var_obj.name] = {index: var_obj[index].value for index in var_obj}
+        return values
 
-    obj_rule= OPF_obj(model,grid,weights_def,OnlyGen=True)
-    if obj_scaling != 1.0:
-        obj_rule = obj_rule / obj_scaling
-    model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
-    model.obj_scaling = obj_scaling
+    def _build_ts_model():
+        model_obj = pyo.ConcreteModel()
+        model_obj.name = "TS AC/DC hybrid OPF"
+
+        OPF_create_NLModel_ACDC(model_obj,grid,PV_set,price_zone_restrictions,limit_flow_rate=limit_flow_rate)
+
+        obj_rule_local = OPF_obj(model_obj,grid,weights_def,OnlyGen=True)
+        if obj_scaling != 1.0:
+            obj_rule_local = obj_rule_local / obj_scaling
+        model_obj.obj = pyo.Objective(rule=obj_rule_local, sense=pyo.minimize)
+        model_obj.obj_scaling = obj_scaling
+        return model_obj
+
+    analyse_grid(grid)
+    t1 = time.perf_counter()
+    model = _build_ts_model()
+    t2 = time.perf_counter()
+    t_modelcreate = t2 - t1
+    initial_values = _snapshot_initial_values(model)
+    t_minus_1_values = None
 
     if expand:
         for price_zone in grid.Price_Zones:
@@ -697,7 +721,8 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
             
             continue
         t1= time.perf_counter()          
-        reset_to_initialize(model, initial_values)
+        if warm_start_mode == 'hard':
+            reset_to_initialize(model, initial_values)
     
         _modify_parameters(grid,model,price_zone_restrictions)
         t2= time.perf_counter()  
@@ -707,13 +732,32 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
         termination_condition = str((solver_stats or {}).get('termination_condition') or '').lower()
         solution_found = bool((solver_stats or {}).get('solution_found', False))
         if (results is None) or (not solution_found):
-            infeasible += 1
-            inf_list.append(idx+1)
+            # Retry with opposite initialization strategy for this timestep.
+            retry_mode = 'roll' if warm_start_mode == 'hard' else 'hard'
             if print_step:
-                reason = termination_condition if termination_condition else 'solver error'
-                print(f"{idx+1} skipped ({reason})")
-            idx += 1
-            continue
+                print(f"{idx+1} Failed with {warm_start_mode}")
+            retry_model = _build_ts_model()
+            if retry_mode == 'hard':
+                reset_to_initialize(retry_model, initial_values)
+            elif t_minus_1_values is not None:
+                reset_to_initialize(retry_model, t_minus_1_values)
+            _modify_parameters(grid,retry_model,price_zone_restrictions)
+            retry_results, retry_stats = pyomo_model_solve(retry_model,grid,solver,suppress_warnings=True)
+            retry_solution_found = bool((retry_stats or {}).get('solution_found', False))
+            if retry_results is not None and retry_solution_found:
+                model = retry_model
+                results, solver_stats = retry_results, retry_stats
+                if print_step:
+                    print(f"{idx+1} Passed with {retry_mode} returning to {warm_start_mode}")
+            else:
+                infeasible += 1
+                inf_list.append(idx+1)
+                if print_step:
+                    reason = str((retry_stats or {}).get('termination_condition') or termination_condition or 'solver error').lower()
+                    print(f"{idx+1} Failed with {retry_mode}")
+                    print(f"{idx+1} skipped ({reason})")
+                idx += 1
+                continue
         t_modelsolve = (solver_stats or {}).get('time')
         if t_modelsolve is None:
             t_modelsolve = 0.0
@@ -761,18 +805,22 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
         Time_series_Opt_res_P_extGrid.append(opt_res_P_extGrid)
         Time_series_Opt_res_Q_extGrid.append(opt_res_Q_extGrid)
         Time_series_Opt_curtailment.append(opt_res_curtailment)
+        t_minus_1_values = _snapshot_initial_values(model)
         
         if print_step:
             print(idx+1)
         idx += 1
     
     
-    t1 = time.perf_counter()
-    ExportACDC_NLmodel_toPyflowACDC(model, grid, price_zone_restrictions)
-    for obj in weights_def:
-        weights_def[obj]['v']=calculate_objective(grid,obj)
-    t2 = time.perf_counter() 
-    t_modelexport = t2-t1
+    if export_to_grid:
+        t1 = time.perf_counter()
+        ExportACDC_NLmodel_toPyflowACDC(model, grid, price_zone_restrictions)
+        for obj in weights_def:
+            weights_def[obj]['v'] = calculate_objective(grid, obj)
+        t2 = time.perf_counter()
+        t_modelexport = t2 - t1
+    else:
+        t_modelexport = 0.0
     touple = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
@@ -781,10 +829,11 @@ def TS_ACDC_OPF(grid,start=1,end=99999,ObjRule=None ,price_zone_restrictions=Fal
     av_t_modelsolve = total_solve_time / count if count else 0.0
     av_t_modelupdate=total_update_time / count if count else 0.0
     
-    save_TS_to_grid (grid,touple,infeasible)
-    
+    # Always persist time-series result frames for plotting/reporting.
+    # export_to_grid only controls whether final model state is written back to grid objects.
+    save_TS_to_grid(grid, touple, infeasible)
     grid.OPF_obj = weights_def
-    grid.OPF_run=True  
+    grid.OPF_run = True
     grid.Time_series_ran = True
     
     

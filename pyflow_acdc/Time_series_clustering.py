@@ -3,6 +3,7 @@ from sklearn.metrics import pairwise_distances,davies_bouldin_score
 from sklearn.preprocessing import StandardScaler,RobustScaler
 from kmedoids import KMedoids
 import os
+import json
 if 'MPLBACKEND' not in os.environ:
     os.environ['MPLBACKEND'] = 'Agg'
 import matplotlib.pyplot as plt
@@ -25,7 +26,8 @@ __all__ = ['cluster_TS',
            'cluster_HDBSCAN',
            'cluster_analysis',
            'run_clustering_analysis_and_plot',
-           'identify_correlations']
+           'identify_correlations',
+           'load_precomputed_clusters_to_grid']
 
 # Plotting constants
 FIGURE_WIDTH_CM = 8.25
@@ -2053,6 +2055,18 @@ def cluster_analysis(grid,clustering_options):
              that the critical time series will be clustered into 6 clusters and the rest of the time series will be clustered into 2 clusters.
         }
         """
+        precomputed = clustering_options.get('precomputed_clusters')
+        precomputed_path = clustering_options.get('precomputed_clusters_path')
+
+        if precomputed is not None or precomputed_path is not None:
+            n = load_precomputed_clusters_to_grid(
+                grid,
+                precomputed=precomputed,
+                precomputed_path=precomputed_path,
+                fallback_n_clusters=clustering_options.get('n_clusters', 0),
+            )
+            return n, True
+
         n        = clustering_options['n_clusters'] 
         time_series = clustering_options['time_series'] if 'time_series' in clustering_options else []
         central_market = clustering_options['central_market'] if 'central_market' in clustering_options else []
@@ -2070,5 +2084,48 @@ def cluster_analysis(grid,clustering_options):
         n_clusters = len(grid.Time_series[0].data)
 
     return n_clusters,clustering
+
+
+def load_precomputed_clusters_to_grid(grid, precomputed=None, precomputed_path=None, fallback_n_clusters=0):
+    if precomputed is None:
+        if precomputed_path is None:
+            raise ValueError("Either 'precomputed' or 'precomputed_path' must be provided")
+        with open(precomputed_path, 'r', encoding='utf-8') as fh:
+            precomputed = json.load(fh)
+
+    n = int(precomputed.get('n_clusters', fallback_n_clusters))
+    if n <= 0:
+        raise ValueError("Invalid precomputed clustering payload: missing/invalid 'n_clusters'")
+
+    ts_clustered = precomputed.get('time_series_clustered', {})
+    missing_ts = [ts.name for ts in grid.Time_series if ts.name not in ts_clustered]
+    if missing_ts:
+        raise ValueError(
+            "Precomputed clustering payload is missing clustered values for time series: "
+            + ", ".join(missing_ts[:10])
+            + ("..." if len(missing_ts) > 10 else "")
+        )
+
+    cluster_idx_raw = precomputed.get('cluster_idx', {})
+    cluster_idx = {int(k): v for k, v in cluster_idx_raw.items()}
+
+    reps_payload = precomputed.get('representatives', {})
+    reps_data = reps_payload.get('data', {})
+    representatives = pd.DataFrame(reps_data)
+
+    grid.Clusters[n] = {
+        'Weight': np.array(precomputed.get('weight', []), dtype=float),
+        'Cluster Count': np.array(precomputed.get('cluster_count', [])),
+        'Cluster idx': cluster_idx,
+        'Labels': np.array(precomputed.get('labels', [])),
+        'Representatives': representatives,
+    }
+
+    for ts in grid.Time_series:
+        if not hasattr(ts, 'data_clustered') or not isinstance(ts.data_clustered, dict):
+            ts.data_clustered = {}
+        ts.data_clustered[n] = np.array(ts_clustered[ts.name], dtype=float)
+
+    return n
 
 

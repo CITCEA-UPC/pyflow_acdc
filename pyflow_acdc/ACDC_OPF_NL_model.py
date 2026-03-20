@@ -1212,7 +1212,7 @@ def Converter_variables(model,grid,Conv_info):
     model.Uf   = pyo.Var(model.conv, bounds=lambda model, conv: (u_c_min[conv], u_c_max[conv]), initialize=1) 
     model.th_c   = pyo.Var(model.conv, bounds=(-1.6, 1.6), initialize=0) 
     model.th_f   = pyo.Var(model.conv, bounds=(-1.6, 1.6), initialize=0) 
-    model.P_AC_loss_conv= pyo.Var(model.conv,within=pyo.NonNegativeReals)
+    model.P_AC_loss_conv= pyo.Var(model.conv,within=pyo.NonNegativeReals, initialize=0)
     
         
     model.P_conv_loss = pyo.Var(model.conv, initialize=0)

@@ -14,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from .grid_analysis import analyse_grid
 
-from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables
+from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC, TEP_variables
 from .AC_OPF_L_model import OPF_create_LModel_AC,ExportACDC_Lmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,OPF_obj_L,obj_w_rule,ExportACDC_NLmodel_toPyflowACDC,calculate_objective,reset_to_initialize,calculate_objective_from_model
 
@@ -125,8 +125,11 @@ def expand_elements_from_pd(grid,exp_elements):
     exp_elements = exp_elements.rename(columns=lambda c: str(c).strip().lower())
 
     # Helper function to get the column value if it exists
-    def get_column_value(row, col_name):
-        return row[col_name] if col_name in row.index else None
+    def get_column_value(row, col_name, default_value=None):
+        if col_name not in row.index:
+            return default_value
+        value = row[col_name]
+        return default_value if pd.isna(value) else value
     
     # Apply the Expand_element function for each element in exp_elements
     exp_elements.iloc[:, 0].apply(lambda name: Expand_element(
@@ -140,7 +143,12 @@ def expand_elements_from_pd(grid,exp_elements):
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'per_unit_cost'),
         get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'exp'),
         update_grid=False,
-        n_inv_max=get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_inv_max')
+        n_inv_max=get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_inv_max'),
+        planned_installation=(
+            get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_installation')
+            if get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_installation') is not None
+            else get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_install')
+        )
     ))
     grid.Update_Graph_AC()
     grid.create_Ybus_AC() 
@@ -172,7 +180,7 @@ def repurpose_element_from_pd(grid,rec_elements):
     grid.create_Ybus_AC()    
 
 
-def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=None):
+def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=None, planned_installation=None):
    """Updates the attributes of the given element if not None."""
    if n_b is not None:
        if n_i is None:
@@ -198,18 +206,27 @@ def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_c
        if hasattr(element, 'np_rsgen_i'):
            element.np_rsgen_i = n_i
        
-   if n_max is not None:
-       if hasattr(element, 'np_line_max'):
-           element.np_line_max = n_max
-       if hasattr(element, 'np_conv_max'):
-           element.np_conv_max = n_max  
-       if hasattr(element, 'np_gen_max'):
-           element.np_gen_max = n_max     
-       if hasattr(element, 'np_rsgen_max'):
-           element.np_rsgen_max = n_max
-   max_inv_seed = n_inv_max if n_inv_max is not None else n_max
-   if max_inv_seed is not None and isinstance(getattr(element, 'investment_decisions', None), dict):
-       element.investment_decisions['max_inv'] = [float(max_inv_seed)]
+   def _apply_max_rule(max_attr, current_attr):
+       if not hasattr(element, max_attr):
+           return
+       current_val = getattr(element, current_attr, None)
+       candidate_from_nmax = n_max
+       candidate_from_ninv = (current_val + n_inv_max) if (n_inv_max is not None and current_val is not None) else None
+
+       if candidate_from_nmax is not None and candidate_from_ninv is not None:
+           setattr(element, max_attr, min(candidate_from_nmax, candidate_from_ninv))
+       elif candidate_from_ninv is not None:
+           setattr(element, max_attr, candidate_from_ninv)
+       elif candidate_from_nmax is not None:
+           setattr(element, max_attr, candidate_from_nmax)
+
+   _apply_max_rule('np_line_max', 'np_line')
+   _apply_max_rule('np_conv_max', 'np_conv')
+   _apply_max_rule('np_gen_max', 'np_gen')
+   _apply_max_rule('np_rsgen_max', 'np_rsgen')
+
+   if planned_installation is not None:
+       element.planned_installation = planned_installation
     
    if life_time is not None:
        element.life_time = life_time
@@ -229,7 +246,7 @@ def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_c
        element.exp = exp
 
 
-def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True,n_inv_max=None, **legacy_kwargs):
+def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True,n_inv_max=None, planned_installation=None, **legacy_kwargs):
     # Backward compatibility: accept legacy uppercase kwargs.
     if n_b is None and 'N_b' in legacy_kwargs:
         n_b = legacy_kwargs.pop('N_b')
@@ -241,38 +258,35 @@ def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_co
         unexpected = ", ".join(sorted(legacy_kwargs.keys()))
         raise TypeError(f"Unexpected keyword arguments: {unexpected}")
     
-    if n_max is None:
-        n_max= n_b+20
-    
     for l in grid.lines_AC:
         if name == l.name:
             from .grid_modifications import change_line_AC_to_expandable
             exp_l=change_line_AC_to_expandable(grid, name,update_grid)
             exp_l.np_line_opf = True
-            update_attributes(exp_l, n_b,n_i, n_max,life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(exp_l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
             continue
 
     for l in grid.lines_DC:
         if name == l.name:
             l.np_line_opf = True
-            update_attributes(l, n_b, n_i, n_max,life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
             continue
             
     for cn in grid.Converters_ACDC:
         if name == cn.name:
             cn.np_conv_opf = True
-            update_attributes(cn, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(cn, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
             continue
         
     for gen in grid.Generators:
         if name == gen.name:
             gen.np_gen_opf = True
-            update_attributes(gen, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(gen, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
             continue
     for rs in grid.RenSources:
         if name == rs.name:
             rs.np_rsgen_opf = True
-            update_attributes(rs, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max)
+            update_attributes(rs, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
             continue
 def base_cost_calculation(element):
     from .Classes import Exp_Line_AC 
@@ -335,10 +349,13 @@ def Translate_pd_TEP(grid):
 def get_TEP_variables(grid):
     
     np_conv,np_conv_i,np_conv_max={},{},{}
+    np_conv_planned_install = {}
     S_limit_conv={}
     P_lineDC_limit ={}
     NP_lineDC,NP_lineDC_i,NP_lineDC_max ={},{},{}
+    NP_lineDC_planned_install = {}
     NP_lineAC,NP_lineAC_i,NP_lineAC_max = {},{},{}
+    NP_lineAC_planned_install = {}
     Line_length ={}
     REC_branch ={}
 
@@ -353,6 +370,7 @@ def get_TEP_variables(grid):
             else max(l.np_line,min(l.np_line_i , l.np_line_max))
         )
         NP_lineAC_max[l.lineNumber]   = l.np_line_max
+        NP_lineAC_planned_install[l.lineNumber] = getattr(l, 'planned_installation', 0)
 
     ct_ini = {}
     for l in grid.lines_AC_ct:
@@ -366,6 +384,7 @@ def get_TEP_variables(grid):
             else max(conv.np_conv,min(conv.np_conv_i , conv.np_conv_max))
         )
         np_conv_max[conv.ConvNumber] = conv.np_conv_max
+        np_conv_planned_install[conv.ConvNumber] = getattr(conv, 'planned_installation', 0)
         S_limit_conv[conv.ConvNumber] = conv.MVA_max/grid.S_base
     for l in grid.lines_DC:
         P_lineDC_limit[l.lineNumber]  = l.MW_rating/grid.S_base
@@ -375,25 +394,32 @@ def get_TEP_variables(grid):
             else max(l.np_line,min(l.np_line_i , l.np_line_max))
         )
         NP_lineDC_max[l.lineNumber]   = l.np_line_max
+        NP_lineDC_planned_install[l.lineNumber] = getattr(l, 'planned_installation', 0)
         Line_length[l.lineNumber]     = l.Length_km
         
     np_gen={}
     np_gen_max={}
+    np_gen_planned_install = {}
     for gen in grid.Generators:
         np_gen_max[gen.genNumber] = gen.np_gen_max
         np_gen[gen.genNumber] = gen.np_gen
+        np_gen_planned_install[gen.genNumber] = getattr(gen, 'planned_installation', 0)
     
     np_gen_DC={}
     np_gen_max_DC={}
+    np_gen_DC_planned_install = {}
     for gen in grid.Generators_DC:
         np_gen_max_DC[gen.genNumber_DC] = gen.np_gen_max
         np_gen_DC[gen.genNumber_DC] = gen.np_gen
+        np_gen_DC_planned_install[gen.genNumber_DC] = getattr(gen, 'planned_installation', 0)
     
     np_rsgen={}
     np_rsgen_max={}
+    np_rsgen_planned_install = {}
     for rs in grid.RenSources:
         np_rsgen[rs.rsNumber] = rs.np_rsgen
         np_rsgen_max[rs.rsNumber] = rs.np_rsgen_max
+        np_rsgen_planned_install[rs.rsNumber] = getattr(rs, 'planned_installation', 0)
     
     # Return as dictionary for easier extension and maintenance
     return {
@@ -401,6 +427,7 @@ def get_TEP_variables(grid):
             'np_conv': np_conv,
             'np_conv_i': np_conv_i,
             'np_conv_max': np_conv_max,
+            'np_conv_planned_install': np_conv_planned_install,
             'S_limit_conv': S_limit_conv
         },
         'dc_lines': {
@@ -408,27 +435,198 @@ def get_TEP_variables(grid):
             'NP_lineDC': NP_lineDC,
             'NP_lineDC_i': NP_lineDC_i,
             'NP_lineDC_max': NP_lineDC_max,
+            'NP_lineDC_planned_install': NP_lineDC_planned_install,
             'Line_length': Line_length
         },
         'ac_lines': {
             'NP_lineAC': NP_lineAC,
             'NP_lineAC_i': NP_lineAC_i,
             'NP_lineAC_max': NP_lineAC_max,
+            'NP_lineAC_planned_install': NP_lineAC_planned_install,
             'Line_length': Line_length,
             'REC_branch': REC_branch,
             'ct_ini': ct_ini
         },
         'generators': {
             'np_gen': np_gen,
+            'np_gen_planned_install': np_gen_planned_install,
             'np_gen_max': np_gen_max,
             'np_gen_DC': np_gen_DC,
+            'np_gen_DC_planned_install': np_gen_DC_planned_install,
             'np_gen_max_DC': np_gen_max_DC
         },
         'ren_sources': {
             'np_rsgen': np_rsgen,
+            'np_rsgen_planned_install': np_rsgen_planned_install,
             'np_rsgen_max': np_rsgen_max
         }
     }
+
+def _TEP_install_variables(model, grid):
+    tep_vars = get_TEP_variables(grid)
+
+    np_conv = tep_vars['converters']['np_conv']
+    np_conv_max = tep_vars['converters']['np_conv_max']
+    np_conv_planned_install = tep_vars['converters']['np_conv_planned_install']
+
+    NP_lineDC = tep_vars['dc_lines']['NP_lineDC']
+    NP_lineDC_max = tep_vars['dc_lines']['NP_lineDC_max']
+    NP_lineDC_planned_install = tep_vars['dc_lines']['NP_lineDC_planned_install']
+
+    NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
+    NP_lineAC_max = tep_vars['ac_lines']['NP_lineAC_max']
+    NP_lineAC_planned_install = tep_vars['ac_lines']['NP_lineAC_planned_install']
+
+    np_gen = tep_vars['generators']['np_gen']
+    np_gen_max = tep_vars['generators']['np_gen_max']
+    np_gen_DC = tep_vars['generators']['np_gen_DC']
+    np_gen_max_DC = tep_vars['generators']['np_gen_max_DC']
+    np_gen_planned_install = tep_vars['generators']['np_gen_planned_install']
+    np_gen_DC_planned_install = tep_vars['generators']['np_gen_DC_planned_install']
+
+    np_rsgen = tep_vars['ren_sources']['np_rsgen']
+    np_rsgen_max = tep_vars['ren_sources']['np_rsgen_max']
+    np_rsgen_planned_install = tep_vars['ren_sources']['np_rsgen_planned_install']
+
+    if grid.rs_GPR:
+        def np_rsgen_install_opt_bounds(model, rs):
+            ren_source = grid.RenSources[rs]
+            if not ren_source.np_rsgen_opf:
+                return (0, 0)
+            max_opt = np_rsgen_max[rs] - np_rsgen[rs] - np_rsgen_planned_install[rs]
+            if max_opt < 0:
+                max_opt = 0
+            return (0, max_opt)
+
+        model.np_rsgen_planned_install = pyo.Param(model.ren_sources, initialize=np_rsgen_planned_install)
+        model.np_rsgen_install_opt = pyo.Var(model.ren_sources, within=pyo.NonNegativeIntegers, bounds=np_rsgen_install_opt_bounds, initialize=0)
+        model.np_rsgen_install = pyo.Expression(
+            model.ren_sources,
+            rule=lambda m, rs: m.np_rsgen_planned_install[rs] + m.np_rsgen_install_opt[rs],
+        )
+
+    if grid.ACmode and grid.GPR:
+        def np_gen_install_opt_bounds(model, g):
+            gen = grid.Generators[g]
+            if not gen.np_gen_opf:
+                return (0, 0)
+            max_opt = np_gen_max[g] - np_gen[g] - np_gen_planned_install[g]
+            if max_opt < 0:
+                max_opt = 0
+            return (0, max_opt)
+
+        model.np_gen_planned_install = pyo.Param(model.gen_AC, initialize=np_gen_planned_install)
+        model.np_gen_install_opt = pyo.Var(model.gen_AC, within=pyo.NonNegativeIntegers, bounds=np_gen_install_opt_bounds, initialize=0)
+        model.np_gen_install = pyo.Expression(
+            model.gen_AC,
+            rule=lambda m, g: m.np_gen_planned_install[g] + m.np_gen_install_opt[g],
+        )
+
+    if grid.ACmode and grid.TEP_AC:
+        def NPline_install_opt_bounds_AC(model, line):
+            element = grid.lines_AC_exp[line]
+            if not element.np_line_opf:
+                return (0, 0)
+            max_opt = NP_lineAC_max[line] - NP_lineAC[line] - NP_lineAC_planned_install[line]
+            if max_opt < 0:
+                max_opt = 0
+            return (0, max_opt)
+
+        model.NumLinesACP_planned_install = pyo.Param(model.lines_AC_exp, initialize=NP_lineAC_planned_install)
+        model.NumLinesACP_install_opt = pyo.Var(model.lines_AC_exp, within=pyo.NonNegativeIntegers, bounds=NPline_install_opt_bounds_AC, initialize=0)
+        model.NumLinesACP_install = pyo.Expression(
+            model.lines_AC_exp,
+            rule=lambda m, line: m.NumLinesACP_planned_install[line] + m.NumLinesACP_install_opt[line],
+        )
+
+    if grid.DCmode and grid.GPR:
+        def np_gen_install_opt_bounds_DC(model, g):
+            gen = grid.Generators_DC[g]
+            if not gen.np_gen_opf:
+                return (0, 0)
+            max_opt = np_gen_max_DC[g] - np_gen_DC[g] - np_gen_DC_planned_install[g]
+            if max_opt < 0:
+                max_opt = 0
+            return (0, max_opt)
+
+        model.np_gen_DC_planned_install = pyo.Param(model.gen_DC, initialize=np_gen_DC_planned_install)
+        model.np_gen_DC_install_opt = pyo.Var(model.gen_DC, within=pyo.NonNegativeIntegers, bounds=np_gen_install_opt_bounds_DC, initialize=0)
+        model.np_gen_DC_install = pyo.Expression(
+            model.gen_DC,
+            rule=lambda m, g: m.np_gen_DC_planned_install[g] + m.np_gen_DC_install_opt[g],
+        )
+
+    if grid.DCmode:
+        def NPline_install_opt_bounds(model, line):
+            element = grid.lines_DC[line]
+            if not element.np_line_opf:
+                return (0, 0)
+            max_opt = NP_lineDC_max[line] - NP_lineDC[line] - NP_lineDC_planned_install[line]
+            if max_opt < 0:
+                max_opt = 0
+            return (0, max_opt)
+
+        model.NumLinesDCP_planned_install = pyo.Param(model.lines_DC, initialize=NP_lineDC_planned_install)
+        model.NumLinesDCP_install_opt = pyo.Var(model.lines_DC, within=pyo.NonNegativeIntegers, bounds=NPline_install_opt_bounds, initialize=0)
+        model.NumLinesDCP_install = pyo.Expression(
+            model.lines_DC,
+            rule=lambda m, line: m.NumLinesDCP_planned_install[line] + m.NumLinesDCP_install_opt[line],
+        )
+
+    if grid.ACmode and grid.DCmode:
+        def NPconv_install_opt_bounds(model, conv):
+            element = grid.Converters_ACDC[conv]
+            if not element.np_conv_opf:
+                return (0, 0)
+            max_opt = np_conv_max[conv] - np_conv[conv] - np_conv_planned_install[conv]
+            if max_opt < 0:
+                max_opt = 0
+            return (0, max_opt)
+
+        model.np_conv_planned_install = pyo.Param(model.conv, initialize=np_conv_planned_install)
+        model.np_conv_install_opt = pyo.Var(model.conv, within=pyo.NonNegativeIntegers, bounds=NPconv_install_opt_bounds, initialize=0)
+        model.np_conv_install = pyo.Expression(
+            model.conv,
+            rule=lambda m, conv: m.np_conv_planned_install[conv] + m.np_conv_install_opt[conv],
+        )
+
+
+def _TEP_install_constraints(model, grid):
+    if grid.rs_GPR:
+        def np_rsgen_total_balance_rule(model, rs):
+            return model.np_rsgen[rs] == model.np_rsgen_base[rs] + model.np_rsgen_install[rs]
+
+        model.np_rsgen_total_balance = pyo.Constraint(model.ren_sources, rule=np_rsgen_total_balance_rule)
+
+    if grid.ACmode and grid.GPR:
+        def np_gen_total_balance_rule(model, g):
+            return model.np_gen[g] == model.np_gen_base[g] + model.np_gen_install[g]
+
+        model.np_gen_total_balance = pyo.Constraint(model.gen_AC, rule=np_gen_total_balance_rule)
+
+    if grid.ACmode and grid.TEP_AC:
+        def NPlineAC_total_balance_rule(model, line):
+            return model.NumLinesACP[line] == model.NumLinesACP_base[line] + model.NumLinesACP_install[line]
+
+        model.NPlineAC_total_balance = pyo.Constraint(model.lines_AC_exp, rule=NPlineAC_total_balance_rule)
+
+    if grid.DCmode and grid.GPR:
+        def np_gen_DC_total_balance_rule(model, g):
+            return model.np_gen_DC[g] == model.np_gen_DC_base[g] + model.np_gen_DC_install[g]
+
+        model.np_gen_DC_total_balance = pyo.Constraint(model.gen_DC, rule=np_gen_DC_total_balance_rule)
+
+    if grid.DCmode:
+        def NPline_total_balance_rule(model, line):
+            return model.NumLinesDCP[line] == model.NumLinesDCP_base[line] + model.NumLinesDCP_install[line]
+
+        model.NPline_total_balance = pyo.Constraint(model.lines_DC, rule=NPline_total_balance_rule)
+
+    if grid.ACmode and grid.DCmode:
+        def np_conv_total_balance_rule(model, conv):
+            return model.np_conv[conv] == model.np_conv_base[conv] + model.np_conv_install[conv]
+
+        model.np_conv_total_balance = pyo.Constraint(model.conv, rule=np_conv_total_balance_rule)
 
 
 def MS_TEP_constraints(model,grid):
@@ -453,6 +651,28 @@ def MS_TEP_constraints(model,grid):
             return model.np_conv[conv] ==model.scenario_model[t].np_conv[conv]
         else:
             return pyo.Constraint.Skip
+    
+    def NP_gen_AC_link(model,g,t):
+        gen = grid.Generators[g]
+        if gen.np_gen_opf:
+            return model.np_gen[g] == model.scenario_model[t].np_gen[g]
+        else:
+            return pyo.Constraint.Skip
+    
+    def NP_gen_DC_link(model,g,t):
+        gen = grid.Generators_DC[g]
+        if gen.np_gen_opf:
+            return model.np_gen_DC[g] == model.scenario_model[t].np_gen_DC[g]
+        else:
+            return pyo.Constraint.Skip
+    
+    def NP_rsgen_link(model,rs,t):
+        source = grid.RenSources[rs]
+        if source.np_rsgen_opf:
+            return model.np_rsgen[rs] == model.scenario_model[t].np_rsgen[rs]
+        else:
+            return pyo.Constraint.Skip
+
     if grid.TEP_AC:
         model.NP_ACline_link_constraint = pyo.Constraint(model.lines_AC_exp,model.scenario_frames, rule=NP_ACline_link)
 
@@ -460,6 +680,12 @@ def MS_TEP_constraints(model,grid):
         model.NP_line_link_constraint = pyo.Constraint(model.lines_DC,model.scenario_frames, rule=NP_line_link)
     if grid.ACmode and grid.DCmode:
         model.NP_conv_link_constraint = pyo.Constraint(model.conv,model.scenario_frames, rule=NP_conv_link)
+    if grid.ACmode and grid.GPR:
+        model.NP_gen_AC_link_constraint = pyo.Constraint(model.gen_AC, model.scenario_frames, rule=NP_gen_AC_link)
+    if grid.DCmode and grid.GPR:
+        model.NP_gen_DC_link_constraint = pyo.Constraint(model.gen_DC, model.scenario_frames, rule=NP_gen_DC_link)
+    if grid.rs_GPR:
+        model.NP_rsgen_link_constraint = pyo.Constraint(model.ren_sources, model.scenario_frames, rule=NP_rsgen_link)
     
     def NP_ACline_rec_link(model,line,t):
         element=grid.lines_AC_rec[line]
@@ -493,6 +719,8 @@ def _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule,PV_set=False):
     model.name = "TEP MTDC AC/DC hybrid OPF"
 
     OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True)
+    _TEP_install_variables(model, grid)
+    _TEP_install_constraints(model, grid)
     limits_map = getattr(grid, "current_generation_type_limits", {}) or {}
     if any(float(v) != 1.0 for v in limits_map.values()):
         GEN_balance_constraints(model, grid)
@@ -1026,6 +1254,8 @@ def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NP
     
     _initialize_MS_STEP_sets_model(model,grid)
     TEP_variables(model,grid)
+    _TEP_install_variables(model, grid)
+    _TEP_install_constraints(model, grid)
     
     MS_TEP_constraints(model,grid)
 
@@ -1118,14 +1348,14 @@ def TEP_obj(model,grid,NPV):
         for g in model.gen_AC:
             gen = grid.Generators[g]
             if gen.np_gen_opf:
-                Gen_Inv+=(model.np_gen[g]-model.np_gen_base[g])*gen.base_cost
+                Gen_Inv += model.np_gen_install[g] * gen.base_cost
         return Gen_Inv
     def Renewable_investments():
         Renewable_Inv=0
         for rs in model.ren_sources:
             ren_source = grid.RenSources[rs]
             if ren_source.np_rsgen_opf:
-                Renewable_Inv+=(model.np_rsgen[rs]-model.np_rsgen_base[rs])*ren_source.base_cost
+                Renewable_Inv += model.np_rsgen_install[rs] * ren_source.base_cost
         return Renewable_Inv
     def AC_Line_investments():
         AC_Inv_lines=0
@@ -1133,9 +1363,9 @@ def TEP_obj(model,grid,NPV):
             line = grid.lines_AC_exp[l]
             if line.np_line_opf: 
                if NPV:
-                   AC_Inv_lines+=(model.NumLinesACP[l]-model.NumLinesACP_base[l])*line.base_cost
+                   AC_Inv_lines += model.NumLinesACP_install[l] * line.base_cost
                else: 
-                   AC_Inv_lines+=(model.NumLinesACP[l]-model.NumLinesACP_base[l])*line.base_cost/line.life_time_hours
+                   AC_Inv_lines += model.NumLinesACP_install[l] * line.base_cost / line.life_time_hours
     
         return AC_Inv_lines
     
@@ -1156,9 +1386,9 @@ def TEP_obj(model,grid,NPV):
            line= grid.lines_DC[l]
            if line.np_line_opf: 
              if NPV:
-                 Inv_lines+=(model.NumLinesDCP[l]-model.NumLinesDCP_base[l])*line.base_cost
+                 Inv_lines+=model.NumLinesDCP_install[l]*line.base_cost
              else:
-                 Inv_lines+=(model.NumLinesDCP[l]-model.NumLinesDCP_base[l])*line.base_cost/line.life_time_hours
+                 Inv_lines+=model.NumLinesDCP_install[l]*line.base_cost/line.life_time_hours
         return Inv_lines
 
     def Array_investments():
@@ -1182,9 +1412,9 @@ def TEP_obj(model,grid,NPV):
             conv= grid.Converters_ACDC[cn]
             if conv.np_conv_opf:
                if NPV: 
-                 Inv_conv+=(model.np_conv[cn]-model.np_conv_base[cn])*conv.base_cost
+                 Inv_conv += model.np_conv_install[cn] * conv.base_cost
                else:
-                 Inv_conv+=(model.np_conv[cn]-model.np_conv_base[cn])*conv.base_cost/conv.life_time_hours
+                 Inv_conv += model.np_conv_install[cn] * conv.base_cost / conv.life_time_hours
         return Inv_conv
     
     if grid.GPR:

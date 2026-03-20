@@ -211,7 +211,7 @@ try:
     from .Time_series_clustering import *
     __all__.extend([
         'cluster_TS', 'run_clustering_analysis_and_plot',
-        'identify_correlations', 'cluster_analysis'
+        'identify_correlations', 'cluster_analysis', 'load_precomputed_clusters_to_grid'
     ])
     HAS_CLUSTERING = True
 except ImportError:

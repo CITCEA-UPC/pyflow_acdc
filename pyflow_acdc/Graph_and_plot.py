@@ -97,9 +97,9 @@ def update_DCnode_hovertext(node,S_base,text):
         name = node.name
         V = np.round(node.V*node.kV_base, decimals=0).astype(int)
         
-        if node.ConvInv and node.Nconv >= 0.00001:
+        if node.ConvInv and node.Nconv >= 10**-dec:
             conv  = np.round(node.Pconv*S_base, decimals=0).astype(int)
-            nconv = np.round(node.Nconv,decimals=2)
+            nconv = np.round(node.Nconv,decimals=dec)
             load = abs(int(np.round(conv / (node.conv_MW*nconv) * 100)))
             node.hover_text = f"Node: {name}<br>Voltage: {V}kV<br>Converter:{conv}MW<br>Number Converter: {nconv}<br>Converters loading: {load}%"
         else:
