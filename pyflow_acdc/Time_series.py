@@ -349,6 +349,16 @@ def calculate_price_zone_price_from_model(grid,model,idx):
     
     return price_zone_price
 
+
+def calculate_net_price_zone_power_from_model(grid, model, idx):
+    net_price_zone_power = {'time': idx + 1}
+    if hasattr(model, 'PN'):
+        pn_values = {k: np.float64(pyo.value(v)) for k, v in model.PN.items()}
+        for m in grid.Price_Zones:
+            if m.price_zone_num in pn_values:
+                net_price_zone_power[m.name] = pn_values[m.price_zone_num] * grid.S_base
+    return net_price_zone_power
+
 def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=100):
     idx = start-1
     TS_len = len(grid.Time_series[0].data)
@@ -627,6 +637,7 @@ def TS_ACDC_OPF(
     Time_series_Opt_curtailment   =[]
     
     Time_series_price = []
+    Time_series_net_price_zone_power = []
     
     weights_def = {
        'Ext_Gen': {'w': 0},
@@ -785,12 +796,15 @@ def TS_ACDC_OPF(
         
         if price_zone_restrictions:
             price_zone_price = calculate_price_zone_price_from_model(grid,model,idx)
+            net_price_zone_power = calculate_net_price_zone_power_from_model(grid, model, idx)
         else:
             price_zone_price = calculate_price_zone_price(grid,idx)
+            net_price_zone_power = {'time': idx + 1}
         
         
         
         Time_series_price.append(price_zone_price)
+        Time_series_net_price_zone_power.append(net_price_zone_power)
             
        
         Time_series_conv_res.append(opt_res_Loading_conv)
@@ -824,7 +838,7 @@ def TS_ACDC_OPF(
     touple = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-                            Time_series_Opt_res_P_Load,Time_series_price)
+                            Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power)
     
     av_t_modelsolve = total_solve_time / count if count else 0.0
     av_t_modelupdate=total_update_time / count if count else 0.0
@@ -854,7 +868,7 @@ def save_TS_to_grid (grid,touple,infeasible):
     (Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
     Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
     Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-    Time_series_Opt_res_P_Load,Time_series_price)= touple
+    Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power)= touple
 
     def to_dataframe(data):
         df = pd.DataFrame(data)
@@ -879,6 +893,7 @@ def save_TS_to_grid (grid,touple,infeasible):
     grid.time_series_results['grid_loading'] = to_dataframe(Time_series_grid_loading)
     
     grid.time_series_results['prices_by_zone'] = to_dataframe(Time_series_price)
+    grid.time_series_results['net_price_zone_power'] = to_dataframe(Time_series_net_price_zone_power)
     
     
     # Split into AC and DC line results first, keeping the original index
@@ -1001,7 +1016,8 @@ def Time_series_statistics(grid, curtail=0.99,over_loading=0.9):
             'curtailment': grid.time_series_results['curtailment'].add_suffix('_curtail'),
             'converter_loading': grid.time_series_results['converter_loading'].add_suffix('_convloading'),
             'real_power_by_zone': grid.time_series_results['real_power_by_zone'].add_suffix('_zoneP'),
-            'prices_by_zone': grid.time_series_results['prices_by_zone'].add_suffix('_price')
+            'prices_by_zone': grid.time_series_results['prices_by_zone'].add_suffix('_price'),
+            'net_price_zone_power': grid.time_series_results['net_price_zone_power'].add_suffix('_netPZ')
         }
         
         # Merge non-empty DataFrames
@@ -1084,6 +1100,7 @@ def results_TS_OPF(grid,excel_file_path,grid_names=None,stats=None,times=None):
     
         (grid.time_series_results['converter_loading']*100).to_excel(writer, sheet_name='Converter loading', index=True)
         (grid.time_series_results['real_power_by_zone']*grid.S_base).to_excel(writer, sheet_name='Real power by zone', index=True)
+        grid.time_series_results['net_price_zone_power'].to_excel(writer, sheet_name='Net price zone power', index=True)
         grid.time_series_results['prices_by_zone'].to_excel(writer, sheet_name='Prices by zone', index=True)
         
  

@@ -414,11 +414,15 @@ def _MP_TEP_variables(model,grid):
         def np_rsgen_bounds(model,rs,i):
             return (0,np_rsgen_max[rs])
         def np_rsgen_bounds_install(model,rs,i):
-            return (0,np_rsgen_max_install[(rs, i)])
+            planned = planned_installation_rsgen_init(model, rs, i)
+            max_install = np_rsgen_max_install[(rs, i)]
+            return (max(0.0, planned - max_install), planned + max_install)
         def np_rsgen_bounds_install_opt(model,rs,i):
             ren_source = grid.RenSources[rs]
             if ren_source.np_rsgen_opf:
-                return (-model.planned_installation_rsgen[rs, i], np_rsgen_max_install[(rs, i)])
+                planned = planned_installation_rsgen_init(model, rs, i)
+                max_install = np_rsgen_max_install[(rs, i)]
+                return (-min(planned, max_install), max_install)
             else:
                 return (0,0)  
         def np_rsgen_i(model, rs, i):
@@ -440,11 +444,15 @@ def _MP_TEP_variables(model,grid):
             return (0,np_gen_max[g])
 
         def np_gen_bounds_install(model,g,i):
-            return (0,np_gen_max_install[(g, i)])
+            planned = planned_installation_gen_init(model, g, i)
+            max_install = np_gen_max_install[(g, i)]
+            return (max(0.0, planned - max_install), planned + max_install)
         def np_gen_bounds_install_opt(model,g,i):
             gen = grid.Generators[g]
             if gen.np_gen_opf:
-                return (-model.planned_installation_gen[g, i], np_gen_max_install[(g, i)])
+                planned = planned_installation_gen_init(model, g, i)
+                max_install = np_gen_max_install[(g, i)]
+                return (-min(planned, max_install), max_install)
             else:
                 return (0,0)
         def np_gen_i(model, g, i):
@@ -464,11 +472,15 @@ def _MP_TEP_variables(model,grid):
             def MP_AC_line_bounds(model,l,i):
                 return (0,NP_lineAC_max[l])
             def MP_AC_line_bounds_install(model,l,i):
-                return (0,np_acline_max_install[(l, i)])
+                planned = planned_installation_ACline_init(model, l, i)
+                max_install = np_acline_max_install[(l, i)]
+                return (max(0.0, planned - max_install), planned + max_install)
             def MP_AC_line_bounds_install_opt(model,l,i):
                 line = grid.lines_AC_exp[l]
                 if line.np_line_opf:
-                    return (-model.planned_installation_ACline[l, i], np_acline_max_install[(l, i)])
+                    planned = planned_installation_ACline_init(model, l, i)
+                    max_install = np_acline_max_install[(l, i)]
+                    return (-min(planned, max_install), max_install)
                 else:
                     return (0,0)
             def NP_lineAC_i(model, l, i):
@@ -486,11 +498,15 @@ def _MP_TEP_variables(model,grid):
         def MP_DC_line_bounds(model,l,i):
             return (0,NP_lineDC_max[l])
         def MP_DC_line_bounds_install(model,l,i):
-            return (0,np_dcline_max_install[(l, i)])
+            planned = planned_installation_DCline_init(model, l, i)
+            max_install = np_dcline_max_install[(l, i)]
+            return (max(0.0, planned - max_install), planned + max_install)
         def MP_DC_line_bounds_install_opt(model,l,i):
             line = grid.lines_DC[l]
             if line.np_line_opf:
-                return (-model.planned_installation_DCline[l, i], np_dcline_max_install[(l, i)])
+                planned = planned_installation_DCline_init(model, l, i)
+                max_install = np_dcline_max_install[(l, i)]
+                return (-min(planned, max_install), max_install)
             else:
                 return (0,0)
         def NP_lineDC_i(model, l, i):
@@ -508,11 +524,15 @@ def _MP_TEP_variables(model,grid):
         def MP_Conv_bounds(model,c,i):
             return (0,np_conv_max[c])
         def MP_Conv_bounds_install(model,c,i):
-            return (0,np_conv_max_install[(c, i)])
+            planned = planned_installation_Conv_init(model, c, i)
+            max_install = np_conv_max_install[(c, i)]
+            return (max(0.0, planned - max_install), planned + max_install)
         def MP_Conv_bounds_install_opt(model,c,i):
             conv = grid.Converters_ACDC[c]
             if conv.np_conv_opf:
-                return (-model.planned_installation_Conv[c, i], np_conv_max_install[(c, i)])
+                planned = planned_installation_Conv_init(model, c, i)
+                max_install = np_conv_max_install[(c, i)]
+                return (-min(planned, max_install), max_install)
             else:
                 return (0,0)
         def np_conv_i(model, c, i):

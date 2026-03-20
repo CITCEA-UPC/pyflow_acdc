@@ -496,10 +496,10 @@ def _TEP_install_variables(model, grid):
             max_opt = np_rsgen_max[rs] - np_rsgen[rs] - np_rsgen_planned_install[rs]
             if max_opt < 0:
                 max_opt = 0
-            return (0, max_opt)
+            return (-min(np_rsgen_planned_install[rs], max_opt), max_opt)
 
         model.np_rsgen_planned_install = pyo.Param(model.ren_sources, initialize=np_rsgen_planned_install)
-        model.np_rsgen_install_opt = pyo.Var(model.ren_sources, within=pyo.NonNegativeIntegers, bounds=np_rsgen_install_opt_bounds, initialize=0)
+        model.np_rsgen_install_opt = pyo.Var(model.ren_sources, within=pyo.Integers, bounds=np_rsgen_install_opt_bounds, initialize=0)
         model.np_rsgen_install = pyo.Expression(
             model.ren_sources,
             rule=lambda m, rs: m.np_rsgen_planned_install[rs] + m.np_rsgen_install_opt[rs],
@@ -513,10 +513,10 @@ def _TEP_install_variables(model, grid):
             max_opt = np_gen_max[g] - np_gen[g] - np_gen_planned_install[g]
             if max_opt < 0:
                 max_opt = 0
-            return (0, max_opt)
+            return (-min(np_gen_planned_install[g], max_opt), max_opt)
 
         model.np_gen_planned_install = pyo.Param(model.gen_AC, initialize=np_gen_planned_install)
-        model.np_gen_install_opt = pyo.Var(model.gen_AC, within=pyo.NonNegativeIntegers, bounds=np_gen_install_opt_bounds, initialize=0)
+        model.np_gen_install_opt = pyo.Var(model.gen_AC, within=pyo.Integers, bounds=np_gen_install_opt_bounds, initialize=0)
         model.np_gen_install = pyo.Expression(
             model.gen_AC,
             rule=lambda m, g: m.np_gen_planned_install[g] + m.np_gen_install_opt[g],
@@ -530,10 +530,10 @@ def _TEP_install_variables(model, grid):
             max_opt = NP_lineAC_max[line] - NP_lineAC[line] - NP_lineAC_planned_install[line]
             if max_opt < 0:
                 max_opt = 0
-            return (0, max_opt)
+            return (-min(NP_lineAC_planned_install[line], max_opt), max_opt)
 
         model.NumLinesACP_planned_install = pyo.Param(model.lines_AC_exp, initialize=NP_lineAC_planned_install)
-        model.NumLinesACP_install_opt = pyo.Var(model.lines_AC_exp, within=pyo.NonNegativeIntegers, bounds=NPline_install_opt_bounds_AC, initialize=0)
+        model.NumLinesACP_install_opt = pyo.Var(model.lines_AC_exp, within=pyo.Integers, bounds=NPline_install_opt_bounds_AC, initialize=0)
         model.NumLinesACP_install = pyo.Expression(
             model.lines_AC_exp,
             rule=lambda m, line: m.NumLinesACP_planned_install[line] + m.NumLinesACP_install_opt[line],
@@ -547,10 +547,10 @@ def _TEP_install_variables(model, grid):
             max_opt = np_gen_max_DC[g] - np_gen_DC[g] - np_gen_DC_planned_install[g]
             if max_opt < 0:
                 max_opt = 0
-            return (0, max_opt)
+            return (-min(np_gen_DC_planned_install[g], max_opt), max_opt)
 
         model.np_gen_DC_planned_install = pyo.Param(model.gen_DC, initialize=np_gen_DC_planned_install)
-        model.np_gen_DC_install_opt = pyo.Var(model.gen_DC, within=pyo.NonNegativeIntegers, bounds=np_gen_install_opt_bounds_DC, initialize=0)
+        model.np_gen_DC_install_opt = pyo.Var(model.gen_DC, within=pyo.Integers, bounds=np_gen_install_opt_bounds_DC, initialize=0)
         model.np_gen_DC_install = pyo.Expression(
             model.gen_DC,
             rule=lambda m, g: m.np_gen_DC_planned_install[g] + m.np_gen_DC_install_opt[g],
@@ -564,10 +564,10 @@ def _TEP_install_variables(model, grid):
             max_opt = NP_lineDC_max[line] - NP_lineDC[line] - NP_lineDC_planned_install[line]
             if max_opt < 0:
                 max_opt = 0
-            return (0, max_opt)
+            return (-min(NP_lineDC_planned_install[line], max_opt), max_opt)
 
         model.NumLinesDCP_planned_install = pyo.Param(model.lines_DC, initialize=NP_lineDC_planned_install)
-        model.NumLinesDCP_install_opt = pyo.Var(model.lines_DC, within=pyo.NonNegativeIntegers, bounds=NPline_install_opt_bounds, initialize=0)
+        model.NumLinesDCP_install_opt = pyo.Var(model.lines_DC, within=pyo.Integers, bounds=NPline_install_opt_bounds, initialize=0)
         model.NumLinesDCP_install = pyo.Expression(
             model.lines_DC,
             rule=lambda m, line: m.NumLinesDCP_planned_install[line] + m.NumLinesDCP_install_opt[line],
@@ -581,10 +581,10 @@ def _TEP_install_variables(model, grid):
             max_opt = np_conv_max[conv] - np_conv[conv] - np_conv_planned_install[conv]
             if max_opt < 0:
                 max_opt = 0
-            return (0, max_opt)
+            return (-min(np_conv_planned_install[conv], max_opt), max_opt)
 
         model.np_conv_planned_install = pyo.Param(model.conv, initialize=np_conv_planned_install)
-        model.np_conv_install_opt = pyo.Var(model.conv, within=pyo.NonNegativeIntegers, bounds=NPconv_install_opt_bounds, initialize=0)
+        model.np_conv_install_opt = pyo.Var(model.conv, within=pyo.Integers, bounds=NPconv_install_opt_bounds, initialize=0)
         model.np_conv_install = pyo.Expression(
             model.conv,
             rule=lambda m, conv: m.np_conv_planned_install[conv] + m.np_conv_install_opt[conv],

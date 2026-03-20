@@ -135,6 +135,10 @@ class Results:
             self.Seq_STEP_results(print_table=print_table)
             self.Seq_STEP_obj_res(print_table=print_table)
             self.Seq_STEP_fuel_type_distribution(print_table=print_table)
+        if getattr(self.Grid, "Seq_MS_STEP_run", False):
+            self.Seq_MS_STEP_results(print_table=print_table)
+            self.Seq_MS_STEP_obj_res(print_table=print_table)
+            self.Seq_MS_STEP_fuel_type_distribution(print_table=print_table)
         # Final separator for All() run
         print('------')
 
@@ -2266,6 +2270,51 @@ class Results:
             mp_method=self.MP_TEP_fuel_type_distribution,
             mp_table_prefix="MP_TEP_fuel_type_distribution",
             seq_table_prefix="Seq_STEP_fuel_type_distribution",
+            print_table=print_table,
+        )
+
+    def Seq_MS_STEP_results(self, print_table=True):
+        df = getattr(self.Grid, "Seq_MS_STEP_results", None)
+        if df is None:
+            if print_table:
+                print("No Seq_MS_STEP_results found")
+            return df
+        return self._render_seq_step_with_mp_renderer(
+            seq_attr="Seq_MS_STEP_results",
+            mp_attr="MP_TEP_results",
+            mp_method=self.MP_TEP_results,
+            mp_table_prefix="MP_TEP_results",
+            seq_table_prefix="Seq_MS_STEP_results",
+            print_table=print_table,
+        )
+
+    def Seq_MS_STEP_obj_res(self, print_table=True):
+        df = getattr(self.Grid, "Seq_MS_STEP_obj_res", None)
+        if df is None:
+            if print_table:
+                print("No Seq_MS_STEP_obj_res found")
+            return df
+        return self._render_seq_step_with_mp_renderer(
+            seq_attr="Seq_MS_STEP_obj_res",
+            mp_attr="MP_TEP_obj_res",
+            mp_method=self.MP_TEP_obj_res,
+            mp_table_prefix="MP_TEP_obj_res",
+            seq_table_prefix="Seq_MS_STEP_obj_res",
+            print_table=print_table,
+        )
+
+    def Seq_MS_STEP_fuel_type_distribution(self, print_table=True):
+        dist = getattr(self.Grid, "Seq_MS_STEP_fuel_type_distribution", None)
+        if dist is None:
+            if print_table:
+                print("No Seq_MS_STEP_fuel_type_distribution found")
+            return dist
+        return self._render_seq_step_with_mp_renderer(
+            seq_attr="Seq_MS_STEP_fuel_type_distribution",
+            mp_attr="MP_TEP_fuel_type_distribution",
+            mp_method=self.MP_TEP_fuel_type_distribution,
+            mp_table_prefix="MP_TEP_fuel_type_distribution",
+            seq_table_prefix="Seq_MS_STEP_fuel_type_distribution",
             print_table=print_table,
         )
 

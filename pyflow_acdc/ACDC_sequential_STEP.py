@@ -1,9 +1,11 @@
 import os
+import json
+import tempfile
 import pandas as pd
 import pyomo.environ as pyo
 from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .grid_modifications import add_inv_series, add_gen_mix_limits
-from .ACDC_Static_TEP import transmission_expansion
+from .ACDC_Static_TEP import transmission_expansion, multi_scenario_TEP
 from .ACDC_MultiPeriod_TEP import (
     _fill_investment_decisions,
     _validate_grid_for_MP_TEP,
@@ -182,35 +184,82 @@ def _register_future_aged_decommission(grid, run_idx, n_years, decommission_appl
         bucket[name] = bucket.get(name, 0.0) + float(added_now)
 
 
-def sequential_STEP(
-    grid,
-    inv_data=None,
-    mix_data=None,
-    n_years=10,
-    Hy=8760,
-    discount_rate=0.02,
-    ObjRule=None,
-    solver="bonmin",
-    time_limit=None,
-    tee=False,
-    callback=False,
-    solver_options=None,
-    obj_scaling=1.0,
-    export_dir=None,
-    svg_prefix="sequential_STEP",
-    save_svgs=False,
-    export_steps=False
-):
-    """
-    Sequentially solve static transmission expansion one investment period at a time.
+def _build_cluster_cache_payload(grid, n_clusters):
+    if not hasattr(grid, "Clusters") or n_clusters not in grid.Clusters:
+        raise ValueError(f"Grid has no clustering data for n_clusters={n_clusters}")
+    clusters = grid.Clusters[n_clusters]
 
-    The run sequence emulates MP behavior by applying period-k:
-    - load multiplier
-    - planned + aged decommission
-    - generation-mix limit
-    and then solving `transmission_expansion()` on the updated grid state.
-    """
-    
+    reps = clusters.get("Representatives", None)
+    reps_data = reps.to_dict(orient="list") if hasattr(reps, "to_dict") else {}
+    cluster_idx = clusters.get("Cluster idx", {})
+    cluster_idx_json = {str(int(k)): [int(v) for v in vals] for k, vals in cluster_idx.items()}
+
+    time_series_clustered = {}
+    for ts in grid.Time_series:
+        values = getattr(ts, "data_clustered", {}).get(n_clusters, None)
+        if values is None:
+            raise ValueError(f"Missing clustered time-series data for '{ts.name}' and n_clusters={n_clusters}")
+        time_series_clustered[ts.name] = [float(v) for v in values]
+
+    return {
+        "n_clusters": int(n_clusters),
+        "time_series_clustered": time_series_clustered,
+        "cluster_idx": cluster_idx_json,
+        "weight": [float(v) for v in clusters.get("Weight", [])],
+        "cluster_count": [int(v) for v in clusters.get("Cluster Count", [])],
+        "labels": [int(v) for v in clusters.get("Labels", [])],
+        "representatives": {"data": reps_data},
+    }
+
+
+def _prepare_ms_clustering_reuse(grid, clustering_options, cache_json_path=None):
+    if clustering_options is None:
+        return None
+
+    opts = dict(clustering_options)
+    if opts.get("precomputed_clusters") is not None or opts.get("precomputed_clusters_path") is not None:
+        return opts
+
+    from .Time_series_clustering import cluster_analysis
+
+    n_clusters, _ = cluster_analysis(grid, opts)
+    payload = _build_cluster_cache_payload(grid, n_clusters)
+    if cache_json_path is None:
+        cache_json_path = os.path.join(
+            tempfile.gettempdir(),
+            f"pyflow_seq_ms_step_clusters_{id(grid)}_{int(n_clusters)}.json",
+        )
+    with open(cache_json_path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+    opts["n_clusters"] = int(n_clusters)
+    opts["precomputed_clusters_path"] = cache_json_path
+    return opts
+
+
+def _run_sequential_core(
+    *,
+    grid,
+    inv_data,
+    mix_data,
+    n_years,
+    Hy,
+    discount_rate,
+    tee,
+    export_dir,
+    save_svgs,
+    svg_prefix,
+    export_steps,
+    period_solver,
+    step_name,
+    excel_prefix,
+    export_csv_name,
+    run_results_attr,
+    run_flag_attr,
+    results_attr,
+    obj_attr,
+    fuel_attr,
+):
     grid.reset_run_flags()
     analyse_grid(grid)
 
@@ -236,7 +285,6 @@ def sequential_STEP(
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate = discount_rate
     grid.TEP_n_periods = n_runs
-
     grid.GPR = any(gen.np_gen_opf for gen in grid.Generators)
     grid.rs_GPR = any(rs.np_rsgen_opf for rs in grid.RenSources)
 
@@ -268,113 +316,110 @@ def sequential_STEP(
     aborted = False
     abort_reason = None
 
-    for k in range(n_runs):
-        np_before = _snapshot_dynamic_counts(grid)
+    try:
+        for k in range(n_runs):
+            np_before = _snapshot_dynamic_counts(grid)
+            _update_grid_investment_period(grid, k)
+            load_multiplier = None
 
-        _update_grid_investment_period(grid, k)
-        load_multiplier = None
+            linked_now, planned_now, applied_decommission = _apply_decommission_for_run(
+                grid, aged_decommission_schedule, k
+            )
+            _apply_sequential_run_np_caps(grid, k, absolute_np_max_by_name)
+            _apply_generation_type_limits_from_run(grid, k)
+            _round_dynamic_np_to_nearest_integer(grid)
 
-        linked_now, planned_now, applied_decommission = _apply_decommission_for_run(
-            grid, aged_decommission_schedule, k
-        )
-        _apply_sequential_run_np_caps(grid, k, absolute_np_max_by_name)
-        _apply_generation_type_limits_from_run(grid, k)
-        _round_dynamic_np_to_nearest_integer(grid)
+            model, model_res, timing_info, solver_stats, extra_run_data = period_solver(k)
 
-        model, model_res, timing_info, solver_stats = transmission_expansion(
-            grid,
-            NPV=True,
-            n_years=n_years,
-            Hy=Hy,
-            discount_rate=discount_rate,
-            ObjRule=ObjRule,
-            solver=solver,
-            time_limit=time_limit,
-            tee=tee,
-            callback=callback,
-            solver_options=solver_options,
-            obj_scaling=obj_scaling,
-        )
-        if export_steps:
-            from .Results_class import Results
-            res = Results(grid)
-            res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
-            res.All(export_location=export_dir, export_type="excel", file_name=f"sequential_STEP_{k+1}.xlsx",print_table=False)
-        _round_dynamic_np_to_nearest_integer(grid)
-        has_feasible_solution = bool(solver_stats and solver_stats.get("solution_found", False))
-        if not has_feasible_solution:
-            aborted = True
-            termination = solver_stats.get("termination_condition", "unknown") if solver_stats else "unknown"
-            abort_reason = f"run {k + 1} has no feasible solution (termination={termination})"
-            if tee:
-                print(f"Sequential STEP aborted at run {k + 1}: no solution found (termination={termination})")
-            break
+            if export_steps:
+                from .Results_class import Results
+                res = Results(grid)
+                res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
+                res.All(
+                    export_location=export_dir,
+                    export_type="excel",
+                    file_name=f"{excel_prefix}_{k+1}.xlsx",
+                    print_table=False,
+                )
+            _round_dynamic_np_to_nearest_integer(grid)
+            has_feasible_solution = bool(solver_stats and solver_stats.get("solution_found", False))
+            if not has_feasible_solution:
+                aborted = True
+                termination = solver_stats.get("termination_condition", "unknown") if solver_stats else "unknown"
+                abort_reason = f"run {k + 1} has no feasible solution (termination={termination})"
+                if tee:
+                    print(f"{step_name} aborted at run {k + 1}: no solution found (termination={termination})")
+                break
 
-        _register_future_aged_decommission(
-            grid=grid,
-            run_idx=k,
-            n_years=n_years,
-            decommission_applied_by_name=applied_decommission,
-            np_before_by_name=np_before,
-            schedule=aged_decommission_schedule,
-        )
+            _register_future_aged_decommission(
+                grid=grid,
+                run_idx=k,
+                n_years=n_years,
+                decommission_applied_by_name=applied_decommission,
+                np_before_by_name=np_before,
+                schedule=aged_decommission_schedule,
+            )
 
-        if save_svgs and export_dir is not None:
-            save_network_svg(grid, name=os.path.join(export_dir, f"{svg_prefix}_{k+1}"))
+            if save_svgs and export_dir is not None:
+                save_network_svg(grid, name=os.path.join(export_dir, f"{svg_prefix}_{k+1}"))
 
-        run_results[k] = {
-            "run": k + 1,
-            "csv_row_index": k + 2,
-            "load_multiplier": load_multiplier,
-            "model": model,
-            "model_res": model_res,
-            "timing_info": timing_info,
-            "solver_stats": solver_stats,
-            "decommission_applied": applied_decommission,
-            "linked_decommission_requested": linked_now,
-            "planned_decommission_requested": planned_now,
-            "linked_decommission_requested_total": float(sum(linked_now.values())) if linked_now else 0.0,
-            "linked_decommission_applied_total": float(sum(linked_now.values())) if linked_now else 0.0,
-        }
-
-        period = k + 1
-        np_after = _snapshot_dynamic_counts(grid)
-        for name, row in report_rows.items():
-            decommissioned = float(applied_decommission.get(name, 0.0))
-            installed = float(np_after[name]) - (float(np_before[name]) - decommissioned)
-            if abs(installed) <= 1e-9:
-                installed = 0.0
-            active = float(np_after[name])
-            base_cost = float(getattr(element_meta[name]["element"], "base_cost", 0.0) or 0.0)
-            cost = installed * base_cost
-
-            row[f"Decommissioned_{period}"] = decommissioned
-            row[f"Installed_{period}"] = installed
-            row[f"Active_{period}"] = active
-            row[f"Cost_{period}"] = cost
-
-        fuel_type_dist_by_period[period] = current_fuel_type_distribution(grid, output="df")
-
-        opf_obj = sum(float(x.get("v", 0.0)) for x in grid.OPF_obj.values())
-        npv_opf_obj = sum(float(x.get("NPV", 0.0)) for x in grid.OPF_obj.values())
-
-        tep_obj = float(pyo.value(model.obj) * getattr(model, "obj_scaling", 1.0))
-        present_value_tep = 1 / (1 + discount_rate) ** (k * n_years)
-        obj_rows.append(
-            {
-                "Investment_Period": period,
-                "OPF_Objective": opf_obj,
-                "NPV_OPF_Objective": npv_opf_obj,
-                "TEP_Objective": tep_obj,
-                "STEP_Objective": tep_obj,
-                "NPV_STEP_Objective": tep_obj * present_value_tep,
-                "STEP_Objective_Economic": tep_obj, 
-                "NPV_STEP_Objective_Economic": tep_obj * present_value_tep,
+            run_data = {
+                "run": k + 1,
+                "csv_row_index": k + 2,
+                "load_multiplier": load_multiplier,
+                "model": model,
+                "model_res": model_res,
+                "timing_info": timing_info,
+                "solver_stats": solver_stats,
+                "decommission_applied": applied_decommission,
+                "linked_decommission_requested": linked_now,
+                "planned_decommission_requested": planned_now,
+                "linked_decommission_requested_total": float(sum(linked_now.values())) if linked_now else 0.0,
+                "linked_decommission_applied_total": float(sum(linked_now.values())) if linked_now else 0.0,
             }
-        )
+            if extra_run_data:
+                run_data.update(extra_run_data)
+            run_results[k] = run_data
 
-        if export_dir is not None:
-            export_results_to_csv(run_results, export_dir)
+            period = k + 1
+            np_after = _snapshot_dynamic_counts(grid)
+            for name, row in report_rows.items():
+                decommissioned = float(applied_decommission.get(name, 0.0))
+                installed = float(np_after[name]) - (float(np_before[name]) - decommissioned)
+                if abs(installed) <= 1e-9:
+                    installed = 0.0
+                active = float(np_after[name])
+                base_cost = float(getattr(element_meta[name]["element"], "base_cost", 0.0) or 0.0)
+                cost = installed * base_cost
+
+                row[f"Decommissioned_{period}"] = decommissioned
+                row[f"Installed_{period}"] = installed
+                row[f"Active_{period}"] = active
+                row[f"Cost_{period}"] = cost
+
+            fuel_type_dist_by_period[period] = current_fuel_type_distribution(grid, output="df")
+
+            opf_obj = sum(float(x.get("v", 0.0)) for x in grid.OPF_obj.values())
+            npv_opf_obj = sum(float(x.get("NPV", 0.0)) for x in grid.OPF_obj.values())
+            tep_obj = float(pyo.value(model.obj) * getattr(model, "obj_scaling", 1.0))
+            present_value_tep = 1 / (1 + discount_rate) ** (k * n_years)
+            obj_rows.append(
+                {
+                    "Investment_Period": period,
+                    "OPF_Objective": opf_obj,
+                    "NPV_OPF_Objective": npv_opf_obj,
+                    "TEP_Objective": tep_obj,
+                    "STEP_Objective": tep_obj,
+                    "NPV_STEP_Objective": tep_obj * present_value_tep,
+                    "STEP_Objective_Economic": tep_obj,
+                    "NPV_STEP_Objective_Economic": tep_obj * present_value_tep,
+                }
+            )
+
+            if export_dir is not None:
+                export_results_to_csv(run_results, export_dir, file_name=export_csv_name)
+    finally:
+        _restore_absolute_np_caps(element_meta, absolute_np_max_by_name)
 
     seq_results_df = pd.DataFrame(list(report_rows.values()))
     if not seq_results_df.empty:
@@ -391,23 +436,175 @@ def sequential_STEP(
                 total_row[col] = ""
         seq_results_df = pd.concat([seq_results_df, pd.DataFrame([total_row])], ignore_index=True)
 
-    grid.sequential_STEP_run_results = run_results
-    grid.Seq_STEP_run = True
-    grid.Seq_STEP_results = seq_results_df
-    grid.Seq_STEP_obj_res = pd.DataFrame(
-        obj_rows,
-        columns=[
-            "Investment_Period",
-            "OPF_Objective",
-            "NPV_OPF_Objective",
-            "TEP_Objective",
-            "STEP_Objective",
-            "NPV_STEP_Objective",
-            "STEP_Objective_Economic",
-            "NPV_STEP_Objective_Economic",
-        ],
-    )
-    grid.Seq_STEP_fuel_type_distribution = fuel_type_dist_by_period
+    run_results["_meta"] = {
+        "aborted": bool(aborted),
+        "abort_reason": abort_reason,
+    }
 
-    _restore_absolute_np_caps(element_meta, absolute_np_max_by_name)
+    setattr(grid, run_results_attr, run_results)
+    setattr(grid, run_flag_attr, True)
+    setattr(grid, results_attr, seq_results_df)
+    setattr(
+        grid,
+        obj_attr,
+        pd.DataFrame(
+            obj_rows,
+            columns=[
+                "Investment_Period",
+                "OPF_Objective",
+                "NPV_OPF_Objective",
+                "TEP_Objective",
+                "STEP_Objective",
+                "NPV_STEP_Objective",
+                "STEP_Objective_Economic",
+                "NPV_STEP_Objective_Economic",
+            ],
+        ),
+    )
+    setattr(grid, fuel_attr, fuel_type_dist_by_period)
+    setattr(grid, f"{run_flag_attr}_aborted", bool(aborted))
+    setattr(grid, f"{run_flag_attr}_abort_reason", abort_reason)
     return run_results
+
+
+def sequential_STEP(
+    grid,
+    inv_data=None,
+    mix_data=None,
+    n_years=10,
+    Hy=8760,
+    discount_rate=0.02,
+    ObjRule=None,
+    solver="bonmin",
+    time_limit=None,
+    tee=False,
+    callback=False,
+    solver_options=None,
+    obj_scaling=1.0,
+    export_dir=None,
+    svg_prefix="sequential_STEP",
+    save_svgs=False,
+    export_steps=False
+):
+    """
+    Sequentially solve static transmission expansion one investment period at a time.
+    """
+
+    def _period_solver(k):
+        model, model_res, timing_info, solver_stats = transmission_expansion(
+            grid,
+            NPV=True,
+            n_years=n_years,
+            Hy=Hy,
+            discount_rate=discount_rate,
+            ObjRule=ObjRule,
+            solver=solver,
+            time_limit=time_limit,
+            tee=tee,
+            callback=callback,
+            solver_options=solver_options,
+            obj_scaling=obj_scaling,
+        )
+        return model, model_res, timing_info, solver_stats, {}
+
+    return _run_sequential_core(
+        grid=grid,
+        inv_data=inv_data,
+        mix_data=mix_data,
+        n_years=n_years,
+        Hy=Hy,
+        discount_rate=discount_rate,
+        tee=tee,
+        export_dir=export_dir,
+        save_svgs=save_svgs,
+        svg_prefix=svg_prefix,
+        export_steps=export_steps,
+        period_solver=_period_solver,
+        step_name="Sequential STEP",
+        excel_prefix="sequential_STEP",
+        export_csv_name="sequential_step_results.csv",
+        run_results_attr="sequential_STEP_run_results",
+        run_flag_attr="Seq_STEP_run",
+        results_attr="Seq_STEP_results",
+        obj_attr="Seq_STEP_obj_res",
+        fuel_attr="Seq_STEP_fuel_type_distribution",
+    )
+
+
+def sequential_MS_STEP(
+    grid,
+    inv_data=None,
+    mix_data=None,
+    n_years=10,
+    Hy=8760,
+    discount_rate=0.02,
+    clustering_options=None,
+    ObjRule=None,
+    solver="bonmin",
+    tee=False,
+    callback=False,
+    solver_options=None,
+    obj_scaling=1.0,
+    export_dir=None,
+    svg_prefix="sequential_MS_STEP",
+    save_svgs=False,
+    export_steps=False,
+    alpha=None,
+    limit_flow_rate=True,
+    nlp_warmstart=False,
+    clustering_cache_json_path=None,
+    reuse_clustering_cache=True,
+):
+    """
+    Sequentially solve multi-scenario transmission expansion one investment period at a time.
+    """
+    ms_clustering_options = clustering_options
+    if reuse_clustering_cache:
+        ms_clustering_options = _prepare_ms_clustering_reuse(
+            grid,
+            clustering_options,
+            cache_json_path=clustering_cache_json_path,
+        )
+
+    def _period_solver(k):
+        model, model_res, timing_info, solver_stats, step_ms_res = multi_scenario_TEP(
+            grid,
+            NPV=True,
+            n_years=n_years,
+            Hy=Hy,
+            discount_rate=discount_rate,
+            clustering_options=ms_clustering_options,
+            ObjRule=ObjRule,
+            solver=solver,
+            tee=tee,
+            callback=callback,
+            alpha=alpha,
+            limit_flow_rate=limit_flow_rate,
+            obj_scaling=obj_scaling,
+            solver_options=solver_options,
+            nlp_warmstart=nlp_warmstart,
+        )
+        return model, model_res, timing_info, solver_stats, {"TEP_multiScenario_res": step_ms_res}
+
+    return _run_sequential_core(
+        grid=grid,
+        inv_data=inv_data,
+        mix_data=mix_data,
+        n_years=n_years,
+        Hy=Hy,
+        discount_rate=discount_rate,
+        tee=tee,
+        export_dir=export_dir,
+        save_svgs=save_svgs,
+        svg_prefix=svg_prefix,
+        export_steps=export_steps,
+        period_solver=_period_solver,
+        step_name="Sequential MS STEP",
+        excel_prefix="sequential_MS_STEP",
+        export_csv_name="sequential_ms_step_results.csv",
+        run_results_attr="sequential_MS_STEP_run_results",
+        run_flag_attr="Seq_MS_STEP_run",
+        results_attr="Seq_MS_STEP_results",
+        obj_attr="Seq_MS_STEP_obj_res",
+        fuel_attr="Seq_MS_STEP_fuel_type_distribution",
+    )

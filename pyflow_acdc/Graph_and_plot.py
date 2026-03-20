@@ -788,6 +788,7 @@ def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_f
         'Power Generation by generator'    ,
         'Curtailment'    ,
         'Market Prices'    ,
+        'Net price zone power'    ,
         'AC line loading'    ,
         'DC line loading'    ,
         'ACDC Converters'    ,
@@ -821,6 +822,10 @@ def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_f
             df = grid.time_series_results['prices_by_zone'].loc[start:end]
             df = df.loc[:, ~df.columns.str.startswith('o_')]
             y_label = 'Market Prices (€/MWh)'
+        elif plotting_choice == 'Net price zone power':
+            df = grid.time_series_results['net_price_zone_power'].loc[start:end]
+            df = df.loc[:, ~df.columns.str.startswith('o_')]
+            y_label = 'Net price zone power (MW)'
         elif plotting_choice == 'AC line loading':
             df = grid.time_series_results['ac_line_loading'].loc[start:end]*100
             y_label = 'AC Line Loading (%)'

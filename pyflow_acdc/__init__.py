@@ -146,7 +146,7 @@ try:
         ])
         try:
             from .ACDC_sequential_STEP import *
-            __all__.append('sequential_STEP')
+            __all__.extend(['sequential_STEP', 'sequential_MS_STEP'])
         except ImportError:
             pass
     except ImportError:
