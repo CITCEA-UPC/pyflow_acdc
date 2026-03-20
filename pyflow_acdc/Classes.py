@@ -2908,11 +2908,16 @@ class AC_DC_converter:
     @property
     def loading(self):
         cap = self.capacity_MVA
-        return 0.0 if cap == 0 else (self.apparent_MVA / cap) * 100.0
+        if cap == 0:
+            return 0.0
+        p_dc_mw = abs(float(getattr(self, 'P_DC', 0.0)) * self.S_base)
+        return (max(self.apparent_MVA, p_dc_mw) / cap) * 100.0
 
     @property
     def apparent_MVA(self):
-        return max(abs(getattr(self, 'P_AC', 0.0)), abs(getattr(self, 'P_DC', 0.0))) * self.S_base
+        p_ac = float(getattr(self, 'P_AC', 0.0))
+        q_ac = float(getattr(self, 'Q_AC', 0.0))
+        return np.sqrt(p_ac**2 + q_ac**2) * self.S_base
     
     @property
     def S_base(self):

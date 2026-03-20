@@ -1800,15 +1800,17 @@ def OPF_step_results(model,grid):
     opt_res_curtailment ={}
    
     if grid.ACmode and grid.DCmode:
-        P_conv_DC_conv_values= {k: np.float64(pyo.value(v)) for k, v in model.P_conv_DC.items()}
         P_conv_s_AC_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_s_AC.items()}
         Q_conv_s_AC_values   = {k: np.float64(pyo.value(v)) for k, v in model.Q_conv_s_AC.items()}
+        P_conv_c_AC_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_c_AC.items()}
+        P_conv_loss_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_loss.items()}
         
         def process_converter(conv):
             nconv = conv.ConvNumber
             name = conv.name   
            
-            opt_res_P_conv_DC[name] = P_conv_DC_conv_values[conv.Node_DC.nodeNumber] * conv.np_conv
+            # Use converter-specific DC-side power for consistent per-converter reporting.
+            opt_res_P_conv_DC[name] = -(P_conv_c_AC_values[nconv] + P_conv_loss_values[nconv]) * conv.np_conv
             opt_res_P_conv_AC[name] = P_conv_s_AC_values[nconv] * conv.np_conv
             opt_res_Q_conv_AC[name] = Q_conv_s_AC_values[nconv] * conv.np_conv
                 

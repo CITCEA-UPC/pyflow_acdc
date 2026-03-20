@@ -782,7 +782,7 @@ def plot_Graph(Grid,text='inPu',base_node_size=10,G=None):
     s=1
     return fig
  
-def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_format=None):
+def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_format=None,skip_failed=False):
     Plot = [
         'Power Generation by price zone'    ,
         'Power Generation by generator'    ,
@@ -833,6 +833,15 @@ def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_f
             df = grid.time_series_results['converter_loading'].loc[start:end] * grid.S_base
             y_label = 'ACDC Converters (MW)'
             ylim = [0,110]
+
+        if skip_failed:
+            if len(df.index) > 0:
+                horizon_end = min(end, int(df.index.max()))
+            else:
+                horizon_end = end
+            full_index = pd.Index(range(start, horizon_end + 1), name=df.index.name or 'time')
+            df = df.reindex(full_index)
+
         columns = df.columns  
         time = df.index  # Assuming the DataFrame index is time
        

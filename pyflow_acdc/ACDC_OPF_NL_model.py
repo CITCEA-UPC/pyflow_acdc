@@ -2323,12 +2323,12 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
             nconv = conv.ConvNumber
             if TEP:
                 conv.np_conv = nconv_TEP[nconv]
-            conv.P_DC      = P_conv_DC_conv_values[conv.Node_DC.nodeNumber] 
             conv.P_AC      = P_conv_s_AC_values[nconv] * conv.np_conv
             conv.Q_AC      = Q_conv_s_AC_values[nconv] * conv.np_conv
             conv.Pc        = P_conv_c_AC_values[nconv] * conv.np_conv
             conv.Qc        = Q_conv_c_AC_values[nconv] * conv.np_conv
             conv.P_loss    = P_conv_loss_values[nconv] * conv.np_conv
+            conv.P_DC      = -(conv.Pc + conv.P_loss)
             conv.P_loss_tf = abs(conv.P_AC - conv.Pc)
             conv.U_c       = Uc_values[nconv]
             conv.U_f       = Uf_values[nconv]

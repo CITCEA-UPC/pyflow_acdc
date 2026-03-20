@@ -1638,7 +1638,7 @@ def get_line_data(t, model, grid):
             if l.np_line_opf:
                 ln = l.lineNumber
                 n_lines_dc = np.float64(pyo.value(model.scenario_model[t].NumLinesDCP[ln]))
-                if n_lines_dc <= 0.00001:
+                if n_lines_dc <= 0.01:
                     row_data_lines[l.name] = np.nan
                 else:
                     p_to = np.float64(pyo.value(model.scenario_model[t].PDC_to[ln])) * grid.S_base
@@ -1655,14 +1655,16 @@ def get_converter_data(t, model, grid):
         if conv.np_conv_opf:
             cn = conv.ConvNumber
             nconv = np.float64(pyo.value(model.scenario_model[t].np_conv[cn]))
-            if nconv <= 0.00001:
+            if nconv <= 0.01:
                 row_data_conv[conv.name] = np.nan
             else:
-                P_DC = np.float64(pyo.value(model.scenario_model[t].P_conv_DC[conv.Node_DC.nodeNumber])) * grid.S_base
-                P_s  = np.float64(pyo.value(model.scenario_model[t].P_conv_s_AC[cn])) * grid.S_base
-                Q_s  = np.float64(pyo.value(model.scenario_model[t].Q_conv_s_AC[cn])) * grid.S_base
-                S = np.sqrt(P_s**2 + Q_s**2)
-                loading = max(S, abs(P_DC)) / (conv.MVA_max * nconv) * 100
+                p_s = np.float64(pyo.value(model.scenario_model[t].P_conv_s_AC[cn])) * grid.S_base * nconv
+                q_s = np.float64(pyo.value(model.scenario_model[t].Q_conv_s_AC[cn])) * grid.S_base * nconv
+                p_c = np.float64(pyo.value(model.scenario_model[t].P_conv_c_AC[cn])) * grid.S_base * nconv
+                p_loss = np.float64(pyo.value(model.scenario_model[t].P_conv_loss[cn])) * grid.S_base * nconv
+                s_ac = np.sqrt(p_s**2 + q_s**2)
+                p_dc = abs(p_c + p_loss)
+                loading = max(s_ac, p_dc) / (conv.MVA_max * nconv) * 100
                 row_data_conv[conv.name] = np.round(loading, decimals=0)
                 
 
@@ -1737,12 +1739,12 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     def process_converter(conv):
         nconv = conv.ConvNumber
         nconvp=np.float64(pyo.value(model.np_conv[nconv]))
-        conv.P_DC  = np.float64(sum(pyo.value(model.scenario_model[t].P_conv_DC[conv.Node_DC.nodeNumber])   *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.P_AC  = np.float64(sum(pyo.value(model.scenario_model[t].P_conv_s_AC[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.Q_AC  = np.float64(sum(pyo.value(model.scenario_model[t].Q_conv_s_AC[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.Pc    = np.float64(sum(pyo.value(model.scenario_model[t].P_conv_c_AC[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.Qc    = np.float64(sum(pyo.value(model.scenario_model[t].Q_conv_c_AC[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.P_loss= np.float64(sum(pyo.value(model.scenario_model[t].P_conv_loss[nconv]) *nconvp* pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
+        conv.P_DC  = -(conv.Pc + conv.P_loss)
         conv.P_loss_tf = abs(conv.P_AC - conv.Pc)
         conv.U_c   = np.float64(sum(pyo.value(model.scenario_model[t].Uc[nconv])   * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         conv.U_f   = np.float64(sum(pyo.value(model.scenario_model[t].Uf[nconv])   * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
