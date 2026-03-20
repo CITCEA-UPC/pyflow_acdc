@@ -484,7 +484,7 @@ def sequential_STEP(
     export_dir=None,
     svg_prefix="sequential_STEP",
     save_svgs=False,
-    export_steps=False
+    export_steps=False,
 ):
     """
     Sequentially solve static transmission expansion one investment period at a time.

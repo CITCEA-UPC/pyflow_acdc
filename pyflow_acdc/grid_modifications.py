@@ -510,14 +510,19 @@ def add_generators(grid,Gen_csv,curtailmet_allowed=1):
         price_zone_link = False
         
         fuel_type = Gen_data.at[index, 'Fueltype']    if 'Fueltype' in Gen_data.columns else 'Other'
+        np_value = Gen_data.at[index, 'np'] if 'np' in Gen_data.columns else 1
+        if 'np_gen' in Gen_data.columns:
+            np_value = Gen_data.at[index, 'np_gen']
+        if 'np_rsgen' in Gen_data.columns:
+            np_value = Gen_data.at[index, 'np_rsgen']
         if fuel_type.lower() in grid.renewable_types:
-            add_RenSource(grid,node_name, MWmax,ren_source_name=var_name ,geometry=geo,ren_type=fuel_type,Qmin=MVArmin,Qmax=MVArmax,min_gamma=(1-curtailmet_allowed),zone=Ren_zone)
+            add_RenSource(grid,node_name, MWmax,ren_source_name=var_name ,geometry=geo,ren_type=fuel_type,Qmin=MVArmin,Qmax=MVArmax,min_gamma=(1-curtailmet_allowed),zone=Ren_zone,np_rsgen=np_value)
         else:
             if MVArmax is None:
                 MVArmax = 9999
             if MVArmin is None:
                 MVArmin = -9999
-            add_gen(grid, node_name,var_name, price_zone_link,lf,qf,fc,MWmax,MWmin,MVArmin,MVArmax,PsetMW,QsetMVA,fuel_type=fuel_type,geometry=geo)  
+            add_gen(grid, node_name,var_name, price_zone_link,lf,qf,fc,MWmax,MWmin,MVArmin,MVArmax,PsetMW,QsetMVA,fuel_type=fuel_type,geometry=geo,np_gen=np_value)  
         
 def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=99999,MWmin=0,MVArmin=None,MVArmax=None,PsetMW=0,QsetMVA=0,Smax=None,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
     
@@ -541,7 +546,7 @@ def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,
              gen = Gen_AC(
                  gen_name, node, Max_pow_gen, Min_pow_gen, Max_pow_genR, Min_pow_genR,
                  qf, lf, fc, Pset, Qset, Smax,
-                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base
+                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base, np_gen=np_gen
              )
              node.PGi = 0
              node.QGi = 0
@@ -551,7 +556,6 @@ def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,
              if normalized_fuel == 'gas':
                  normalized_fuel = 'natural gas'
              gen.gen_type = gen_type_lookup.get(normalized_fuel, gen_type_lookup.get('other', 'other'))
-             gen.np_gen = np_gen
              if geometry is not None:
                  if isinstance(geometry, str): 
                       geometry = loads(geometry)  
@@ -584,7 +588,7 @@ def add_gen_DC(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc
         if node_name == node.name:
              gen = Gen_DC(
                  gen_name, node, Max_pow_gen, Min_pow_gen, qf, lf, fc, Pset,
-                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base
+                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base, np_gen=np_gen
              )
              node.PGi = 0
              available_types = getattr(grid, 'gen_dc_types', ['other'])
@@ -593,7 +597,6 @@ def add_gen_DC(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc
              if normalized_fuel == 'gas':
                  normalized_fuel = 'natural gas'
              gen.gen_type = gen_type_lookup.get(normalized_fuel, gen_type_lookup.get('other', 'other'))
-             gen.np_gen = np_gen
              if geometry is not None:
                  if isinstance(geometry, str): 
                       geometry = loads(geometry)  
@@ -659,7 +662,7 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
     grid.Generators.append(gen)
     return gen
 
-def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', min_gamma=0, Qrel=0,Qmin=None,Qmax=None):
+def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', min_gamma=0, Qrel=0,Qmin=None,Qmax=None,np_rsgen: int = 1):
     
     # Handle string input by finding the node
     if isinstance(node, str):
@@ -677,10 +680,11 @@ def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=N
         ren_source_name = node.name
     
     # Create renewable source
-    rensource = Ren_Source(ren_source_name, node, base_MW/grid.S_base,S_base=grid.S_base)    
+    rensource = Ren_Source(ren_source_name, node, base_MW/grid.S_base,S_base=grid.S_base,np_rsgen=np_rsgen)    
     rensource.PRGi_available = available
     rensource.rs_type = ren_type
     rensource.min_gamma = min_gamma
+    
     
     # Determine connection type and set appropriate attributes
     if node in grid.nodes_AC:

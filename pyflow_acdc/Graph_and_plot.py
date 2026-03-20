@@ -162,12 +162,12 @@ def update_lineDC_hovertext(line,S_base,text):
         name = line.name
         fromnode = line.fromNode.name
         tonode = line.toNode.name
-        
+        np_line = np.round(line.np_line, decimals=1)
         r= np.round(line.R,decimals=5)
         l = int(line.Length_km)
-        rating = line.MW_rating
-        rating = np.round(rating,decimals=0)
-        line.hover_text = f"Line: {name}<br> R:{r}<br>Length:{l}km<br>Rating: {rating}MW"
+        rating = np.round(line.MW_rating, decimals=0)
+        rating_total = np.round(line.capacity_MW, decimals=0)
+        line.hover_text = f"Line: {name}<br> R:{r}<br>Length:{l}km<br>Rating (n=1): {rating}MW<br>Total rating: {rating_total}MW<br>Number of lines: {np_line}"
 
     elif text=='inPu':
      
@@ -216,11 +216,11 @@ def update_lineACexp_hovertext(line,S_base,text):
         l = int(line.Length_km)
         z= np.round(line.Z,decimals=5)
         y= np.round(line.Y,decimals=5)
-        rating = line.MVA_rating
-        rating = np.round(rating,decimals=0)
+        rating = np.round(line.MVA_rating, decimals=0)
+        rating_total = np.round(line.capacity_MVA, decimals=0)
         np_line = np.round(line.np_line, decimals=1)
         Line_tf = 'Transformer' if line.isTf else 'Line'
-        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA<br>Number Lines: {np_line}"
+        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating (unitary): {rating}MVA<br>Total rating: {rating_total}MVA<br>Number of lines: {np_line}"
 
     elif text=='inPu':
         
@@ -237,7 +237,7 @@ def update_lineACexp_hovertext(line,S_base,text):
         else:
             line_string = f"{fromnode} <- {tonode}"
         Line_tf = 'Transformer' if line.isTf else 'Line'
-        line.hover_text = f"{Line_tf}: {name}<br> {line_string}<br>S from: {Sfrom}<br>S to: {Sto}<br>Loading: {Loading}%<br>Lines: {np_line}"
+        line.hover_text = f"{Line_tf}: {name}<br> {line_string}<br>S from: {Sfrom}<br>S to: {Sto}<br>Loading: {Loading}%<br>Number of lines: {np_line}"
     else:
         name= line.name
         fromnode = line.fromNode.name
@@ -252,7 +252,7 @@ def update_lineACexp_hovertext(line,S_base,text):
         else:
             line_string = f"{fromnode} <- {tonode}"
         Line_tf = 'Transformer' if line.isTf else 'Line'
-        line.hover_text = f"Line: {name}<br>  {line_string}<br>S from: {Sfrom}MVA<br>S to: {Sto}MVA<br>Loading: {Loading}%<br>Lines: {np_line}"
+        line.hover_text = f"Line: {name}<br>  {line_string}<br>S from: {Sfrom}MVA<br>S to: {Sto}MVA<br>Loading: {Loading}%<br>Number of lines: {np_line}"
 
 def update_lineACrec_hovertext(line,S_base,text):
     dec=2
@@ -312,8 +312,7 @@ def update_lineACct_hovertext(line,S_base,text):
         l = int(line.Length_km)
         z= np.round(line.Z,decimals=5)
         y= np.round(line.Y,decimals=5)
-        rating = line.MVA_rating
-        rating = np.round(rating,decimals=0)
+        rating = np.round(line.MVA_rating, decimals=0)
         Line_tf = 'Cable type line'
         line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA"
 
@@ -397,9 +396,9 @@ def update_conv_hovertext(conv,S_base,text):
          name= conv.name
          fromnode = conv.Node_DC.name
          tonode = conv.Node_AC.name
-         rating = conv.MVA_max
-         rating = np.round(rating,decimals=0)
-         conv.hover_text = f"Converter: {name}<br>DC node: {fromnode}<br>AC node: {tonode}<br>Rating: {rating}"    
+         rating = np.round(conv.MVA_max,decimals=0)
+         rating_total = np.round(conv.capacity_MVA, decimals=0)
+         conv.hover_text = f"Converter: {name}<br>DC node: {fromnode}<br>AC node: {tonode}<br>Rating (unitary): {rating}MVA<br>Total rating: {rating_total}MVA"    
          
      elif text=='inPu':
          name= conv.name

@@ -359,7 +359,7 @@ def _MP_GEN_balance_constraints(model, grid):
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, model.inv_periods, rule=gen_type_balance_rule)
 
 
-def _MP_TEP_variables(model,grid):
+def _MP_TEP_variables(model, grid):
     
     tep_vars = get_TEP_variables(grid)
     gen_set = list(model.gen_AC) if hasattr(model, "gen_AC") else []
@@ -405,6 +405,10 @@ def _MP_TEP_variables(model,grid):
     def planned_installation_Conv_init(model, c, i):
         return _inv_decision(grid.Converters_ACDC[c], 'planned_installation')[i]
 
+    def min_install_opt(element, planned, max_install):
+        allows_decrease = element.allow_planned_decrease
+        return -min(planned, max_install) if allows_decrease else 0
+
     if grid.rs_GPR:
         np_rsgen = tep_vars['ren_sources']['np_rsgen']
         np_rsgen_max = tep_vars['ren_sources']['np_rsgen_max']
@@ -422,7 +426,7 @@ def _MP_TEP_variables(model,grid):
             if ren_source.np_rsgen_opf:
                 planned = planned_installation_rsgen_init(model, rs, i)
                 max_install = np_rsgen_max_install[(rs, i)]
-                return (-min(planned, max_install), max_install)
+                return (min_install_opt(ren_source, planned, max_install), max_install)
             else:
                 return (0,0)  
         def np_rsgen_i(model, rs, i):
@@ -452,7 +456,7 @@ def _MP_TEP_variables(model,grid):
             if gen.np_gen_opf:
                 planned = planned_installation_gen_init(model, g, i)
                 max_install = np_gen_max_install[(g, i)]
-                return (-min(planned, max_install), max_install)
+                return (min_install_opt(gen, planned, max_install), max_install)
             else:
                 return (0,0)
         def np_gen_i(model, g, i):
@@ -480,7 +484,7 @@ def _MP_TEP_variables(model,grid):
                 if line.np_line_opf:
                     planned = planned_installation_ACline_init(model, l, i)
                     max_install = np_acline_max_install[(l, i)]
-                    return (-min(planned, max_install), max_install)
+                    return (min_install_opt(line, planned, max_install), max_install)
                 else:
                     return (0,0)
             def NP_lineAC_i(model, l, i):
@@ -506,7 +510,7 @@ def _MP_TEP_variables(model,grid):
             if line.np_line_opf:
                 planned = planned_installation_DCline_init(model, l, i)
                 max_install = np_dcline_max_install[(l, i)]
-                return (-min(planned, max_install), max_install)
+                return (min_install_opt(line, planned, max_install), max_install)
             else:
                 return (0,0)
         def NP_lineDC_i(model, l, i):
@@ -532,7 +536,7 @@ def _MP_TEP_variables(model,grid):
             if conv.np_conv_opf:
                 planned = planned_installation_Conv_init(model, c, i)
                 max_install = np_conv_max_install[(c, i)]
-                return (-min(planned, max_install), max_install)
+                return (min_install_opt(conv, planned, max_install), max_install)
             else:
                 return (0,0)
         def np_conv_i(model, c, i):
@@ -750,7 +754,7 @@ def multi_period_transmission_expansion(
         model.inv_model[i].obj = pyo.Objective(rule=obj_OPF, sense=pyo.minimize)
 
     _initialize_MPTEP_sets_model(model,grid)
-    _MP_TEP_variables(model,grid)
+    _MP_TEP_variables(model, grid)
     _MP_TEP_constraints(model,grid)
     _MP_GEN_balance_constraints(model,grid)
     _MP_TEP_capex_budget_constraint(model,grid,capex_budget=capex_budget)

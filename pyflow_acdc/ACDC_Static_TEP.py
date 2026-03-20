@@ -130,6 +130,20 @@ def expand_elements_from_pd(grid,exp_elements):
             return default_value
         value = row[col_name]
         return default_value if pd.isna(value) else value
+
+    def parse_optional_bool(value):
+        if value is None:
+            return None
+        if isinstance(value, (bool, np.bool_)):
+            return bool(value)
+        if isinstance(value, (int, float)):
+            return bool(value)
+        text = str(value).strip().lower()
+        if text in {'1', 'true', 't', 'yes', 'y'}:
+            return True
+        if text in {'0', 'false', 'f', 'no', 'n'}:
+            return False
+        return None
     
     # Apply the Expand_element function for each element in exp_elements
     exp_elements.iloc[:, 0].apply(lambda name: Expand_element(
@@ -148,7 +162,10 @@ def expand_elements_from_pd(grid,exp_elements):
             get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_installation')
             if get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_installation') is not None
             else get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_install')
-        )
+        ),
+        allow_planned_decrease=parse_optional_bool(
+            get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'allow_planned_decrease')
+        ),
     ))
     grid.Update_Graph_AC()
     grid.create_Ybus_AC() 
@@ -180,7 +197,19 @@ def repurpose_element_from_pd(grid,rec_elements):
     grid.create_Ybus_AC()    
 
 
-def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=None, planned_installation=None):
+def update_attributes(
+    element,
+    n_b,
+    n_i,
+    n_max,
+    life_time,
+    base_cost,
+    per_unit_cost,
+    exp,
+    n_inv_max=None,
+    planned_installation=None,
+    allow_planned_decrease=None,
+):
    """Updates the attributes of the given element if not None."""
    if n_b is not None:
        if n_i is None:
@@ -227,6 +256,8 @@ def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_c
 
    if planned_installation is not None:
        element.planned_installation = planned_installation
+   if allow_planned_decrease is not None:
+       element.allow_planned_decrease = allow_planned_decrease
     
    if life_time is not None:
        element.life_time = life_time
@@ -246,7 +277,22 @@ def update_attributes(element, n_b, n_i, n_max, life_time, base_cost, per_unit_c
        element.exp = exp
 
 
-def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_cost=None,per_unit_cost=None, exp=None,update_grid=True,n_inv_max=None, planned_installation=None, **legacy_kwargs):
+def Expand_element(
+    grid,
+    name,
+    n_b=None,
+    n_i=None,
+    n_max=None,
+    life_time=None,
+    base_cost=None,
+    per_unit_cost=None,
+    exp=None,
+    update_grid=True,
+    n_inv_max=None,
+    planned_installation=None,
+    allow_planned_decrease=None,
+    **legacy_kwargs,
+):
     # Backward compatibility: accept legacy uppercase kwargs.
     if n_b is None and 'N_b' in legacy_kwargs:
         n_b = legacy_kwargs.pop('N_b')
@@ -263,30 +309,50 @@ def Expand_element(grid,name,n_b=None,n_i=None,n_max=None,life_time=None,base_co
             from .grid_modifications import change_line_AC_to_expandable
             exp_l=change_line_AC_to_expandable(grid, name,update_grid)
             exp_l.np_line_opf = True
-            update_attributes(exp_l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
+            update_attributes(
+                exp_l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
+                n_inv_max=n_inv_max, planned_installation=planned_installation,
+                allow_planned_decrease=allow_planned_decrease
+            )
             continue
 
     for l in grid.lines_DC:
         if name == l.name:
             l.np_line_opf = True
-            update_attributes(l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
+            update_attributes(
+                l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
+                n_inv_max=n_inv_max, planned_installation=planned_installation,
+                allow_planned_decrease=allow_planned_decrease
+            )
             continue
             
     for cn in grid.Converters_ACDC:
         if name == cn.name:
             cn.np_conv_opf = True
-            update_attributes(cn, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
+            update_attributes(
+                cn, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
+                n_inv_max=n_inv_max, planned_installation=planned_installation,
+                allow_planned_decrease=allow_planned_decrease
+            )
             continue
         
     for gen in grid.Generators:
         if name == gen.name:
             gen.np_gen_opf = True
-            update_attributes(gen, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
+            update_attributes(
+                gen, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
+                n_inv_max=n_inv_max, planned_installation=planned_installation,
+                allow_planned_decrease=allow_planned_decrease
+            )
             continue
     for rs in grid.RenSources:
         if name == rs.name:
             rs.np_rsgen_opf = True
-            update_attributes(rs, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp, n_inv_max=n_inv_max, planned_installation=planned_installation)
+            update_attributes(
+                rs, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
+                n_inv_max=n_inv_max, planned_installation=planned_installation,
+                allow_planned_decrease=allow_planned_decrease
+            )
             continue
 def base_cost_calculation(element):
     from .Classes import Exp_Line_AC 
@@ -488,6 +554,10 @@ def _TEP_install_variables(model, grid):
     np_rsgen_max = tep_vars['ren_sources']['np_rsgen_max']
     np_rsgen_planned_install = tep_vars['ren_sources']['np_rsgen_planned_install']
 
+    def min_install_opt(element, planned, max_opt):
+        allows_decrease = element.allow_planned_decrease
+        return -min(planned, max_opt) if allows_decrease else 0
+
     if grid.rs_GPR:
         def np_rsgen_install_opt_bounds(model, rs):
             ren_source = grid.RenSources[rs]
@@ -496,7 +566,7 @@ def _TEP_install_variables(model, grid):
             max_opt = np_rsgen_max[rs] - np_rsgen[rs] - np_rsgen_planned_install[rs]
             if max_opt < 0:
                 max_opt = 0
-            return (-min(np_rsgen_planned_install[rs], max_opt), max_opt)
+            return (min_install_opt(ren_source, np_rsgen_planned_install[rs], max_opt), max_opt)
 
         model.np_rsgen_planned_install = pyo.Param(model.ren_sources, initialize=np_rsgen_planned_install)
         model.np_rsgen_install_opt = pyo.Var(model.ren_sources, within=pyo.Integers, bounds=np_rsgen_install_opt_bounds, initialize=0)
@@ -513,7 +583,7 @@ def _TEP_install_variables(model, grid):
             max_opt = np_gen_max[g] - np_gen[g] - np_gen_planned_install[g]
             if max_opt < 0:
                 max_opt = 0
-            return (-min(np_gen_planned_install[g], max_opt), max_opt)
+            return (min_install_opt(gen, np_gen_planned_install[g], max_opt), max_opt)
 
         model.np_gen_planned_install = pyo.Param(model.gen_AC, initialize=np_gen_planned_install)
         model.np_gen_install_opt = pyo.Var(model.gen_AC, within=pyo.Integers, bounds=np_gen_install_opt_bounds, initialize=0)
@@ -530,7 +600,7 @@ def _TEP_install_variables(model, grid):
             max_opt = NP_lineAC_max[line] - NP_lineAC[line] - NP_lineAC_planned_install[line]
             if max_opt < 0:
                 max_opt = 0
-            return (-min(NP_lineAC_planned_install[line], max_opt), max_opt)
+            return (min_install_opt(element, NP_lineAC_planned_install[line], max_opt), max_opt)
 
         model.NumLinesACP_planned_install = pyo.Param(model.lines_AC_exp, initialize=NP_lineAC_planned_install)
         model.NumLinesACP_install_opt = pyo.Var(model.lines_AC_exp, within=pyo.Integers, bounds=NPline_install_opt_bounds_AC, initialize=0)
@@ -547,7 +617,7 @@ def _TEP_install_variables(model, grid):
             max_opt = np_gen_max_DC[g] - np_gen_DC[g] - np_gen_DC_planned_install[g]
             if max_opt < 0:
                 max_opt = 0
-            return (-min(np_gen_DC_planned_install[g], max_opt), max_opt)
+            return (min_install_opt(gen, np_gen_DC_planned_install[g], max_opt), max_opt)
 
         model.np_gen_DC_planned_install = pyo.Param(model.gen_DC, initialize=np_gen_DC_planned_install)
         model.np_gen_DC_install_opt = pyo.Var(model.gen_DC, within=pyo.Integers, bounds=np_gen_install_opt_bounds_DC, initialize=0)
@@ -564,7 +634,7 @@ def _TEP_install_variables(model, grid):
             max_opt = NP_lineDC_max[line] - NP_lineDC[line] - NP_lineDC_planned_install[line]
             if max_opt < 0:
                 max_opt = 0
-            return (-min(NP_lineDC_planned_install[line], max_opt), max_opt)
+            return (min_install_opt(element, NP_lineDC_planned_install[line], max_opt), max_opt)
 
         model.NumLinesDCP_planned_install = pyo.Param(model.lines_DC, initialize=NP_lineDC_planned_install)
         model.NumLinesDCP_install_opt = pyo.Var(model.lines_DC, within=pyo.Integers, bounds=NPline_install_opt_bounds, initialize=0)
@@ -581,7 +651,7 @@ def _TEP_install_variables(model, grid):
             max_opt = np_conv_max[conv] - np_conv[conv] - np_conv_planned_install[conv]
             if max_opt < 0:
                 max_opt = 0
-            return (-min(np_conv_planned_install[conv], max_opt), max_opt)
+            return (min_install_opt(element, np_conv_planned_install[conv], max_opt), max_opt)
 
         model.np_conv_planned_install = pyo.Param(model.conv, initialize=np_conv_planned_install)
         model.np_conv_install_opt = pyo.Var(model.conv, within=pyo.Integers, bounds=NPconv_install_opt_bounds, initialize=0)
@@ -706,7 +776,15 @@ def MS_TEP_constraints(model,grid):
     if grid.CT_AC:
         model.NP_ACline_ct_link_constraint = pyo.Constraint(model.lines_AC_ct,model.ct_set,model.scenario_frames, rule=NP_ACline_ct_link)
 
-def _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule,PV_set=False):
+def _prepare_TEP_model(
+    grid,
+    NPV,
+    n_years,
+    Hy,
+    discount_rate,
+    ObjRule,
+    PV_set=False,
+):
 
     analyse_grid(grid)
     
@@ -778,10 +856,34 @@ def GEN_balance_constraints(model,grid):
     
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, rule=gen_type_balance_rule)
     
-def transmission_expansion(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,solver='bonmin',time_limit=None,tee=False,export=True,PV_set=False,alpha=None,callback=False,solver_options=None,obj_scaling=1.0):
+def transmission_expansion(
+    grid,
+    NPV=True,
+    n_years=25,
+    Hy=8760,
+    discount_rate=0.02,
+    ObjRule=None,
+    solver='bonmin',
+    time_limit=None,
+    tee=False,
+    export=True,
+    PV_set=False,
+    alpha=None,
+    callback=False,
+    solver_options=None,
+    obj_scaling=1.0,
+):
     grid.reset_run_flags()
     t1 = time.perf_counter()
-    model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule,PV_set)
+    model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(
+        grid,
+        NPV,
+        n_years,
+        Hy,
+        discount_rate,
+        ObjRule,
+        PV_set,
+    )
     
     present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
     if NPV:
@@ -1214,7 +1316,21 @@ def _generate_steps(steps, range_tuple):
     else:
         return np.asarray(steps, dtype=float).ravel()   
 
-def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy,alpha,limit_flow_rate,obj_scaling=1.0):
+def create_scenarios(
+    model,
+    grid,
+    Price_Zones,
+    weights_def,
+    n_clusters,
+    clustering,
+    NPV,
+    n_years,
+    discount_rate,
+    Hy,
+    alpha,
+    limit_flow_rate,
+    obj_scaling=1.0,
+):
        
     
     from .Time_series import  _modify_parameters    
@@ -1275,7 +1391,23 @@ def create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NP
 
     s=1
 
-def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clustering_options=None,ObjRule=None,solver='bonmin',tee=False,callback=False,alpha=None,limit_flow_rate=True,obj_scaling=1.0,solver_options=None,nlp_warmstart=False):
+def multi_scenario_TEP(
+    grid,
+    NPV=True,
+    n_years=25,
+    Hy=8760,
+    discount_rate=0.02,
+    clustering_options=None,
+    ObjRule=None,
+    solver='bonmin',
+    tee=False,
+    callback=False,
+    alpha=None,
+    limit_flow_rate=True,
+    obj_scaling=1.0,
+    solver_options=None,
+    nlp_warmstart=False,
+):
     
     analyse_grid(grid)
 
@@ -1302,7 +1434,21 @@ def multi_scenario_TEP(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,clust
     #print(list(model.scenario_frames))
     model.scenario_model    = pyo.Block(model.scenario_frames)
     
-    create_scenarios(model,grid,Price_Zones,weights_def,n_clusters,clustering,NPV,n_years,discount_rate,Hy,alpha,limit_flow_rate,obj_scaling=obj_scaling)
+    create_scenarios(
+        model,
+        grid,
+        Price_Zones,
+        weights_def,
+        n_clusters,
+        clustering,
+        NPV,
+        n_years,
+        discount_rate,
+        Hy,
+        alpha,
+        limit_flow_rate,
+        obj_scaling=obj_scaling,
+    )
 
     t2 = time.time()  
     t_modelcreate = t2-t1

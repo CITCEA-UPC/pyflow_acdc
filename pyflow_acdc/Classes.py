@@ -538,7 +538,7 @@ class Grid:
         for line in self.lines_DC:
             g=self.Graph_line_to_Grid_index_DC[line]
             self.Graph_number_lines_DC[g]+=1
-            self.rating_grid_DC[g]+=line.MW_rating
+            self.rating_grid_DC[g]+=line.capacity_MW
             
                 
         self.num_slackDC = np.zeros(self.Num_Grids_DC)
@@ -1076,7 +1076,7 @@ class Gen_AC:
         return max(abs(self.PGen), abs(self.QGen)) * self.S_base
 
 
-    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,Max_pow_genR: float,Min_pow_genR: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,Qset:float=0,S_rated:float=None,gen_type='Other',installation_cost:float=0,S_base:float=100):
+    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,Max_pow_genR: float,Min_pow_genR: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,Qset:float=0,S_rated:float=None,gen_type='Other',installation_cost:float=0,S_base:float=100,np_gen: int = 1):
         self.genNumber = Gen_AC.genNumber
         Gen_AC.genNumber += 1
         self.S_base = S_base
@@ -1108,11 +1108,12 @@ class Gen_AC:
         self.np_gen_opf = False
         self.np_gen_mp = False  # Multi-period TEP: submodel np_gen driven by master (full bounds)
         self.planned_installation = 0
+        self.allow_planned_decrease = False
 
-        self.np_gen_i = 1
-        self.np_gen_b = 1
-        self.np_gen = 1
-        self.np_gen_max=3   # maximum number of generators to be present at the same time
+        self.np_gen_i = np_gen
+        self.np_gen_b = np_gen
+        self.np_gen = np_gen
+        self.np_gen_max = np_gen * 3   # maximum number of generators to be present at the same time
         
         # Used in multi period TEP
         self.investment_decisions = {
@@ -1218,7 +1219,7 @@ class Gen_DC:
         return self.PGen/(self.capacity_MW*self.np_gen)*100 if self.np_gen >0 else 0
    
 
-    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,gen_type='Other',installation_cost:float=0,S_base:float=100):
+    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,gen_type='Other',installation_cost:float=0,S_base:float=100,np_gen: int = 1):
         self.genNumber_DC = Gen_DC.genNumber_DC
         Gen_DC.genNumber_DC += 1
 
@@ -1240,11 +1241,12 @@ class Gen_DC:
         #Variable to have a variable number of generators in the TEP
         self.np_gen_opf = False
         self.planned_installation = 0
+        self.allow_planned_decrease = False
 
-        self.np_gen_i = 1
-        self.np_gen_b = 1
-        self.np_gen = 1
-        self.np_gen_max=3
+        self.np_gen_i = np_gen
+        self.np_gen_b = np_gen
+        self.np_gen = np_gen
+        self.np_gen_max = np_gen * 3
         
         self.lf=linear_cost_factor
         self.qf=quadratic_cost_factor
@@ -1324,7 +1326,7 @@ class Ren_Source:
     def apparent_MVA(self):
         return max(abs(self.PGen), abs(self.QGen)) * self.S_base
     
-    def __init__(self,name,node,PGi_ren_base: float,rs_type='Wind',S_base:float=100,installation_cost:float=0,Max_S_factor:float=1):
+    def __init__(self,name,node,PGi_ren_base: float,rs_type='Wind',S_base:float=100,installation_cost:float=0,Max_S_factor:float=1,np_rsgen: int = 1):
         self.rsNumber = Ren_Source.rsNumber
         Ren_Source.rsNumber += 1
         
@@ -1358,11 +1360,12 @@ class Ren_Source:
         self.np_rsgen_opf = False
         self.np_rsgen_mp = False  # Multi-period TEP: submodel np_rsgen driven by master (full bounds)
         self.planned_installation = 0
+        self.allow_planned_decrease = False
 
-        self.np_rsgen_i = 1
-        self.np_rsgen_b = 1
-        self.np_rsgen = 1
-        self.np_rsgen_max=3   # maximum number of generators to be present at the same time
+        self.np_rsgen_i = np_rsgen
+        self.np_rsgen_b = np_rsgen
+        self.np_rsgen = np_rsgen
+        self.np_rsgen_max= np_rsgen *3   # maximum number of generators to be present at the same time
 
         # Used in multi period TEP
         self.investment_decisions = {
@@ -2071,6 +2074,7 @@ class Exp_Line_AC(Line_AC):
         self.np_line_max = 1 #N_max max number of lines
         self.np_line_opf=True
         self.planned_installation = 0
+        self.allow_planned_decrease = False
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
@@ -2751,6 +2755,7 @@ class Line_DC:
         self.np_line_max = N_cables
         self.np_line_opf=False
         self.planned_installation = 0
+        self.allow_planned_decrease = False
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
@@ -3019,6 +3024,7 @@ class AC_DC_converter:
         
         self.np_conv_opf=False
         self.planned_installation = 0
+        self.allow_planned_decrease = False
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],

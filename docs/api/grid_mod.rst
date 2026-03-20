@@ -858,7 +858,7 @@ Add Generator
 Add Renewable Source
 ^^^^^^^^^^^^^^^^^^^^
 
-.. py:function:: add_RenSource(grid, node_name, base, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind')
+.. py:function:: add_RenSource(grid, node_name, base, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', np_rsgen=1)
 
    Adds a renewable energy source to the grid.
 
@@ -887,6 +887,9 @@ Add Renewable Source
       * - ``price_zone``
         - str
         - Price zone name
+      * - ``np_rsgen``
+        - int/float
+        - Number of parallel renewable source units
       * - Returns
         - Ren_Source
         - Created renewable source
@@ -895,7 +898,7 @@ Add Renewable Source
 
    .. code-block:: python
 
-       source = pyf.add_RenSource(grid, "bus1", 100, ren_type="Wind")
+       source = pyf.add_RenSource(grid, "bus1", 100, ren_type="Wind", np_rsgen=2)
 
 
 .. _price_zones:
