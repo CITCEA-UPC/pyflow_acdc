@@ -1,14 +1,16 @@
 import networkx as nx
 import numpy as np
 import os
+from datetime import datetime, timedelta
 from pathlib import Path
 from importlib import resources
 import colorsys
 
 import geopandas as gpd
+import pandas as pd
 import folium
 import branca
-from folium.plugins import Draw,MarkerCluster,AntPath
+from folium.plugins import Draw,MarkerCluster,AntPath,TimestampedGeoJson
 import webbrowser
 from shapely.geometry import Point, LineString
 from .Graph_and_plot import update_hovertexts, create_subgraph_color_dict
@@ -785,6 +787,489 @@ def plot_folium(
     abs_map_filename = os.path.abspath(map_filename)
     
     # Automatically open the map in the default web browser
+    if show:
+        webbrowser.open(f"file://{abs_map_filename}")
+    return m
+
+def _ts_index_to_iso_strings(index):
+    iso_times = []
+    base_time = datetime(2000, 1, 1, 0, 0, 0)
+    for i, val in enumerate(index):
+        if hasattr(val, "isoformat"):
+            iso_times.append(val.isoformat())
+            continue
+        try:
+            offset = int(float(val))
+            ts = base_time + timedelta(hours=offset)
+        except Exception:
+            ts = base_time + timedelta(hours=i)
+        iso_times.append(ts.isoformat())
+    return iso_times
+
+def _leaflet_color(color_value):
+    """Return a Leaflet-safe color string (prefer #RRGGBB)."""
+    if isinstance(color_value, str):
+        c = color_value.strip()
+        if c.startswith("#") and len(c) == 9:
+            return c[:7]
+        return c
+    return "black"
+
+def plot_folium_ts_results(
+    grid,
+    name=None,
+    tiles="CartoDB Positron",
+    start=None,
+    end=None,
+    show=True,
+    min_weight=1.5,
+    max_weight=8.0,
+    add_legend=True,
+    legend_position="topright",
+):
+    if name is None:
+        name = f"{grid.name}_ts_results"
+
+    create_geometries(grid)
+    line_loading_df = grid.time_series_results.get("line_loading", None)
+    if line_loading_df is None or line_loading_df.empty:
+        raise ValueError("grid.time_series_results['line_loading'] is required and cannot be empty.")
+
+    if start is not None or end is not None:
+        try:
+            if start is not None and end is not None:
+                line_loading_df = line_loading_df.loc[start:end]
+            elif start is not None:
+                line_loading_df = line_loading_df.loc[start:]
+            else:
+                line_loading_df = line_loading_df.loc[:end]
+        except Exception:
+            start_i = 0 if start is None else int(start)
+            end_i = len(line_loading_df) if end is None else int(end) + 1
+            line_loading_df = line_loading_df.iloc[start_i:end_i]
+
+    if line_loading_df.empty:
+        raise ValueError("No time steps available after applying start/end selection.")
+
+    colormap = branca.colormap.LinearColormap(colors=["green", "yellow", "red"], vmin=0, vmax=100)
+    lines_ac = list(getattr(grid, "lines_AC", []) or [])
+    lines_ac_tf = list(getattr(grid, "lines_AC_tf", []) or [])
+    lines_ac_rec = list(getattr(grid, "lines_AC_rec", []) or [])
+    lines_ac_exp = list(getattr(grid, "lines_AC_exp", []) or [])
+    lines_ac_ct = list(getattr(grid, "lines_AC_ct", []) or [])
+    lines_dc = list(getattr(grid, "lines_DC", []) or [])
+    all_lines = lines_ac + lines_ac_tf + lines_ac_rec + lines_ac_exp + lines_ac_ct + lines_dc
+    dc_names = {line.name for line in lines_dc}
+
+    iso_times = _ts_index_to_iso_strings(line_loading_df.index)
+
+    features = []
+    for row_idx, (_, row) in enumerate(line_loading_df.iterrows()):
+        t_iso = iso_times[row_idx]
+        for line in all_lines:
+            geometry = getattr(line, "geometry", None)
+            if geometry is None or geometry.is_empty:
+                continue
+
+            if line.name in dc_names:
+                load_col = f"DC_Load_{line.name}"
+            else:
+                load_col = f"AC_Load_{line.name}"
+
+            if load_col not in row:
+                continue
+
+            load_frac = float(row[load_col]) if np.isfinite(row[load_col]) else 0.0
+            load_pct = max(0.0, load_frac * 100.0)
+            n_parallel = float(getattr(line, "np_line", 1.0))
+            if not np.isfinite(n_parallel) or n_parallel <= 0:
+                n_parallel = 1.0
+            n_cap = max(1.0, min(6.0, n_parallel))
+            width_scale = (n_cap - 1.0) / 5.0
+            weight = float(min_weight + (max_weight - min_weight) * width_scale)
+            color = _leaflet_color(colormap(min(load_pct, 100.0)))
+
+            coords_lonlat = [[pt[0], pt[1]] for pt in geometry.coords if len(pt) >= 2]
+            if len(coords_lonlat) < 2:
+                continue
+
+            features.append({
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": coords_lonlat,
+                },
+                "properties": {
+                    "time": t_iso,
+                    "times": [t_iso],
+                    "style": {
+                        "color": color,
+                        "weight": weight,
+                        "opacity": 0.9,
+                    },
+                },
+            })
+
+    if not features:
+        raise ValueError(
+            "No line TS features were built. Ensure time_series_results['line_loading'] has "
+            "AC_Load_/DC_Load_ columns matching line names."
+        )
+
+    node_geometries = []
+    for node in list(grid.nodes_AC) + list(grid.nodes_DC):
+        geom = getattr(node, "geometry", None)
+        if geom is not None and not geom.is_empty:
+            node_geometries.append(geom)
+
+    if node_geometries:
+        minx = min(g.x for g in node_geometries)
+        miny = min(g.y for g in node_geometries)
+        maxx = max(g.x for g in node_geometries)
+        maxy = max(g.y for g in node_geometries)
+        map_center = [(miny + maxy) / 2.0, (minx + maxx) / 2.0]
+    else:
+        map_center = [56, 10]
+
+    m = folium.Map(location=map_center, tiles=tiles, zoom_start=5)
+
+    for node in grid.nodes_AC:
+        geom = getattr(node, "geometry", None)
+        if geom is None or geom.is_empty:
+            continue
+        folium.CircleMarker(
+            location=(geom.y, geom.x),
+            radius=2,
+            color="black",
+            fill=True,
+            fill_opacity=0.8,
+            weight=1,
+        ).add_to(m)
+    for node in grid.nodes_DC:
+        geom = getattr(node, "geometry", None)
+        if geom is None or geom.is_empty:
+            continue
+        folium.CircleMarker(
+            location=(geom.y, geom.x),
+            radius=3,
+            color="blue",
+            fill=True,
+            fill_opacity=0.8,
+            weight=1,
+        ).add_to(m)
+
+    TimestampedGeoJson(
+        {"type": "FeatureCollection", "features": features},
+        period="PT1H",
+        duration="PT1H",
+        add_last_point=False,
+        auto_play=False,
+        loop=False,
+        max_speed=8,
+        loop_button=True,
+        date_options="YYYY-MM-DD HH:mm",
+        time_slider_drag_update=True,
+    ).add_to(m)
+
+    if add_legend:
+        pos_map = {
+            "topright": ("16px", "16px", "", ""),
+            "topleft": ("16px", "", "16px", ""),
+            "bottomright": ("", "16px", "", "80px"),
+            "bottomleft": ("", "", "16px", "80px"),
+        }
+        top, right, left, bottom = pos_map.get(str(legend_position).lower(), pos_map["topright"])
+        top_css = f"top: {top};" if top else ""
+        right_css = f"right: {right};" if right else ""
+        left_css = f"left: {left};" if left else ""
+        bottom_css = f"bottom: {bottom};" if bottom else ""
+        legend_html = """
+        <div style="
+            position: fixed;
+            __TOP__
+            __RIGHT__
+            __LEFT__
+            __BOTTOM__
+            z-index: 9999;
+            background: white;
+            border: 1px solid #777;
+            border-radius: 6px;
+            padding: 10px 12px;
+            font-size: 12px;
+            line-height: 1.25;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+        ">
+          <div style="font-weight: 600; margin-bottom: 6px;">TS Flow Legend</div>
+          <div style="margin-bottom: 4px;">Color = loading</div>
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom: 8px;">
+            <div style="width:120px; height:10px; background: linear-gradient(to right, green, yellow, red); border:1px solid #aaa;"></div>
+            <div style="font-size:11px;">0% → 100%</div>
+          </div>
+          <div style="margin-bottom: 2px;">Thickness = number of circuits (`n`/`np_line`)</div>
+          <div style="font-size:11px; color:#444;">Thin: n=1, Thick: n≥6</div>
+        </div>
+        """
+        legend_html = (
+            legend_html
+            .replace("__TOP__", top_css)
+            .replace("__RIGHT__", right_css)
+            .replace("__LEFT__", left_css)
+            .replace("__BOTTOM__", bottom_css)
+        )
+        m.get_root().html.add_child(folium.Element(legend_html))
+
+    if node_geometries:
+        m.fit_bounds([[miny, minx], [maxy, maxx]])
+
+    map_filename = f"{name}.html"
+    m.save(map_filename)
+    abs_map_filename = os.path.abspath(map_filename)
+    if show:
+        webbrowser.open(f"file://{abs_map_filename}")
+    return m
+
+def plot_folium_inv_results(
+    grid,
+    name=None,
+    source="auto",
+    tiles="CartoDB Positron",
+    show=True,
+    min_weight=1.5,
+    max_weight=8.0,
+    show_installed=True,
+    show_decommissioned=True,
+):
+    if name is None:
+        name = f"{grid.name}_inv_results"
+
+    create_geometries(grid)
+
+    def _pick_results_df():
+        if source == "auto":
+            candidates = [
+                getattr(grid, "MP_TEP_results", None),
+                getattr(grid, "Seq_MS_STEP_results", None),
+                getattr(grid, "Seq_STEP_results", None),
+            ]
+            for cand in candidates:
+                if isinstance(cand, pd.DataFrame) and not cand.empty:
+                    return cand
+            return None
+        if source == "mp":
+            return getattr(grid, "MP_TEP_results", None)
+        if source == "seq_ms":
+            return getattr(grid, "Seq_MS_STEP_results", None)
+        if source == "seq":
+            return getattr(grid, "Seq_STEP_results", None)
+        raise ValueError("source must be one of: auto, mp, seq, seq_ms")
+
+    inv_df = _pick_results_df()
+    if inv_df is None or inv_df.empty:
+        raise ValueError("No investment results DataFrame found for selected source.")
+
+    period_ids = []
+    for col in inv_df.columns:
+        if col.startswith("Active_") and col[len("Active_"):].isdigit():
+            period_ids.append(int(col[len("Active_"):]))
+    period_ids = sorted(set(period_ids))
+    if not period_ids:
+        raise ValueError("Investment results require Active_<period> columns.")
+
+    years_per_period = int(getattr(grid, "TEP_n_years", 1) or 1)
+    base_time = datetime(2000, 1, 1, 0, 0, 0)
+    iso_times = [
+        (base_time + timedelta(days=365 * years_per_period * (p - 1))).isoformat()
+        for p in period_ids
+    ]
+    time_by_period = {p: iso_times[i] for i, p in enumerate(period_ids)}
+
+    lines_ac = list(getattr(grid, "lines_AC", []) or [])
+    lines_ac_tf = list(getattr(grid, "lines_AC_tf", []) or [])
+    lines_ac_rec = list(getattr(grid, "lines_AC_rec", []) or [])
+    lines_ac_exp = list(getattr(grid, "lines_AC_exp", []) or [])
+    lines_ac_ct = list(getattr(grid, "lines_AC_ct", []) or [])
+    lines_dc = list(getattr(grid, "lines_DC", []) or [])
+    all_lines = lines_ac + lines_ac_tf + lines_ac_rec + lines_ac_exp + lines_ac_ct + lines_dc
+
+    lines_by_name = {str(line.name): line for line in all_lines}
+    lower_lines_by_name = {str(line.name).lower(): line for line in all_lines}
+
+    def _line_color(line_obj):
+        if line_obj in lines_dc:
+            return "royalblue"
+        if line_obj in lines_ac_exp:
+            return "darkorange"
+        if line_obj in lines_ac_rec:
+            return "seagreen"
+        if line_obj in lines_ac_ct:
+            return "teal"
+        if getattr(line_obj, "isTf", False):
+            return "firebrick"
+        return "black"
+
+    def _weight_from_active(active_value, max_active):
+        if max_active <= 0:
+            return float(min_weight)
+        scale = max(0.0, min(1.0, float(active_value) / float(max_active)))
+        return float(min_weight + (max_weight - min_weight) * scale)
+
+    max_active = 0.0
+    active_map = {}
+    installed_map = {}
+    decomm_map = {}
+
+    for _, row in inv_df.iterrows():
+        element_name = str(row.get("Element", "")).strip()
+        if not element_name:
+            continue
+        line_obj = lines_by_name.get(element_name) or lower_lines_by_name.get(element_name.lower())
+        if line_obj is None:
+            continue
+
+        active_map[line_obj] = {}
+        installed_map[line_obj] = {}
+        decomm_map[line_obj] = {}
+        for p in period_ids:
+            a_col = f"Active_{p}"
+            i_col = f"Installed_{p}"
+            d_col = f"Decommissioned_{p}"
+            a_val = float(row[a_col]) if a_col in row and np.isfinite(row[a_col]) else 0.0
+            i_val = float(row[i_col]) if i_col in row and np.isfinite(row[i_col]) else 0.0
+            d_val = float(row[d_col]) if d_col in row and np.isfinite(row[d_col]) else 0.0
+            active_map[line_obj][p] = a_val
+            installed_map[line_obj][p] = i_val
+            decomm_map[line_obj][p] = d_val
+            max_active = max(max_active, a_val)
+
+    # Keep non-investment lines visible as static references through all periods.
+    for line_obj in all_lines:
+        if line_obj in active_map:
+            continue
+        base_count = float(getattr(line_obj, "np_line", 1.0))
+        if base_count <= 0:
+            base_count = 1.0
+        active_map[line_obj] = {p: base_count for p in period_ids}
+        installed_map[line_obj] = {p: 0.0 for p in period_ids}
+        decomm_map[line_obj] = {p: 0.0 for p in period_ids}
+        max_active = max(max_active, base_count)
+
+    features = []
+    for line_obj in all_lines:
+        geometry = getattr(line_obj, "geometry", None)
+        if geometry is None or geometry.is_empty:
+            continue
+        coords_lonlat = [[pt[0], pt[1]] for pt in geometry.coords if len(pt) >= 2]
+        if len(coords_lonlat) < 2:
+            continue
+
+        for p in period_ids:
+            active_val = float(active_map[line_obj].get(p, 0.0))
+            if active_val <= 1e-9:
+                continue
+            style = {
+                "color": _line_color(line_obj),
+                "weight": _weight_from_active(active_val, max_active),
+                "opacity": 0.9,
+            }
+            features.append({
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                "properties": {"times": [time_by_period[p]], "style": style},
+            })
+
+            if show_installed and installed_map[line_obj].get(p, 0.0) > 1e-9:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                    "properties": {
+                        "times": [time_by_period[p]],
+                        "style": {
+                            "color": "limegreen",
+                            "weight": max(style["weight"] * 0.55, 1.5),
+                            "opacity": 0.95,
+                            "dashArray": "2, 6",
+                        },
+                    },
+                })
+            if show_decommissioned and decomm_map[line_obj].get(p, 0.0) > 1e-9:
+                features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                    "properties": {
+                        "times": [time_by_period[p]],
+                        "style": {
+                            "color": "crimson",
+                            "weight": max(style["weight"] * 0.45, 1.2),
+                            "opacity": 0.95,
+                            "dashArray": "8, 8",
+                        },
+                    },
+                })
+
+    if not features:
+        raise ValueError("No investment features were built from the selected results source.")
+
+    node_geometries = []
+    for node in list(getattr(grid, "nodes_AC", []) or []) + list(getattr(grid, "nodes_DC", []) or []):
+        geom = getattr(node, "geometry", None)
+        if geom is not None and not geom.is_empty:
+            node_geometries.append(geom)
+
+    if node_geometries:
+        minx = min(g.x for g in node_geometries)
+        miny = min(g.y for g in node_geometries)
+        maxx = max(g.x for g in node_geometries)
+        maxy = max(g.y for g in node_geometries)
+        map_center = [(miny + maxy) / 2.0, (minx + maxx) / 2.0]
+    else:
+        map_center = [56, 10]
+
+    m = folium.Map(location=map_center, tiles=tiles, zoom_start=5)
+
+    for node in getattr(grid, "nodes_AC", []) or []:
+        geom = getattr(node, "geometry", None)
+        if geom is None or geom.is_empty:
+            continue
+        folium.CircleMarker(
+            location=(geom.y, geom.x),
+            radius=2,
+            color="black",
+            fill=True,
+            fill_opacity=0.8,
+            weight=1,
+        ).add_to(m)
+    for node in getattr(grid, "nodes_DC", []) or []:
+        geom = getattr(node, "geometry", None)
+        if geom is None or geom.is_empty:
+            continue
+        folium.CircleMarker(
+            location=(geom.y, geom.x),
+            radius=3,
+            color="blue",
+            fill=True,
+            fill_opacity=0.8,
+            weight=1,
+        ).add_to(m)
+
+    TimestampedGeoJson(
+        {"type": "FeatureCollection", "features": features},
+        period=f"P{max(years_per_period, 1)}Y",
+        duration=f"P{max(years_per_period, 1)}Y",
+        add_last_point=False,
+        auto_play=False,
+        loop=False,
+        max_speed=8,
+        loop_button=True,
+        date_options="YYYY",
+        time_slider_drag_update=True,
+    ).add_to(m)
+
+    if node_geometries:
+        m.fit_bounds([[miny, minx], [maxy, maxx]])
+
+    map_filename = f"{name}.html"
+    m.save(map_filename)
+    abs_map_filename = os.path.abspath(map_filename)
     if show:
         webbrowser.open(f"file://{abs_map_filename}")
     return m
