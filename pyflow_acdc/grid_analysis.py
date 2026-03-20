@@ -118,7 +118,14 @@ def grid_state(grid):
     for node in grid.nodes_DC:
         Total_load += node.PLi
     for gen in grid.Generators:
-        min_generation += gen.Min_pow_gen * gen.np_gen if not gen.activate_gen_opf else 0
+        if getattr(gen, 'is_ext_grid', False):
+            if getattr(gen, 'allow_sell', True):
+                min_eff = -(gen.Max_pow_gen * gen.np_gen - gen.p_load_eff)
+            else:
+                min_eff = 0
+        else:
+            min_eff = gen.Min_pow_gen * gen.np_gen
+        min_generation += min_eff if not gen.activate_gen_opf else 0
         max_generation += gen.Max_pow_gen * gen.np_gen
 
     for ren in grid.RenSources:

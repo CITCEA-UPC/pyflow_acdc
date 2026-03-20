@@ -961,7 +961,7 @@ Add DC Generator
 Add External Grid
 ^^^^^^^^^^^^^^^^^
 
-.. py:function:: add_extgrid(grid, node, gen_name=None, price_zone_link=False, lf=0, qf=0, MVAmax=99999, MWmax=None, MVArmin=None, MVArmax=None, Allow_sell=True)
+.. py:function:: add_extgrid(grid, node, gen_name=None, price_zone_link=False, lf=0, qf=0, MVAmax=99999, MWmax=None, MVArmin=None, MVArmax=None, Allow_sell=True, P_load_MW=0)
 
    Adds an external grid equivalent as a generator-like source.
 

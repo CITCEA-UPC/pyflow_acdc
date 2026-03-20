@@ -585,6 +585,24 @@ def _modify_parameters(grid,model,Price_Zones):
             model.P_known_AC[idx].set_value(val)
         for idx, val in Q_know.items():
             model.Q_known_AC[idx].set_value(val)
+        if hasattr(model, 'P_load_eff'):
+            for gen in grid.Generators:
+                model.P_load_eff[gen.genNumber].set_value(gen.p_load_eff)
+        # Keep ext-grid generator bounds synchronized with scenario/investment load factors
+        # when the OPF model is reused across time steps.
+        if hasattr(model, 'PGi_gen') and not hasattr(model, 'PGi_lower_bound'):
+            for gen in grid.Generators:
+                if not getattr(gen, 'is_ext_grid', False):
+                    continue
+                g = gen.genNumber
+                np_gen_value = pyo.value(model.np_gen[g]) if hasattr(model, 'np_gen') else gen.np_gen
+                pmax_eff = gen.Max_pow_gen * np_gen_value
+                if getattr(gen, 'allow_sell', True):
+                    pmin_eff = -(pmax_eff - gen.p_load_eff)
+                else:
+                    pmin_eff = 0
+                model.PGi_gen[g].setlb(pmin_eff)
+                model.PGi_gen[g].setub(pmax_eff)
             
     if DCmode:
         for idx, val in P_known_DC.items():

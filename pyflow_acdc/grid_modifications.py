@@ -615,7 +615,7 @@ def add_gen_DC(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc
     return gen
 
 
-def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax=99999,MWmax=None,MVArmin=None,MVArmax=None,Allow_sell=True):
+def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax=99999,MWmax=None,MVArmin=None,MVArmax=None,Allow_sell=True,P_load_MW=0):
     if isinstance(node, str):
         node_name = node
         # Search in AC nodes first, then DC nodes
@@ -636,14 +636,16 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
  
     Max_pow_genR=MVArmax/grid.S_base
     Min_pow_genR=MVArmin/grid.S_base
-    if Allow_sell:
-        Min_pow_gen=-MVAmax/grid.S_base
-    else:
-        Min_pow_gen=0
+    Min_pow_gen=0
     rating = MVAmax/ grid.S_base
     gen = Gen_AC(gen_name, node,Max_pow_gen,Min_pow_gen,Max_pow_genR,Min_pow_genR,qf,lf,S_rated=rating)
+    gen.is_ext_grid = True
+    gen.allow_sell = Allow_sell
+    gen.p_load_base = P_load_MW / grid.S_base
+
     node.PGi = 0
     node.QGi = 0
+    node.recalc_extgrid_load()
     
     gen.price_zone_link=price_zone_link
     if price_zone_link:
@@ -655,6 +657,7 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
     if not has_slack:
         node.type = 'Slack'
     grid.Generators.append(gen)
+    return gen
 
 def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', min_gamma=0, Qrel=0,Qmin=None,Qmax=None):
     

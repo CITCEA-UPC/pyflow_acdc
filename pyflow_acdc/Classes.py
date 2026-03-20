@@ -1083,6 +1083,7 @@ class Gen_AC:
         self.S_base_i = S_base
         
         self.Node_AC=node.name
+        self._node = node
         self.x_coord = node.x_coord
         self.y_coord = node.y_coord
         self.geometry= node.geometry
@@ -1143,6 +1144,9 @@ class Gen_AC:
             
             
         self.price_zone_link = False
+        self.is_ext_grid = False
+        self.allow_sell = True
+        self.p_load_base = 0.0
         
         node.connected_gen.append(self)
         
@@ -1166,6 +1170,10 @@ class Gen_AC:
             self._name = name
 
         Gen_AC.names.add(self.name)
+    
+    @property
+    def p_load_eff(self):
+        return self.p_load_base * self._node.PLi_factor * self._node.PLi_inv_factor
         
        
 class Gen_DC:
@@ -1513,6 +1521,8 @@ class Node_AC:
         self.PLi= Power_load
 
         self._PLi_base = Power_load
+        self._PLi_extgrid = 0
+
 
         self.PLi_linked= False
         self._PLi_factor =1
@@ -1613,6 +1623,15 @@ class Node_AC:
         self.update_PLi()
 
     @property
+    def PLi_extgrid(self):
+        return self._PLi_extgrid
+
+    @PLi_extgrid.setter
+    def PLi_extgrid(self, value):
+        self._PLi_extgrid = value
+        self.update_PLi()
+
+    @property
     def PLi_factor(self):
         return self._PLi_factor
 
@@ -1631,7 +1650,11 @@ class Node_AC:
         self.update_PLi()
 
     def update_PLi(self):
-        self.PLi = self._PLi_base * self._PLi_factor * self._PLi_inv_factor
+        self.PLi = (self._PLi_base + self._PLi_extgrid) * self._PLi_factor * self._PLi_inv_factor
+
+    def recalc_extgrid_load(self):
+        self._PLi_extgrid = sum(gen.p_load_base for gen in self.connected_gen if gen.is_ext_grid)
+        self.update_PLi()
         
 class Node_DC:
     """

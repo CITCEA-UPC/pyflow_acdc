@@ -16,6 +16,15 @@ __all__ = [
 ]
 
 
+def get_gen_p_min_eff(gen, np_gen_value, p_load_eff_value=None):
+    if not getattr(gen, 'is_ext_grid', False):
+        return gen.Min_pow_gen * np_gen_value
+    if not getattr(gen, 'allow_sell', True):
+        return 0
+    p_load_eff = gen.p_load_eff if p_load_eff_value is None else p_load_eff_value
+    return -(gen.Max_pow_gen * np_gen_value - p_load_eff)
+
+
     
 
 def OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_rate=True):
@@ -94,7 +103,7 @@ def Generation_variables(model,grid,gen_info,TEP):
     
     def P_Gen_bounds(model, g):
         gen = grid.Generators[g]
-        return (gen.Min_pow_gen*gen.np_gen,gen.Max_pow_gen*gen.np_gen)
+        return (get_gen_p_min_eff(gen, gen.np_gen), gen.Max_pow_gen * gen.np_gen)
         
     def Q_Gen_bounds(model, g):
         gen = grid.Generators[g]
@@ -102,7 +111,7 @@ def Generation_variables(model,grid,gen_info,TEP):
     
     def P_gen_ini(model,g):
         gen = grid.Generators[g]
-        min_pow_gen = gen.Min_pow_gen * gen.np_gen
+        min_pow_gen = get_gen_p_min_eff(gen, gen.np_gen)
         ini=gen.Pset * gen.np_gen
         max_pow_gen = gen.Max_pow_gen * gen.np_gen
         if  min_pow_gen>ini:
@@ -125,8 +134,10 @@ def Generation_variables(model,grid,gen_info,TEP):
 
     if grid.ACmode:
         model.gen_AC     = pyo.Set(initialize=lista_gen)
- 
         if grid.GPR and TEP:
+            p_load_eff_ini = {gen.genNumber: gen.p_load_eff for gen in grid.Generators}
+            model.P_load_eff = pyo.Param(model.gen_AC, initialize=p_load_eff_ini, mutable=True)
+ 
             model.PGi_gen = pyo.Var(model.gen_AC, initialize=P_gen_ini)
             model.QGi_gen = pyo.Var(model.gen_AC, initialize=Q_gen_ini) 
         else:
@@ -1925,7 +1936,7 @@ def TEP_variables(model,grid):
 
             def P_gen_lower_bound_rule(model, g):
                 gen = grid.Generators[g]
-                return (gen.Min_pow_gen * model.np_gen[g] <= model.PGi_gen[g])
+                return (get_gen_p_min_eff(gen, model.np_gen[g], model.P_load_eff[g]) <= model.PGi_gen[g])
 
             def Q_gen_lower_bound_rule(model, g):
                 gen = grid.Generators[g]
