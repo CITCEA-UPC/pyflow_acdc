@@ -41,6 +41,21 @@ __all__ = ['plot_Graph',
            'save_network_svg',
            'plot_3D']
 
+def _installation_cost_meur(element):
+    base_cost = getattr(element, 'base_cost', 0.0)
+
+    if isinstance(base_cost, (list, tuple, np.ndarray)):
+        active_config = int(getattr(element, 'active_config', -1))
+        if 0 <= active_config < len(base_cost):
+            base_cost = base_cost[active_config]
+        else:
+            base_cost = 0.0
+
+    try:
+        return np.round(float(base_cost) / 10**6, decimals=2)
+    except (TypeError, ValueError):
+        return 0.0
+
 def update_ACnode_hovertext(node,S_base,text):
     # print(f"Updating hover text for node: {node.name}")
     dec= 2
@@ -163,11 +178,12 @@ def update_lineDC_hovertext(line,S_base,text):
         fromnode = line.fromNode.name
         tonode = line.toNode.name
         np_line = np.round(line.np_line, decimals=1)
+        installation_cost = _installation_cost_meur(line)
         r= np.round(line.R,decimals=5)
         l = int(line.Length_km)
         rating = np.round(line.MW_rating, decimals=0)
         rating_total = np.round(line.capacity_MW, decimals=0)
-        line.hover_text = f"Line: {name}<br> R:{r}<br>Length:{l}km<br>Rating (n=1): {rating}MW<br>Total rating: {rating_total}MW<br>Number of lines: {np_line}"
+        line.hover_text = f"Line: {name}<br> R:{r}<br>Length:{l}km<br>Rating (n=1): {rating}MW<br>Total rating: {rating_total}MW<br>Number of lines: {np_line}<br>Installation cost: {installation_cost}M€"
 
     elif text=='inPu':
      
@@ -213,6 +229,7 @@ def update_lineACexp_hovertext(line,S_base,text):
         name = line.name
         fromnode = line.fromNode.name
         tonode = line.toNode.name
+        installation_cost = _installation_cost_meur(line)
         l = int(line.Length_km)
         z= np.round(line.Z,decimals=5)
         y= np.round(line.Y,decimals=5)
@@ -220,7 +237,7 @@ def update_lineACexp_hovertext(line,S_base,text):
         rating_total = np.round(line.capacity_MVA, decimals=0)
         np_line = np.round(line.np_line, decimals=1)
         Line_tf = 'Transformer' if line.isTf else 'Line'
-        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating (unitary): {rating}MVA<br>Total rating: {rating_total}MVA<br>Number of lines: {np_line}"
+        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating (unitary): {rating}MVA<br>Total rating: {rating_total}MVA<br>Number of lines: {np_line}<br>Installation cost: {installation_cost}M€"
 
     elif text=='inPu':
         
@@ -261,13 +278,14 @@ def update_lineACrec_hovertext(line,S_base,text):
         name = line.name
         fromnode = line.fromNode.name
         tonode = line.toNode.name
+        installation_cost = _installation_cost_meur(line)
         l = int(line.Length_km)
         z= np.round(line.Z,decimals=5) if not line.rec_branch else np.round(line.Z_new,decimals=5)
         y= np.round(line.Y,decimals=5) if not line.rec_branch else np.round(line.Y_new,decimals=5)
         rating = line.MVA_rating if not line.rec_branch else line.MVA_rating_new
         rating = np.round(rating,decimals=0)
         Line_tf = 'Reconductoring branch'
-        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA"
+        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA<br>Installation cost: {installation_cost}M€"
 
     elif text=='inPu':
         
@@ -309,12 +327,13 @@ def update_lineACct_hovertext(line,S_base,text):
         name = line.name
         fromnode = line.fromNode.name
         tonode = line.toNode.name
+        installation_cost = _installation_cost_meur(line)
         l = int(line.Length_km)
         z= np.round(line.Z,decimals=5)
         y= np.round(line.Y,decimals=5)
         rating = np.round(line.MVA_rating, decimals=0)
         Line_tf = 'Cable type line'
-        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA"
+        line.hover_text = f"{Line_tf}: {name}<br> Z:{z}<br>Y:{y}<br>Length: {l}km<br>Rating: {rating}MVA<br>Installation cost: {installation_cost}M€"
 
     elif text=='inPu':
         
@@ -396,9 +415,10 @@ def update_conv_hovertext(conv,S_base,text):
          name= conv.name
          fromnode = conv.Node_DC.name
          tonode = conv.Node_AC.name
+         installation_cost = _installation_cost_meur(conv)
          rating = np.round(conv.MVA_max,decimals=0)
          rating_total = np.round(conv.capacity_MVA, decimals=0)
-         conv.hover_text = f"Converter: {name}<br>DC node: {fromnode}<br>AC node: {tonode}<br>Rating (unitary): {rating}MVA<br>Total rating: {rating_total}MVA"    
+         conv.hover_text = f"Converter: {name}<br>DC node: {fromnode}<br>AC node: {tonode}<br>Rating (unitary): {rating}MVA<br>Total rating: {rating_total}MVA<br>Installation cost: {installation_cost}M€"    
          
      elif text=='inPu':
          name= conv.name
@@ -419,7 +439,8 @@ def update_conv_hovertext(conv,S_base,text):
         fromnode = conv.Node_DC.name
         tonode = conv.Node_AC.name
         Sfrom= np.round(conv.P_DC*S_base, decimals=0)
-        Sto = np.round(np.sqrt(conv.P_AC**2+conv.Q_AC**2)*S_base*(conv.P_AC/np.abs(conv.P_AC)), decimals=0)
+        pac_sign = conv.P_AC / np.abs(conv.P_AC) if np.abs(conv.P_AC) > 0 else 0
+        Sto = np.round(np.sqrt(conv.P_AC**2+conv.Q_AC**2) * S_base * pac_sign, decimals=0)
         load = max(conv.loading,conv.ts_max_loading)
         Loading = np.round(load, decimals=0).astype(int)
         if np.real(Sfrom) > 0:

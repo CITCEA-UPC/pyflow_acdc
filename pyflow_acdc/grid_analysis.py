@@ -135,6 +135,17 @@ def grid_state(grid):
 
 
 def analyse_grid(grid):
+    def _has_positive_planned_install(element):
+        planned = getattr(element, "planned_installation", 0)
+        if isinstance(planned, np.ndarray):
+            return bool(np.any(planned > 0))
+        if isinstance(planned, (list, tuple)):
+            return any(float(v) > 0 for v in planned)
+        try:
+            return float(planned) > 0
+        except (TypeError, ValueError):
+            return False
+
     # Perform the analysis and store directly on grid
     grid.ACmode = grid.nn_AC != 0  # AC nodes present
     grid.DCmode = grid.nn_DC != 0  # DC nodes present
@@ -144,8 +155,14 @@ def analyse_grid(grid):
     grid.CT_AC = grid.nct_AC != 0  # AC conductor size selection lines present
     grid.CFC = grid.ncfc_DC != 0  # DC variable voltage converter lines present
     grid.CDC = grid.ncdc_DC != 0  # DC-DC converter lines present
-    grid.GPR = any(gen.np_gen_opf for gen in grid.Generators)
-    grid.rs_GPR = any(rs.np_rsgen_opf for rs in grid.RenSources)
+    grid.GPR = any(
+        gen.np_gen_opf or _has_positive_planned_install(gen)
+        for gen in grid.Generators
+    )
+    grid.rs_GPR = any(
+        rs.np_rsgen_opf or _has_positive_planned_install(rs)
+        for rs in grid.RenSources
+    )
     grid.act_gen = any(gen.activate_gen_opf for gen in grid.Generators)
 
     return grid.ACmode, grid.DCmode, [grid.TEP_AC, grid.TAP_tf, grid.REC_AC, grid.CT_AC], [grid.CFC, grid.CDC], grid.GPR

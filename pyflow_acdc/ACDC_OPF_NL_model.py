@@ -1899,11 +1899,14 @@ def TEP_variables(model,grid):
     
     # Extract generator variables
     np_gen = tep_vars['generators']['np_gen']
+    np_gen_i = tep_vars['generators']['np_gen_i']
     np_gen_max = tep_vars['generators']['np_gen_max']
     np_gen_DC = tep_vars['generators']['np_gen_DC']
+    np_gen_DC_i = tep_vars['generators']['np_gen_DC_i']
     np_gen_max_DC = tep_vars['generators']['np_gen_max_DC']    
 
     np_rsgen = tep_vars['ren_sources']['np_rsgen']
+    np_rsgen_i = tep_vars['ren_sources']['np_rsgen_i']
     np_rsgen_max = tep_vars['ren_sources']['np_rsgen_max']
 
     "TEP variables"
@@ -1917,7 +1920,7 @@ def TEP_variables(model,grid):
                 return (np_rsgen[rs], np_rsgen_max[rs])
             else:
                 return (np_rsgen[rs], np_rsgen[rs])
-        model.np_rsgen = pyo.Var(model.ren_sources,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen)
+        model.np_rsgen = pyo.Var(model.ren_sources,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen_i)
         model.np_rsgen_base = pyo.Param(model.ren_sources,initialize=np_rsgen)
     elif hasattr(model,'ren_sources'):
         model.np_rsgen = pyo.Param(model.ren_sources,initialize=np_rsgen)
@@ -1951,7 +1954,7 @@ def TEP_variables(model,grid):
                 return (model.QGi_gen[g] <= gen.Max_pow_genR * model.np_gen[g])
 
 
-            model.np_gen = pyo.Var(model.gen_AC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen)
+            model.np_gen = pyo.Var(model.gen_AC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_i)
             model.np_gen_base = pyo.Param(model.gen_AC,initialize=np_gen)  
 
             model.PGi_lower_bound = pyo.Constraint(model.gen_AC,rule=P_gen_lower_bound_rule)
@@ -2008,7 +2011,7 @@ def TEP_variables(model,grid):
 
     
 
-            model.np_gen_DC = pyo.Var(model.gen_DC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds_DC,initialize=np_gen_DC)
+            model.np_gen_DC = pyo.Var(model.gen_DC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds_DC,initialize=np_gen_DC_i)
             model.np_gen_DC_base = pyo.Param(model.gen_DC,initialize=np_gen_DC)  
 
             model.PGi_lower_bound = pyo.Constraint(model.gen_DC,rule=P_gen_DC_lower_bound_rule)

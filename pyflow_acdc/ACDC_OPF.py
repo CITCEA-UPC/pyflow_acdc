@@ -844,12 +844,21 @@ def _parse_ipopt_log(log_path):
                     parts = line.strip().split()
                     if len(parts) >= 4:
                         try:
-                            iteration = int(parts[0].rstrip('r'))
+                            iter_token = parts[0]
+                            in_restoration_phase = iter_token.endswith('r')
+                            iteration = int(iter_token.rstrip('r'))
                             objective = float(parts[1])
                             inf_pr = float(parts[2])
                             inf_du = float(parts[3])
                             
-                            is_feasible = inf_pr < 1e-4
+                            # For IPOPT, treat an iterate as feasible only when both
+                            # primal and dual infeasibilities are small, and ignore
+                            # restoration-phase iterates.
+                            is_feasible = (
+                                (not in_restoration_phase)
+                                and inf_pr < 1e-4
+                                and inf_du < 1e-4
+                            )
                             
                             progress_events.append((iteration, objective, is_feasible, inf_pr, inf_du))
                             final_objective = objective
@@ -1050,9 +1059,91 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         Dictionary with solver statistics including feasible_solutions
     """
     solver = solver.lower()
+    # Keep internal flags separate from backend solver options.
+    solver_options = dict(solver_options) if solver_options else None
     feasible_solutions = []  # Always defined, but only populated if callback is used
     all_solutions = []  # Always defined, but only populated if callback is used
     bound_solutions = []  # Best-bound updates from callback log parsing
+    debug_solution_check = bool((solver_options or {}).pop("debug_solution_check", False))
+
+    def _model_solution_is_feasible(model_obj, tol=1e-6):
+        """
+        Feasibility check for the currently loaded variable values.
+
+        Returns
+        -------
+        (is_feasible: bool, debug_reason: str)
+        """
+        checked_constraints = 0
+        try:
+            for con in model_obj.component_objects(pyo.Constraint, active=True):
+                for idx in con:
+                    checked_constraints += 1
+                    cd = con[idx]
+                    lb = getattr(cd, "lower", None)
+                    ub = getattr(cd, "upper", None)
+
+                    body_expr = getattr(cd, "body", None)
+                    if body_expr is None:
+                        body_expr = getattr(cd, "expr", None)
+                    if body_expr is None:
+                        reason = f"{con.name}[{idx}] unknown constraint body expression"
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+
+                    try:
+                        body_val = pyo.value(body_expr)
+                    except Exception:
+                        reason = f"{con.name}[{idx}] body evaluation failed"
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+                    if body_val is None or not np.isfinite(float(body_val)):
+                        reason = f"{con.name}[{idx}] non-finite body value ({body_val})"
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+
+                    lb_val = pyo.value(lb) if lb is not None else None
+                    ub_val = pyo.value(ub) if ub is not None else None
+
+                    if lb_val is not None and not np.isfinite(float(lb_val)):
+                        reason = f"{con.name}[{idx}] non-finite lower bound ({lb_val})"
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+                    if ub_val is not None and not np.isfinite(float(ub_val)):
+                        reason = f"{con.name}[{idx}] non-finite upper bound ({ub_val})"
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+
+                    if lb_val is not None and body_val < lb_val - tol:
+                        reason = (
+                            f"{con.name}[{idx}] lower bound violated: "
+                            f"body={body_val}, lb={lb_val}, tol={tol}"
+                        )
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+                    if ub_val is not None and body_val > ub_val + tol:
+                        reason = (
+                            f"{con.name}[{idx}] upper bound violated: "
+                            f"body={body_val}, ub={ub_val}, tol={tol}"
+                        )
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: {reason}")
+                        return False, reason
+
+            if debug_solution_check:
+                print(f"[solution_check] PASS: checked {checked_constraints} active constraints")
+            return True, "ok"
+        except Exception as exc:
+            reason = f"unexpected checker exception: {exc}"
+            if debug_solution_check:
+                print(f"[solution_check] FAIL: {reason}")
+            return False, reason
 
     # NLP warm-start: solve continuous relaxation with IPOPT first
     if nlp_warmstart and solver in ('bonmin', 'minotaur'):
@@ -1178,11 +1269,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             error_msg = str(e)
             print(f"  Solver crashed: {e}")
 
-            model_has_solution = False
+            # Analysis-based: True only if current model values satisfy constraints.
+            # This captures both explicit model.solutions loads and solver autoload.
+            model_loaded_feasible = False
             try:
-                model_has_solution = len(getattr(model.solutions, '_entry', [])) > 0
+                model_loaded_feasible, _ = _model_solution_is_feasible(model)
             except Exception:
-                model_has_solution = False
+                model_loaded_feasible = False
 
             solver_stats = {
                 'solver': solver,
@@ -1195,7 +1288,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 'feasible_solutions': feasible_solutions,
                 'all_solutions': all_solutions,
                 'bound_solutions': bound_solutions,
-                'solution_found': model_has_solution or len(feasible_solutions) > 0,
+                'solution_found': bool(model_loaded_feasible),
                 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
             }
             _store_pyomo_results_on_grid(grid, model, None, solver_stats)
@@ -1222,67 +1315,53 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'feasible_solutions': feasible_solutions,
         'all_solutions': all_solutions,
         'bound_solutions': bound_solutions,
-        'solution_found': False,  # Will be set below
+        'solution_found': None,  # Set below from feasibility validation
         'obj_scaling': obj_scaling,
     }
 
-    def _is_finite_number(value):
-        try:
-            return bool(np.isfinite(float(value)))
-        except (TypeError, ValueError):
-            return False
-
-    def _model_has_loaded_solution(model_obj):
-        if model_obj is None:
-            return False
-        try:
-            if len(getattr(model_obj.solutions, '_entry', [])) > 0:
-                return True
-        except Exception:
-            pass
-        try:
-            return len(model_obj.solutions) > 0
-        except Exception:
-            return False
-
-    has_results_solution = False
-    if results is not None:
-        try:
-            has_results_solution = len(getattr(results, 'solution', [])) > 0
-        except Exception:
-            has_results_solution = False
-
-    has_callback_solution = len(feasible_solutions) > 0
-    has_loaded_model_solution = _model_has_loaded_solution(model)
-    has_bound_incumbent = _is_finite_number(solver_stats.get('best_objective', None))
-    has_bound_info = has_bound_incumbent and _is_finite_number(solver_stats.get('lower_bound', None))
-
-    tc = results.solver.termination_condition if results else None
-    status = results.solver.status if results else None
-    tc_text = str(tc).lower() if tc is not None else ''
-    explicit_no_solution = (
-        tc in (pyo.TerminationCondition.infeasible, pyo.TerminationCondition.unbounded, pyo.TerminationCondition.invalidProblem)
-        or 'infeasible' in tc_text
-        or 'unbounded' in tc_text
-        or 'invalid' in tc_text
-        or 'no solution' in tc_text
-    )
-    positive_exit = (
-        status == SolverStatus.ok
-        and not explicit_no_solution
+    # Decision policy for solution_found:
+    # 1) If solver termination is optimal/acceptable/feasible, trust solver and pass.
+    # 2) Otherwise (max iterations, internal error, etc.), validate loaded values
+    #    with the explicit feasibility checker and try alternative solution records.
+    try:
+        tc = str(getattr(results.solver, 'termination_condition', '') or '').lower() if results is not None else ''
+    except Exception:
+        tc = ''
+    trusted_termination = tc in ('optimal', 'feasible', 'locallyoptimal', 'acceptable', 'locally_optimal')
+    explicit_infeasible_termination = tc in (
+        'infeasible',
+        'locallyinfeasible',
+        'infeasibleorunbounded',
+        'infeasible_or_unbounded',
     )
 
-    incumbent_evidence = (
-        has_results_solution
-        or has_callback_solution
-        or has_loaded_model_solution
-        or has_bound_incumbent
-    )
+    if trusted_termination:
+        loaded_solution_feasible = True
+    elif explicit_infeasible_termination:
+        # Do not accept checker-pass states when solver explicitly reports infeasible.
+        loaded_solution_feasible = False
+    else:
+        loaded_solution_feasible, _ = _model_solution_is_feasible(model)
 
-    solver_stats['solution_found'] = bool(
-        (positive_exit and has_bound_info)
-        or (not explicit_no_solution and incumbent_evidence)
-    )
+        # If the currently loaded state is infeasible, try loading alternative
+        # solution records (Bonmin/others can return multiple candidates).
+        if (not loaded_solution_feasible) and results is not None:
+            try:
+                solution_list = getattr(results, "solution", None) or []
+                # Avoid excessive reloads in case of unexpected sizes.
+                max_attempts = min(len(solution_list), 25)
+                for sel in range(max_attempts):
+                    try:
+                        model.solutions.load_from(results, select=sel, clear=True)
+                    except Exception:
+                        continue
+                    loaded_solution_feasible, _ = _model_solution_is_feasible(model)
+                    if loaded_solution_feasible:
+                        break
+            except Exception:
+                pass
+
+    solver_stats['solution_found'] = bool(loaded_solution_feasible)
 
     if results and results.solver.termination_condition == pyo.TerminationCondition.infeasible:
         if not suppress_warnings:
