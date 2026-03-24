@@ -13,6 +13,9 @@ from .ACDC_Static_TEP import (
     _initialize_MS_STEP_sets_model,
     update_grid_scenario_frame,
     ExportACDC_TEP_MS_toPyflowACDC,
+    _expline_tightening,
+    _dcexpline_tightening,
+    _conv_ac_apparent_tightening,
 )
 from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters
@@ -684,6 +687,7 @@ def multi_period_transmission_expansion(
     alpha=None,
     capex_budget=None,
     nlp_warmstart=False,
+    robustness_mode=False,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -733,6 +737,10 @@ def multi_period_transmission_expansion(
 
     base_model = pyo.ConcreteModel()
     OPF_create_NLModel_ACDC(base_model,grid,PV_set=False,Price_Zones=PZ,TEP=True)
+    if robustness_mode:
+        _expline_tightening(base_model, grid)
+        _dcexpline_tightening(base_model, grid)
+        _conv_ac_apparent_tightening(base_model, grid)
 
     for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC+grid.RenSources: 
         _calculate_decomision_period(element,n_years)
@@ -1383,6 +1391,7 @@ def multi_period_MS_TEP(
     capex_budget=None,
     save_period_svgs=True,
     period_svg_prefix='grid_MP_MS_TEP',
+    robustness_mode=False,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -1438,6 +1447,10 @@ def multi_period_MS_TEP(
     OPF_create_NLModel_ACDC(
         base_model, grid, PV_set=False, Price_Zones=Price_Zones, TEP=True, limit_flow_rate=limit_flow_rate
     )
+    if robustness_mode:
+        _expline_tightening(base_model, grid)
+        _dcexpline_tightening(base_model, grid)
+        _conv_ac_apparent_tightening(base_model, grid)
 
     for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC + grid.RenSources:
         _calculate_decomision_period(element, n_years)
