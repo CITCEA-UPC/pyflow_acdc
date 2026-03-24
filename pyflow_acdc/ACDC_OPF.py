@@ -1358,15 +1358,23 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         if (not loaded_solution_feasible) and results is not None:
             try:
                 solution_list = getattr(results, "solution", None) or []
+                if debug_solution_check:
+                    print(f"[solution_check] info: results.solution count={len(solution_list)}")
                 # Avoid excessive reloads in case of unexpected sizes.
                 max_attempts = min(len(solution_list), 25)
                 for sel in range(max_attempts):
+                    if debug_solution_check:
+                        print(f"[solution_check] trying results.solution select={sel}")
                     try:
                         model.solutions.load_from(results, select=sel, clear=True)
                     except Exception:
+                        if debug_solution_check:
+                            print(f"[solution_check] FAIL: could not load select={sel}")
                         continue
                     loaded_solution_feasible, checker_reason = _model_solution_is_feasible(model, tol=checker_tol)
                     if loaded_solution_feasible:
+                        if debug_solution_check:
+                            print(f"[solution_check] PASS: feasible at select={sel}")
                         break
             except Exception:
                 pass

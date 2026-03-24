@@ -823,6 +823,8 @@ def _prepare_TEP_model(
     OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True)
     _TEP_install_variables(model, grid)
     _TEP_install_constraints(model, grid)
+    _expline_tightening(model, grid)
+    
     limits_map = getattr(grid, "current_generation_type_limits", {}) or {}
     if any(float(v) != 1.0 for v in limits_map.values()):
         GEN_balance_constraints(model, grid)
@@ -879,6 +881,102 @@ def GEN_balance_constraints(model,grid):
         return model.gen_type_max_capacity[gen_type] <= model.total_max_capacity * model.gen_type_limits[gen_type]
     
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, rule=gen_type_balance_rule)
+
+
+def _expline_tightening(model, grid, tol=1e-9):
+    """
+    Add optional tightening for expandable AC-line flow variables when zero-build
+    is possible for a line (lower bound near zero).
+
+    This preserves the intended logic:
+    - per-line thermal physics remain per circuit
+    - nodal effect is still scaled by number of parallel lines
+    """
+    if not (grid.ACmode and grid.TEP_AC):
+        return
+    if not (model.lines_AC_exp is not None and model.NumLinesACP is not None):
+        return
+
+    lines_to_tighten = []
+    coef = {}
+    for l in model.lines_AC_exp:
+        lb = pyo.value(model.NumLinesACP[l].lb)
+        if lb is not None and lb > tol:
+            continue
+
+        line = grid.lines_AC_exp[l]
+        nmax = line.np_line_max
+        if nmax <= tol:
+            continue
+        smax = line.MVA_rating / grid.S_base
+        if smax <= tol:
+            continue
+
+        lines_to_tighten.append(l)
+        coef[l] = smax / nmax
+
+    if not lines_to_tighten:
+        return
+
+    model._expline_tight_set = pyo.Set(initialize=lines_to_tighten)
+    model._expline_tight_coef = pyo.Param(model._expline_tight_set, initialize=coef, mutable=False)
+
+    # Multi-scenario model: apply envelopes to each scenario block flow vars.
+    if hasattr(model, "scenario_frames") and hasattr(model, "scenario_model"):
+        def _to_p_pos(m, l, t):
+            return m.scenario_model[t].exp_PAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _to_p_neg(m, l, t):
+            return -m.scenario_model[t].exp_PAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _from_p_pos(m, l, t):
+            return m.scenario_model[t].exp_PAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _from_p_neg(m, l, t):
+            return -m.scenario_model[t].exp_PAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _to_q_pos(m, l, t):
+            return m.scenario_model[t].exp_QAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _to_q_neg(m, l, t):
+            return -m.scenario_model[t].exp_QAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _from_q_pos(m, l, t):
+            return m.scenario_model[t].exp_QAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+        def _from_q_neg(m, l, t):
+            return -m.scenario_model[t].exp_QAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+
+        model._expline_tight_to_p_pos = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_to_p_pos)
+        model._expline_tight_to_p_neg = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_to_p_neg)
+        model._expline_tight_from_p_pos = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_from_p_pos)
+        model._expline_tight_from_p_neg = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_from_p_neg)
+        model._expline_tight_to_q_pos = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_to_q_pos)
+        model._expline_tight_to_q_neg = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_to_q_neg)
+        model._expline_tight_from_q_pos = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_from_q_pos)
+        model._expline_tight_from_q_neg = pyo.Constraint(model._expline_tight_set, model.scenario_frames, rule=_from_q_neg)
+        return
+
+    # Single-scenario model
+
+    def _to_p_pos(m, l):
+        return m.exp_PAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _to_p_neg(m, l):
+        return -m.exp_PAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _from_p_pos(m, l):
+        return m.exp_PAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _from_p_neg(m, l):
+        return -m.exp_PAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _to_q_pos(m, l):
+        return m.exp_QAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _to_q_neg(m, l):
+        return -m.exp_QAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _from_q_pos(m, l):
+        return m.exp_QAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+    def _from_q_neg(m, l):
+        return -m.exp_QAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
+
+    model._expline_tight_to_p_pos = pyo.Constraint(model._expline_tight_set, rule=_to_p_pos)
+    model._expline_tight_to_p_neg = pyo.Constraint(model._expline_tight_set, rule=_to_p_neg)
+    model._expline_tight_from_p_pos = pyo.Constraint(model._expline_tight_set, rule=_from_p_pos)
+    model._expline_tight_from_p_neg = pyo.Constraint(model._expline_tight_set, rule=_from_p_neg)
+    model._expline_tight_to_q_pos = pyo.Constraint(model._expline_tight_set, rule=_to_q_pos)
+    model._expline_tight_to_q_neg = pyo.Constraint(model._expline_tight_set, rule=_to_q_neg)
+    model._expline_tight_from_q_pos = pyo.Constraint(model._expline_tight_set, rule=_from_q_pos)
+    model._expline_tight_from_q_neg = pyo.Constraint(model._expline_tight_set, rule=_from_q_neg)
     
 def transmission_expansion(
     grid,
@@ -1400,6 +1498,8 @@ def create_scenarios(
     _TEP_install_constraints(model, grid)
     
     MS_TEP_constraints(model,grid)
+    _expline_tightening(model, grid)
+    
 
     
     model.weights = pyo.Param(model.scenario_frames, initialize=w)
