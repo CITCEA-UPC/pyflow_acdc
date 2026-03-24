@@ -1064,7 +1064,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     feasible_solutions = []  # Always defined, but only populated if callback is used
     all_solutions = []  # Always defined, but only populated if callback is used
     bound_solutions = []  # Best-bound updates from callback log parsing
-    debug_solution_check = bool((solver_options or {}).pop("debug_solution_check", False))
+    debug_solution_check = bool((solver_options or {}).pop("debug_solution_check", True))
 
     def _model_solution_is_feasible(model_obj, tol=1e-6):
         """
@@ -1289,6 +1289,8 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 'all_solutions': all_solutions,
                 'bound_solutions': bound_solutions,
                 'solution_found': bool(model_loaded_feasible),
+                'solution_check_reason': 'solver_exception',
+                'solution_check_tol': None,
                 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
             }
             _store_pyomo_results_on_grid(grid, model, None, solver_stats)
@@ -1335,13 +1337,21 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'infeasible_or_unbounded',
     )
 
+    # Internal/error solver exits can still carry a numerically usable incumbent.
+    # Use a slightly looser checker tolerance for these cases.
+    relaxed_checker_tols = ("internalsolvererror", "error")
+    checker_tol = 1e-4 if tc in relaxed_checker_tols else 1e-6
+    checker_reason = "unchecked"
+
     if trusted_termination:
         loaded_solution_feasible = True
+        checker_reason = "trusted_termination"
     elif explicit_infeasible_termination:
         # Do not accept checker-pass states when solver explicitly reports infeasible.
         loaded_solution_feasible = False
+        checker_reason = "explicit_infeasible_termination"
     else:
-        loaded_solution_feasible, _ = _model_solution_is_feasible(model)
+        loaded_solution_feasible, checker_reason = _model_solution_is_feasible(model, tol=checker_tol)
 
         # If the currently loaded state is infeasible, try loading alternative
         # solution records (Bonmin/others can return multiple candidates).
@@ -1355,13 +1365,15 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                         model.solutions.load_from(results, select=sel, clear=True)
                     except Exception:
                         continue
-                    loaded_solution_feasible, _ = _model_solution_is_feasible(model)
+                    loaded_solution_feasible, checker_reason = _model_solution_is_feasible(model, tol=checker_tol)
                     if loaded_solution_feasible:
                         break
             except Exception:
                 pass
 
     solver_stats['solution_found'] = bool(loaded_solution_feasible)
+    solver_stats['solution_check_reason'] = checker_reason
+    solver_stats['solution_check_tol'] = checker_tol
 
     if results and results.solver.termination_condition == pyo.TerminationCondition.infeasible:
         if not suppress_warnings:
