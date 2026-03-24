@@ -143,7 +143,7 @@ def _update_grid_investment_period(grid, i):
     for price_zone in grid.Price_Zones:
         inv = price_zone.investment_decisions
         price_zone.PLi_inv_factor = inv['Load'][idx]
-        price_zone.elasticity = inv['elasticity'][idx]
+        price_zone.curvature_factor = inv['curvature_factor'][idx]
         price_zone.import_expand = inv['import_expand'][idx]
 
     for node in grid.nodes_AC:
@@ -1214,10 +1214,10 @@ def _scenario_weight_for_frame(grid, t, n_clusters, clustering):
 def _validate_period_scenario_updates(grid, period_idx, frame_idx, n_clusters, clustering):
     tol = 1e-8
     for pz in grid.Price_Zones:
-        expected_elasticity = _inv_decision(pz, 'elasticity')[period_idx]
-        if abs(float(pz.elasticity) - float(expected_elasticity)) > tol:
+        expected_curvature = _inv_decision(pz, 'curvature_factor')[period_idx]          
+        if abs(float(pz.curvature_factor) - float(expected_curvature)) > tol:
             raise ValueError(
-                f"Price zone '{pz.name}' elasticity mismatch at period {period_idx}, frame {frame_idx}."
+                f"Price zone '{pz.name}' curvature_factor mismatch at period {period_idx}, frame {frame_idx}."
             )
 
     for pz in grid.Price_Zones:

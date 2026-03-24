@@ -3295,14 +3295,14 @@ class Price_Zone:
         self.update_a()
 
     @property
-    def elasticity(self):
-        return self._elasticity
+    def curvature_factor(self):
+        return self._curvature_factor
 
-    @elasticity.setter
-    def elasticity(self, value):
-        self._elasticity = value
+    @curvature_factor.setter
+    def curvature_factor(self, value):
+        self._curvature_factor = value
         self.update_a()
-
+        
     @property
     def b(self):
         return self._b
@@ -3313,7 +3313,7 @@ class Price_Zone:
         if self.expand_import:
             self.calc_import_expand()
         else:
-            self.calc_elasticity_effect()
+            self.calc_curvature_effect()
 
     @property
     def PGL_min_base(self):
@@ -3325,13 +3325,13 @@ class Price_Zone:
         if self.expand_import:
             self.calc_import_expand()
         else:
-            self.calc_elasticity_effect()
+            self.calc_curvature_effect()
         
     def update_a(self):
         if self.expand_import:
             self.calc_import_expand()
         else:
-            self.calc_elasticity_effect()
+            self.calc_curvature_effect()
             
     @property
     def import_expand(self):
@@ -3342,9 +3342,9 @@ class Price_Zone:
         self._import_expand = value
         self.calc_import_expand()
        
-    def calc_elasticity_effect(self):
-        self.a = self._a_base*self._elasticity
-        if self.b >0 and self.a != 0 and self._elasticity != 1:
+    def calc_curvature_effect(self):
+        self.a = self._a_base*self._curvature_factor
+        if self.b >0 and self.a != 0 and self._curvature_factor != 1:
             self.PGL_min = -self.b/(self.a*2)
         else:
             self.PGL_min = self._PGL_min_base
@@ -3353,7 +3353,7 @@ class Price_Zone:
         if self.b > 0 and self.expand_import:
             self.PGL_min = self.PGL_min_base - self._import_expand
             a = -self.b / (2 * self.PGL_min * self.S_base) 
-            self.a = a*self._elasticity
+            self.a = a*self._curvature_factor
        
 
     @property
@@ -3369,6 +3369,8 @@ class Price_Zone:
         for node in self.nodes_DC:
             if node.PLi_linked:
                 node.PLi_inv_factor=value
+        # Keep aggregated zone load consistent with node updates.
+        self._sync_PLi_total()
 
     @property
     def PLi_factor(self):
@@ -3383,15 +3385,17 @@ class Price_Zone:
         for node in self.nodes_DC:
             if node.PLi_linked:
                 node.PLi_factor=value        
+        # Keep aggregated zone load consistent with node updates.
+        self._sync_PLi_total()
 
-    def __init__(self,price=1,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand=0,elasticity=1,S_base:float=100,name=None):
+    def __init__(self,price=1,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand=0,curvature_factor=1,S_base:float=100,name=None):
         self.price_zone_num = Price_Zone.price_zone_num
         Price_Zone.price_zone_num += 1
         
         self.expand_import = False
         self._import_expand = import_expand
         self._a_base = a
-        self._elasticity = elasticity
+        self._curvature_factor = curvature_factor
         
         self.import_pu_L=import_pu_L
         self.export_pu_G=export_pu_G
@@ -3428,7 +3432,7 @@ class Price_Zone:
         }
         self.investment_decisions = {
             'Load': [],
-            'elasticity': [],
+            'curvature_factor': [],
             'import_expand': []
         }
         
@@ -3438,6 +3442,10 @@ class Price_Zone:
         
         self._PLi_factor=1
         self._PLi_inv_factor=1
+        # Base load aggregated over linked AC/DC nodes (at PLi_factor=1, PLi_inv_factor=1).
+        # Used by MP-MS validation (pz._PLi_base, pz.PLi).
+        self._PLi_base = 0.0
+        self.PLi = 0.0
         
         if name is None:
             self._name = str(self.price_zone_num)
@@ -3460,6 +3468,23 @@ class Price_Zone:
         self.linked_price_zone = other_price_zone
         
         other_price_zone.price = self.price  # Initially synchronize the price
+
+    def _sync_PLi_total(self):
+        """Sync aggregated zone load (PLi) using stored PLi base + current scaling factors."""
+        self.PLi = float(self._PLi_base) * float(self._PLi_factor) * float(self._PLi_inv_factor)
+
+    def recalc_PLi_base_and_total(self):
+        """Recompute this price zone base load from all linked nodes.
+
+        _PLi_base = sum(node._PLi_base + node._PLi_extgrid)
+        """
+        base = 0.0
+        for node in self.nodes_AC:
+            base += float(getattr(node, "_PLi_base", 0.0)) + float(getattr(node, "_PLi_extgrid", 0.0))
+        for node in self.nodes_DC:
+            base += float(getattr(node, "_PLi_base", 0.0)) + float(getattr(node, "_PLi_extgrid", 0.0))
+        self._PLi_base = base
+        self._sync_PLi_total()
 
 class OffshorePrice_Zone(Price_Zone):
     def __init__(self, main_price_zone, *args, **kwargs):

@@ -447,12 +447,14 @@ def add_RenSource_zone(grid,name):
     return RSZ
 
 
-def add_price_zone(grid,name,price,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand_pu=0,elasticity=1):
+def add_price_zone(grid,name,price,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand_pu=0,curvature_factor=1):
+
+
 
     if b==1:
         b= price
     
-    M = Price_Zone(price,import_pu_L,export_pu_G,a,b,c,import_expand_pu,elasticity,grid.S_base,name)
+    M = Price_Zone(price,import_pu_L,export_pu_G,a,b,c,import_expand_pu,curvature_factor,grid.S_base,name)
     grid.Price_Zones.append(M)
     grid.Price_Zones_dic[name]=M.price_zone_num
     
@@ -649,6 +651,17 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
     node.PGi = 0
     node.QGi = 0
     node.recalc_extgrid_load()
+    if price_zone_link:
+        # Keep aggregated price-zone load consistent after extgrid load is introduced.
+        pz_name = getattr(node, "PZ", None)
+        if pz_name:
+            pz = None
+            if hasattr(grid, "Price_Zones_dic"):
+                pz = next((p for p in grid.Price_Zones if p.name == pz_name), None)
+            else:
+                pz = next((p for p in grid.Price_Zones if p.name == pz_name), None)
+            if pz is not None and hasattr(pz, "recalc_PLi_base_and_total"):
+                pz.recalc_PLi_base_and_total()
     
     gen.price_zone_link=price_zone_link
     if price_zone_link:
@@ -836,7 +849,7 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
 
     - Price_Zone
       - 'Load'
-      - 'elasticity'
+      - 'curvature_factor'
       - 'import_expand'
 
     - Node_AC / Node_DC
@@ -878,7 +891,7 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
         raise ValueError("inv_data is empty")
 
     known_types = {
-        'Load', 'elasticity', 'import_expand',
+        'Load', 'curvature_factor', 'import_expand',
         'planned_installation', 'planned_decomision',
         'max_inv', 'np_dynamic'
     }
@@ -1001,6 +1014,7 @@ def add_inv_series(grid,inv_data,associated=None,inv_type=None,name=None):
                 f"Investment series '{inv_name}' has {data_len} periods, expected {expected_len} (or 1)."
             )
 
+        element_type = str(element_type)
         if str(element_type) not in known_types:
             print(
                 f"Warning: inv_type '{element_type}' is not in documented supported types."
@@ -1376,6 +1390,8 @@ def assign_nodeToPrice_Zone(grid,node_name, new_price_zone_name,ACDC='AC',link_l
             
         if old_price_zone is not None:
             setattr(old_price_zone, nodes_attr, [node for node in getattr(old_price_zone, nodes_attr) if node.name != node_name])
+            if hasattr(old_price_zone, "recalc_PLi_base_and_total"):
+                old_price_zone.recalc_PLi_base_and_total()
 
         # If the node was not found in any price_zone, check grid.nodes_AC
         if node_to_reassign is None:
@@ -1395,6 +1411,8 @@ def assign_nodeToPrice_Zone(grid,node_name, new_price_zone_name,ACDC='AC',link_l
             node_to_reassign.PZ=new_price_zone.name
             node_to_reassign.price=new_price_zone.price
             node_to_reassign.PLi_linked=link_load
+            if hasattr(new_price_zone, "recalc_PLi_base_and_total"):
+                new_price_zone.recalc_PLi_base_and_total()
 
 def assign_ConvToPrice_Zone(grid, conv_name, new_price_zone_name):
         """ Assign node to a new price_zone and remove it from its previous price_zone """
