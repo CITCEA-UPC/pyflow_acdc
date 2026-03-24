@@ -383,6 +383,7 @@ def _run_sequential_core(
 
             period = k + 1
             np_after = _snapshot_dynamic_counts(grid)
+            period_tep_obj = 0.0
             for name, row in report_rows.items():
                 decommissioned = float(applied_decommission.get(name, 0.0))
                 installed = float(np_after[name]) - (float(np_before[name]) - decommissioned)
@@ -396,12 +397,16 @@ def _run_sequential_core(
                 row[f"Installed_{period}"] = installed
                 row[f"Active_{period}"] = active
                 row[f"Cost_{period}"] = cost
+                period_tep_obj += cost
 
             fuel_type_dist_by_period[period] = current_fuel_type_distribution(grid, output="df")
 
             opf_obj = sum(float(x.get("v", 0.0)) for x in grid.OPF_obj.values())
             npv_opf_obj = sum(float(x.get("NPV", 0.0)) for x in grid.OPF_obj.values())
-            tep_obj = float(pyo.value(model.obj) * getattr(model, "obj_scaling", 1.0))
+            # Sequential STEP report: TEP is investment-only for this run.
+            tep_obj = float(period_tep_obj)
+            economic_step_obj = tep_obj + npv_opf_obj
+            model_step_obj = float(pyo.value(model.obj) * getattr(model, "obj_scaling", 1.0))
             present_value_tep = 1 / (1 + discount_rate) ** (k * n_years)
             obj_rows.append(
                 {
@@ -409,10 +414,10 @@ def _run_sequential_core(
                     "OPF_Objective": opf_obj,
                     "NPV_OPF_Objective": npv_opf_obj,
                     "TEP_Objective": tep_obj,
-                    "STEP_Objective": tep_obj,
-                    "NPV_STEP_Objective": tep_obj * present_value_tep,
-                    "STEP_Objective_Economic": tep_obj,
-                    "NPV_STEP_Objective_Economic": tep_obj * present_value_tep,
+                    "STEP_Objective": model_step_obj,
+                    "NPV_STEP_Objective": model_step_obj * present_value_tep,
+                    "STEP_Objective_Economic": economic_step_obj,
+                    "NPV_STEP_Objective_Economic": economic_step_obj * present_value_tep,
                 }
             )
 
