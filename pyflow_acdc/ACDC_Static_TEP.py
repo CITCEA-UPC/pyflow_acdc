@@ -913,7 +913,7 @@ def _expline_tightening(model, grid, tol=1e-9):
             continue
 
         lines_to_tighten.append(l)
-        coef[l] = smax / nmax
+        coef[l] = smax
 
     if not lines_to_tighten:
         return
