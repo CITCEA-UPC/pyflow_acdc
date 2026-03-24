@@ -808,7 +808,6 @@ def _prepare_TEP_model(
     discount_rate,
     ObjRule,
     PV_set=False,
-    robustness_mode=False,
 ):
 
     analyse_grid(grid)
@@ -824,12 +823,7 @@ def _prepare_TEP_model(
     OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True)
     _TEP_install_variables(model, grid)
     _TEP_install_constraints(model, grid)
-    if robustness_mode:
-        _expline_tightening(model, grid)
-        _dcexpline_tightening(model, grid)
-        _conv_ac_apparent_tightening(model, grid)
-       
-    
+
     limits_map = getattr(grid, "current_generation_type_limits", {}) or {}
     if any(float(v) != 1.0 for v in limits_map.values()):
         GEN_balance_constraints(model, grid)
@@ -887,166 +881,6 @@ def GEN_balance_constraints(model,grid):
     
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, rule=gen_type_balance_rule)
 
-
-def _expline_tightening(model, grid, tol=1e-9):
-    """
-    Add optional tightening for expandable AC-line flow variables when zero-build
-    is possible for a line (lower bound near zero).
-
-    This preserves the intended logic:
-    - per-line thermal physics remain per circuit
-    - nodal effect is still scaled by number of parallel lines
-    """
-    if not (grid.ACmode and grid.TEP_AC):
-        return
-    if not (model.lines_AC_exp is not None and model.NumLinesACP is not None):
-        return
-
-    lines_to_tighten = []
-    coef = {}
-    for l in model.lines_AC_exp:
-        lb = pyo.value(model.NumLinesACP[l].lb)
-        if lb is not None and lb > tol:
-            continue
-
-        line = grid.lines_AC_exp[l]
-        nmax = line.np_line_max
-        if nmax <= tol:
-            continue
-        smax = line.MVA_rating / grid.S_base
-        if smax <= tol:
-            continue
-
-        lines_to_tighten.append(l)
-        coef[l] = smax
-
-    if not lines_to_tighten:
-        return
-
-    model._expline_tight_set = pyo.Set(initialize=lines_to_tighten)
-    model._expline_tight_coef = pyo.Param(model._expline_tight_set, initialize=coef, mutable=False)
-
-    # Single-model tightening
-
-    def _to_p_pos(m, l):
-        return m.exp_PAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _to_p_neg(m, l):
-        return -m.exp_PAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _from_p_pos(m, l):
-        return m.exp_PAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _from_p_neg(m, l):
-        return -m.exp_PAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _to_q_pos(m, l):
-        return m.exp_QAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _to_q_neg(m, l):
-        return -m.exp_QAC_to[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _from_q_pos(m, l):
-        return m.exp_QAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-    def _from_q_neg(m, l):
-        return -m.exp_QAC_from[l] <= m._expline_tight_coef[l] * m.NumLinesACP[l]
-
-    model._expline_tight_to_p_pos = pyo.Constraint(model._expline_tight_set, rule=_to_p_pos)
-    model._expline_tight_to_p_neg = pyo.Constraint(model._expline_tight_set, rule=_to_p_neg)
-    model._expline_tight_from_p_pos = pyo.Constraint(model._expline_tight_set, rule=_from_p_pos)
-    model._expline_tight_from_p_neg = pyo.Constraint(model._expline_tight_set, rule=_from_p_neg)
-    model._expline_tight_to_q_pos = pyo.Constraint(model._expline_tight_set, rule=_to_q_pos)
-    model._expline_tight_to_q_neg = pyo.Constraint(model._expline_tight_set, rule=_to_q_neg)
-    model._expline_tight_from_q_pos = pyo.Constraint(model._expline_tight_set, rule=_from_q_pos)
-    model._expline_tight_from_q_neg = pyo.Constraint(model._expline_tight_set, rule=_from_q_neg)
-
-
-def _dcexpline_tightening(model, grid, tol=1e-9):
-    """
-    Optional tightening for expandable DC-line flow variables.
-
-    Mirrors _expline_tightening using NumLinesDCP and PDC_to/PDC_from.
-    """
-    if not (grid.DCmode and grid.TEP_DC):
-        return
-    if not (model.lines_DC is not None and model.NumLinesDCP is not None):
-        return
-
-    lines_to_tighten = []
-    coef = {}
-    for l in model.lines_DC:
-        lb = pyo.value(model.NumLinesDCP[l].lb)
-        if lb is not None and lb > tol:
-            continue
-
-        line = grid.lines_DC[l]
-        smax = line.MW_rating / grid.S_base
-        if smax <= tol:
-            continue
-
-        lines_to_tighten.append(l)
-        coef[l] = smax
-
-    if not lines_to_tighten:
-        return
-
-    model._dcexpline_tight_set = pyo.Set(initialize=lines_to_tighten)
-    model._dcexpline_tight_coef = pyo.Param(model._dcexpline_tight_set, initialize=coef, mutable=False)
-
-    # Single-model tightening
-    def _to_p_pos(m, l):
-        return m.PDC_to[l] <= m._dcexpline_tight_coef[l] * m.NumLinesDCP[l]
-    def _to_p_neg(m, l):
-        return -m.PDC_to[l] <= m._dcexpline_tight_coef[l] * m.NumLinesDCP[l]
-    def _from_p_pos(m, l):
-        return m.PDC_from[l] <= m._dcexpline_tight_coef[l] * m.NumLinesDCP[l]
-    def _from_p_neg(m, l):
-        return -m.PDC_from[l] <= m._dcexpline_tight_coef[l] * m.NumLinesDCP[l]
-
-    model._dcexpline_tight_to_p_pos = pyo.Constraint(model._dcexpline_tight_set, rule=_to_p_pos)
-    model._dcexpline_tight_to_p_neg = pyo.Constraint(model._dcexpline_tight_set, rule=_to_p_neg)
-    model._dcexpline_tight_from_p_pos = pyo.Constraint(model._dcexpline_tight_set, rule=_from_p_pos)
-    model._dcexpline_tight_from_p_neg = pyo.Constraint(model._dcexpline_tight_set, rule=_from_p_neg)
-
-
-def _conv_ac_apparent_tightening(model, grid, tol=1e-9):
-    """
-    Optional converter AC-side apparent tightening:
-      |P_conv_s_AC| <= S_max * np_conv
-      |Q_conv_s_AC| <= S_max * np_conv
-    """
-    if not (grid.ACmode and grid.DCmode):
-        return
-    if not (hasattr(model, "conv") and hasattr(model, "np_conv")):
-        return
-
-    conv_to_tighten = []
-    coef = {}
-    for c in model.conv:
-        conv = grid.Converters_ACDC[c]
-        smax = conv.MVA_max / grid.S_base
-        if smax <= tol:
-            continue
-        conv_to_tighten.append(c)
-        coef[c] = smax
-
-    if not conv_to_tighten:
-        return
-
-    model._conv_tight_set = pyo.Set(initialize=conv_to_tighten)
-    model._conv_tight_coef = pyo.Param(model._conv_tight_set, initialize=coef, mutable=False)
-
-    if not (hasattr(model, "P_conv_s_AC") and hasattr(model, "Q_conv_s_AC")):
-        return
-
-    def _p_pos(m, c):
-        return m.P_conv_s_AC[c] <= m._conv_tight_coef[c] * m.np_conv[c]
-    def _p_neg(m, c):
-        return -m.P_conv_s_AC[c] <= m._conv_tight_coef[c] * m.np_conv[c]
-    def _q_pos(m, c):
-        return m.Q_conv_s_AC[c] <= m._conv_tight_coef[c] * m.np_conv[c]
-    def _q_neg(m, c):
-        return -m.Q_conv_s_AC[c] <= m._conv_tight_coef[c] * m.np_conv[c]
-
-    model._conv_tight_p_pos = pyo.Constraint(model._conv_tight_set, rule=_p_pos)
-    model._conv_tight_p_neg = pyo.Constraint(model._conv_tight_set, rule=_p_neg)
-    model._conv_tight_q_pos = pyo.Constraint(model._conv_tight_set, rule=_q_pos)
-    model._conv_tight_q_neg = pyo.Constraint(model._conv_tight_set, rule=_q_neg)
-    
 def transmission_expansion(
     grid,
     NPV=True,
@@ -1063,7 +897,6 @@ def transmission_expansion(
     callback=False,
     solver_options=None,
     obj_scaling=1.0,
-    robustness_mode=False,
 ):
     grid.reset_run_flags()
     t1 = time.perf_counter()
@@ -1075,7 +908,6 @@ def transmission_expansion(
         discount_rate,
         ObjRule,
         PV_set,
-        robustness_mode=robustness_mode,
     )
     
     present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
@@ -1525,7 +1357,6 @@ def create_scenarios(
     alpha,
     limit_flow_rate,
     obj_scaling=1.0,
-    robustness_mode=False,
 ):
        
     
@@ -1535,12 +1366,7 @@ def create_scenarios(
 
     base_model = pyo.ConcreteModel()
     OPF_create_NLModel_ACDC(base_model,grid,PV_set=False,Price_Zones=Price_Zones,TEP=True,limit_flow_rate=limit_flow_rate)
-    if robustness_mode:
-        _expline_tightening(base_model, grid)
-        _dcexpline_tightening(base_model, grid)
-        _conv_ac_apparent_tightening(base_model, grid)
-    
-    
+
     for t in model.scenario_frames:
         if t == 1:
             s=1
@@ -1608,7 +1434,6 @@ def multi_scenario_TEP(
     obj_scaling=1.0,
     solver_options=None,
     nlp_warmstart=False,
-    robustness_mode=False,
 ):
     
     analyse_grid(grid)
@@ -1650,7 +1475,6 @@ def multi_scenario_TEP(
         alpha,
         limit_flow_rate,
         obj_scaling=obj_scaling,
-        robustness_mode=robustness_mode,
     )
 
     t2 = time.time()  

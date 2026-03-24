@@ -486,7 +486,6 @@ def sequential_STEP(
     callback=False,
     solver_options=None,
     obj_scaling=1.0,
-    robustness_mode=False,
     export_dir=None,
     svg_prefix="sequential_STEP",
     save_svgs=False,
@@ -510,7 +509,6 @@ def sequential_STEP(
             callback=callback,
             solver_options=solver_options,
             obj_scaling=obj_scaling,
-            robustness_mode=robustness_mode,
         )
         return model, model_res, timing_info, solver_stats, {}
 
@@ -559,7 +557,6 @@ def sequential_MS_STEP(
     alpha=None,
     limit_flow_rate=True,
     nlp_warmstart=False,
-    robustness_mode=False,
     clustering_cache_json_path=None,
     reuse_clustering_cache=True,
 ):
@@ -591,7 +588,6 @@ def sequential_MS_STEP(
             obj_scaling=obj_scaling,
             solver_options=solver_options,
             nlp_warmstart=nlp_warmstart,
-            robustness_mode=robustness_mode,
         )
         return model, model_res, timing_info, solver_stats, {"TEP_multiScenario_res": step_ms_res}
 
