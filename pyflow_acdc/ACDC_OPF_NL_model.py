@@ -735,6 +735,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True):
        return model.exp_QAC_from[line] == Qfrom
     
     def P_loss_AC_rule_exp(model,line):
+        if model.robust_mode and line in model.lines_AC_exp_np0:
+            return pyo.Constraint.Skip
         return model.exp_PAC_line_loss[line]== model.exp_PAC_to[line]+model.exp_PAC_from[line]
     
     
@@ -838,6 +840,30 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True):
             model.exp_Qto_AC_line_bigm_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qto_bigm_lb)
             model.exp_Qfrom_AC_line_bigm_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qfrom_bigm_ub)
             model.exp_Qfrom_AC_line_bigm_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qfrom_bigm_lb)
+
+            # Gate line losses so they cannot create objective/unboundedness when the corridor is inactive.
+            def _loss_U(line):
+                # Losses are modeled as P_to + P_from in per-unit; each side is bounded by the S limit.
+                return 2.0 * float(_exp_flow_limit(line))
+
+            def _loss_upper(m, line):
+                return m.exp_PAC_line_loss[line] <= _loss_U(line) * m.z_ACexp_active[line]
+
+            def _loss_lower(m, line):
+                return m.exp_PAC_line_loss[line] >= 0
+
+            def _loss_link_ub(m, line):
+                sumP = m.exp_PAC_to[line] + m.exp_PAC_from[line]
+                return m.exp_PAC_line_loss[line] - sumP <= _loss_U(line) * (1 - m.z_ACexp_active[line])
+
+            def _loss_link_lb(m, line):
+                sumP = m.exp_PAC_to[line] + m.exp_PAC_from[line]
+                return m.exp_PAC_line_loss[line] - sumP >= -_loss_U(line) * (1 - m.z_ACexp_active[line])
+
+            model.exp_PAC_loss_gate_upper = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_upper)
+            model.exp_PAC_loss_gate_lower = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_lower)
+            model.exp_PAC_loss_link_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_link_ub)
+            model.exp_PAC_loss_link_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_link_lb)
     
     def P_to_AC_line_rec(model,line,state):   
         l = grid.lines_AC_rec[line]
