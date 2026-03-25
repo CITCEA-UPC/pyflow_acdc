@@ -1076,6 +1076,11 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         """
         checked_constraints = 0
         try:
+            max_violations_to_print = 10
+            # Store worst bound violations only (to avoid huge debug output).
+            # Each entry: (violation_magnitude, constraint_name, idx, lb, ub, body)
+            top_violations = []
+            pac_node0_debug_printed = False  #debbug
             for con in model_obj.component_objects(pyo.Constraint, active=True):
                 for idx in con:
                     checked_constraints += 1
@@ -1120,21 +1125,107 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                         return False, reason
 
                     if lb_val is not None and body_val < lb_val - tol:
-                        reason = (
-                            f"{con.name}[{idx}] lower bound violated: "
-                            f"body={body_val}, lb={lb_val}, tol={tol}"
-                        )
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
+                        viol_mag = (lb_val - body_val)
+                        if (
+                            debug_solution_check
+                            and (con.name == "P_AC_node_constraint")
+                            and (int(idx) == 0)
+                            and (grid is not None)
+                            and (not pac_node0_debug_printed)
+                        ):
+                            pac_node0_debug_printed = True
+                            #debbug
+                            try:
+                                node = 0
+                                V = {k: pyo.value(model_obj.V_AC[k]) for k in model_obj.nodes_AC}
+                                th = {k: pyo.value(model_obj.thetha_AC[k]) for k in model_obj.nodes_AC}
+                                P_sum = 0.0
+                                for k in model_obj.nodes_AC:
+                                    if grid.Ybus_AC[node, k] != 0:
+                                        y = grid.Ybus_AC[node, k]
+                                        P_sum += (
+                                            V[node] * V[k]
+                                            * (np.real(y) * np.cos(th[node] - th[k]) + np.imag(y) * np.sin(th[node] - th[k]))
+                                        )
+                                P_known = pyo.value(model_obj.P_known_AC[node])
+                                PGi_ren = pyo.value(model_obj.PGi_ren[node])
+                                PGi_opt = pyo.value(model_obj.PGi_opt[node])
+                                if getattr(grid, "DCmode", False):
+                                    P_conv = pyo.value(model_obj.P_conv_AC[node])
+                                else:
+                                    P_conv = 0.0
+                                P_var = P_known + PGi_ren + PGi_opt + P_conv
+                                print(f"[solution_check] #debbug P_AC_node_constraint[0]: P_sum={P_sum} P_var={P_var} body={body_val}")
+                                # Print expandable injections and sizing for connected lines
+                                if getattr(grid, "TEP_AC", False) and hasattr(grid, "nodes_AC"):
+                                    nAC = grid.nodes_AC[node]
+                                    Pto_Exp = pyo.value(model_obj.Pto_Exp[node]) if hasattr(model_obj, "Pto_Exp") else None
+                                    Pfrom_Exp = pyo.value(model_obj.Pfrom_Exp[node]) if hasattr(model_obj, "Pfrom_Exp") else None
+                                    print(f"[solution_check] #debbug Expandable injections node0: Pto_Exp={Pto_Exp} Pfrom_Exp={Pfrom_Exp}")
+                                    for l in getattr(nAC, "connected_toExpLine", []):
+                                        ln = l.lineNumber
+                                        nlines = pyo.value(model_obj.NumLinesACP[ln]) if hasattr(model_obj, "NumLinesACP") else None
+                                        exp_to = pyo.value(model_obj.exp_PAC_to[ln]) if hasattr(model_obj, "exp_PAC_to") else None
+                                        print(f"[solution_check] #debbug  toExp ln={ln} NumLinesACP={nlines} exp_PAC_to={exp_to} prod={exp_to*nlines if exp_to is not None and nlines is not None else None}")
+                                    for l in getattr(nAC, "connected_fromExpLine", []):
+                                        ln = l.lineNumber
+                                        nlines = pyo.value(model_obj.NumLinesACP[ln]) if hasattr(model_obj, "NumLinesACP") else None
+                                        exp_from = pyo.value(model_obj.exp_PAC_from[ln]) if hasattr(model_obj, "exp_PAC_from") else None
+                                        print(f"[solution_check] #debbug  fromExp ln={ln} NumLinesACP={nlines} exp_PAC_from={exp_from} prod={exp_from*nlines if exp_from is not None and nlines is not None else None}")
+                                # Print connected generator and renewable sizing
+                                if hasattr(grid, "nodes_AC"):
+                                    nAC = grid.nodes_AC[node]
+                                    for gen in getattr(nAC, "connected_gen", []):
+                                        gn = gen.genNumber
+                                        npv = pyo.value(model_obj.np_gen[gn]) if hasattr(model_obj, "np_gen") else None
+                                        PGi = pyo.value(model_obj.PGi_gen[gn]) if hasattr(model_obj, "PGi_gen") else None
+                                        ga = pyo.value(model_obj.gen_active[gn]) if hasattr(model_obj, "gen_active") else None
+                                        print(f"[solution_check] #debbug gen gn={gn} np_gen={npv} PGi_gen={PGi} gen_active={ga}")
+                                    for rs in getattr(nAC, "connected_RenSource", []):
+                                        rr = rs.rsNumber
+                                        npr = pyo.value(model_obj.np_rsgen[rr]) if hasattr(model_obj, "np_rsgen") else None
+                                        gam = pyo.value(model_obj.gamma[rr]) if hasattr(model_obj, "gamma") else None
+                                        Prs = pyo.value(model_obj.P_renSource[rr]) if hasattr(model_obj, "P_renSource") else None
+                                        term = None
+                                        if npr is not None and gam is not None and Prs is not None:
+                                            term = Prs * gam * npr
+                                        print(f"[solution_check] #debbug rs rr={rr} np_rsgen={npr} gamma={gam} P_renSource={Prs} term={term}")
+                            except Exception as e:
+                                print(f"[solution_check] #debbug failed to print node0 details: {e}")
+                        if len(top_violations) < max_violations_to_print:
+                            top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
+                        else:
+                            worst_of_kept = min(top_violations, key=lambda t: t[0])
+                            if viol_mag > worst_of_kept[0]:
+                                top_violations.remove(worst_of_kept)
+                                top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
+                        continue
                     if ub_val is not None and body_val > ub_val + tol:
-                        reason = (
-                            f"{con.name}[{idx}] upper bound violated: "
-                            f"body={body_val}, ub={ub_val}, tol={tol}"
+                        viol_mag = (body_val - ub_val)
+                        if len(top_violations) < max_violations_to_print:
+                            top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
+                        else:
+                            worst_of_kept = min(top_violations, key=lambda t: t[0])
+                            if viol_mag > worst_of_kept[0]:
+                                top_violations.remove(worst_of_kept)
+                                top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
+                        continue
+
+            if top_violations:
+                top_violations.sort(key=lambda t: t[0], reverse=True)
+                worst = top_violations[0]
+                reason = (
+                    f"{worst[1]}[{worst[2]}] violated by {worst[0]} "
+                    f"(lb={worst[3]}, ub={worst[4]}, body={worst[5]}), tol={tol}"
+                )
+                if debug_solution_check:
+                    print(f"[solution_check] FAIL: {reason}")
+                    for v in top_violations[1:max_violations_to_print]:
+                        print(
+                            f"[solution_check] top_violation: {v[1]}[{v[2]}] "
+                            f"viol={v[0]} lb={v[3]} ub={v[4]} body={v[5]}"
                         )
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
+                return False, reason
 
             if debug_solution_check:
                 print(f"[solution_check] PASS: checked {checked_constraints} active constraints")
