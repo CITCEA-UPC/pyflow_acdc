@@ -1616,7 +1616,8 @@ def run_opf_for_investment_period(
     file_name=None,
     print_table=False,
     decimals=3,
-    plot_folium={}
+    plot_folium={},
+    save_grid_pkl: bool = False,
 ):
     """
     Apply a dynamic investment state, run OPF, and optionally export Results.All to Excel.
@@ -1654,6 +1655,15 @@ def run_opf_for_investment_period(
         }
         res.pyomo_model_results(model, solver_stats=solver_stats, model_results=model_res, print_table=False)
         res.All(**all_kwargs)
+
+    if save_grid_pkl:
+        from .Export_files import save_pickle
+
+        base_name = file_name or f"{getattr(grid, 'name', 'grid')}_period_{period_idx}"
+        # Match Excel naming convention in Results.All():
+        #   excel_path = f"{base_name}_results.xlsx"
+        pkl_path = os.path.join(export_location, f"{base_name}_results.pkl")
+        save_pickle(grid, pkl_path, compress=True)
 
     if plot_folium:
         try:
@@ -1706,6 +1716,7 @@ def run_opf_for_all_investment_periods(
     print_table=False,
     decimals=3,
     plot_folium=None,
+    save_grid_pkl: bool = False,
 ):
     """
     Run OPF for every dynamic investment period and export one Excel per period.
@@ -1735,7 +1746,8 @@ def run_opf_for_all_investment_periods(
             file_name=f"{prefix}_{i}",
             print_table=print_table,
             decimals=decimals,
-            plot_folium=plot_folium
+            plot_folium=plot_folium,
+            save_grid_pkl=save_grid_pkl,
         )
         period_results[i] = {
             'model': run_out[0],

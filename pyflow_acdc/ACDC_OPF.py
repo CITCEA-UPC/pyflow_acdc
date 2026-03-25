@@ -1284,11 +1284,18 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 # For MINLP solvers, we still want Pyomo to attempt loading the best incumbent
                 # from the solver output (if available). Otherwise our feasibility checker
                 # ends up validating stale/uninitialized variable values.
-                results = opt.solve(model, tee=tee, load_solutions=True)
+                results = opt.solve(model, tee=tee, load_solutions=False)
                 try:
                     solution_list = getattr(results, 'solution', None) or []
                     if len(solution_list) > 0:
+                        # Bonmin can return an incumbent even when it reports SolverStatus.error.
+                        # Pyomo refuses to load solutions in that case, so temporarily downgrade.
+                        original_status = getattr(results.solver, 'status', None)
+                        if solver == 'bonmin' and original_status == SolverStatus.error:
+                            results.solver.status = SolverStatus.warning
                         model.solutions.load_from(results)
+                        if solver == 'bonmin' and original_status == SolverStatus.error:
+                            results.solver.status = original_status
                     else:
                         # Some MINLP internal-error exits leave results.solution empty.
                         # In that case, we keep the current model variable values.

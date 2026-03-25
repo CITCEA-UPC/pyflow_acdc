@@ -250,6 +250,15 @@ class Results:
         generation=0 
         grid_loads = 0
         tot=0
+
+        # Reset per-call cached loading accumulators.
+        # This method updates `Grid.load_grid_*` via `+=`, so without resetting,
+        # repeated OPF calls on the same Grid will accumulate and can push
+        # "Load %" above 100%.
+        if getattr(self.Grid, "load_grid_AC", None) is not None and self.Grid.Num_Grids_AC > 0:
+            self.Grid.load_grid_AC = np.zeros(self.Grid.Num_Grids_AC)
+        if getattr(self.Grid, "load_grid_DC", None) is not None and self.Grid.Num_Grids_DC > 0:
+            self.Grid.load_grid_DC = np.zeros(self.Grid.Num_Grids_DC)
         
         if self.Grid.nodes_AC != []:
             if self.Grid.OPF_run:
@@ -605,9 +614,15 @@ class Results:
         rows = []
 
         if self.Grid.OPF_run:
-            P_AC = np.vstack([node.PGi+sum(rs.PGi_ren*rs.gamma for rs in node.connected_RenSource)
-                              + sum(gen.PGen for gen in node.connected_gen) for node in self.Grid.nodes_AC])
-            Q_AC = np.vstack([node.QGi+sum(gen.QGen for gen in node.connected_gen) for node in self.Grid.nodes_AC])
+            # During OPF, the optimized dispatch is exported into:
+            # - node.PGi_opt / node.QGi_opt  (flexible generators, already bounded by np_gen)
+            # - node.PGi_ren / node.QGi_ren (renewables with np_rsgen and curtailment via OPF)
+            #
+            # Using `rs.PGi_ren*rs.gamma` would ignore `np_rsgen` because `rs.PGi_ren`
+            # represents available resource (PRGi_available) rather than the OPF-selected
+            # renewable units.
+            P_AC = np.vstack([node.PGi + node.PGi_ren + node.PGi_opt for node in self.Grid.nodes_AC])
+            Q_AC = np.vstack([node.QGi + node.QGi_ren + node.QGi_opt for node in self.Grid.nodes_AC])
         else:
             P_AC = np.vstack([node.PGi+sum(rs.PGi_ren*rs.gamma for rs in node.connected_RenSource)
                               + sum(gen.Pset for gen in node.connected_gen) for node in self.Grid.nodes_AC])
@@ -797,7 +812,8 @@ class Results:
                         "i from (kA)": np.round(i_from, decimals=self.dec),
                         "i to (kA)": np.round(i_to, decimals=self.dec),
                         "Loading %": np.round(load, decimals=self.dec),
-                        "Capacity [MVA]": int(line.MVA_rating),
+                        # Display the same capacity used inside `line.loading` (np-dependent for exp lines).
+                        "Capacity [MVA]": np.round(line.capacity_MVA, decimals=self.dec),
                         "Grid": g+1
                     })
 
