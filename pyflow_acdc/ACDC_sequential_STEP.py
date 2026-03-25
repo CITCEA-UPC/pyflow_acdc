@@ -490,6 +490,7 @@ def sequential_STEP(
     svg_prefix="sequential_STEP",
     save_svgs=False,
     export_steps=False,
+    robust_mode=False,
 ):
     """
     Sequentially solve static transmission expansion one investment period at a time.
@@ -509,6 +510,7 @@ def sequential_STEP(
             callback=callback,
             solver_options=solver_options,
             obj_scaling=obj_scaling,
+            robust_mode=robust_mode,
         )
         return model, model_res, timing_info, solver_stats, {}
 
