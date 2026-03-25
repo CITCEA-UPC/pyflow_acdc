@@ -402,7 +402,9 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True):
         def _z_link_upper_rule(m, line):
             ub = m.NumLinesACP[line].ub
             if ub is None:
-                return pyo.Constraint.Skip
+                ub = grid.lines_AC_exp[line].np_line_max
+            if ub is None:
+                raise ValueError(f"robust_mode: missing upper bound for expandable AC line {line} (np_line_max is None)")
             return m.NumLinesACP[line] <= ub * m.z_ACexp_active[line]
         
         model.z_ACexp_link_lower = pyo.Constraint(model.lines_AC_exp_np0, rule=_z_link_lower_rule)
