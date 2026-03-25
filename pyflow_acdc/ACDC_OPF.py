@@ -1259,8 +1259,20 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 # access to incumbent information in results.
                 results = opt.solve(model, tee=tee, load_solutions=False)
                 try:
-                    if len(getattr(results, 'solution', [])) > 0:
+                    solution_list = getattr(results, 'solution', None) or []
+                    if len(solution_list) > 0:
                         model.solutions.load_from(results)
+                    else:
+                        # Some MINLP internal-error exits leave results.solution empty,
+                        # but the solver interface can still restore the best variable
+                        # values directly into the model.
+                        if debug_solution_check:
+                            print("[solution_check] results.solution empty; trying opt.load_vars()")
+                        try:
+                            opt.load_vars()
+                        except Exception as exc:
+                            if debug_solution_check:
+                                print(f"[solution_check] opt.load_vars() failed: {exc}")
                 except Exception:
                     pass
             else:
