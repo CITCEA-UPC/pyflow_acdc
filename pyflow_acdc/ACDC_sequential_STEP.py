@@ -472,6 +472,40 @@ def _run_sequential_core(
     return run_results
 
 
+def _get_time_limit_for_run(time_limit, run_idx):
+    """
+    Supports:
+      - scalar time_limit: returned as-is
+      - dict time_limit: per run index overrides
+
+    For dict keys we accept:
+      - `run_idx` (0-based) and `run_idx+1` (1-based)
+      - string versions of the same keys (e.g. "0", "1", "2")
+      - optional `'default'`
+    """
+    if time_limit is None:
+        return None
+
+    if not isinstance(time_limit, dict):
+        return time_limit
+
+    # Build candidate keys (int + str) for robust matching.
+    candidates = [
+        run_idx,
+        run_idx + 1,
+        str(run_idx),
+        str(run_idx + 1),
+    ]
+    for key in candidates:
+        if key in time_limit:
+            return time_limit[key]
+
+    if "default" in time_limit:
+        return time_limit["default"]
+
+    return None
+
+
 def sequential_STEP(
     grid,
     inv_data=None,
@@ -497,6 +531,7 @@ def sequential_STEP(
     """
 
     def _period_solver(k):
+        time_limit_k = _get_time_limit_for_run(time_limit, k)
         model, model_res, timing_info, solver_stats = transmission_expansion(
             grid,
             NPV=True,
@@ -505,7 +540,7 @@ def sequential_STEP(
             discount_rate=discount_rate,
             ObjRule=ObjRule,
             solver=solver,
-            time_limit=time_limit,
+            time_limit=time_limit_k,
             tee=tee,
             callback=callback,
             solver_options=solver_options,
