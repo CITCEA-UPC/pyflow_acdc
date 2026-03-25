@@ -1281,22 +1281,19 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             if solver in ('bonmin', 'highs'):
                 # Avoid Pyomo hard-failing on non-ok status while still keeping
                 # access to incumbent information in results.
-                results = opt.solve(model, tee=tee, load_solutions=False)
+                # For MINLP solvers, we still want Pyomo to attempt loading the best incumbent
+                # from the solver output (if available). Otherwise our feasibility checker
+                # ends up validating stale/uninitialized variable values.
+                results = opt.solve(model, tee=tee, load_solutions=True)
                 try:
                     solution_list = getattr(results, 'solution', None) or []
                     if len(solution_list) > 0:
                         model.solutions.load_from(results)
                     else:
-                        # Some MINLP internal-error exits leave results.solution empty,
-                        # but the solver interface can still restore the best variable
-                        # values directly into the model.
+                        # Some MINLP internal-error exits leave results.solution empty.
+                        # In that case, we keep the current model variable values.
                         if debug_solution_check:
-                            print("[solution_check] results.solution empty; trying opt.load_vars()")
-                        try:
-                            opt.load_vars()
-                        except Exception as exc:
-                            if debug_solution_check:
-                                print(f"[solution_check] opt.load_vars() failed: {exc}")
+                            print("[solution_check] results.solution empty; incumbent values not reloaded")
                 except Exception:
                     pass
             else:
