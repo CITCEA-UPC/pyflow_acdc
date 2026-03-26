@@ -338,7 +338,7 @@ def _run_sequential_core(
                 res.All(
                     export_location=export_dir,
                     export_type="excel",
-                    file_name=f"{excel_prefix}_{k+1}.xlsx",
+                    file_name=f"{excel_prefix}_{k+1}",
                     print_table=False,
                 )
             _round_dynamic_np_to_nearest_integer(grid)
