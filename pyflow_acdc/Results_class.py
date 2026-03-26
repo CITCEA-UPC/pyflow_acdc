@@ -943,6 +943,7 @@ class Results:
                     loss += Ploss
                     loading += load
                     counter += 1
+            avg_loading = np.round(loading / counter, decimals=self.dec) if counter > 0 else np.nan
             rows.append({
                         "Line": "Total",
                         "Line number": "",
@@ -954,7 +955,7 @@ class Results:
                         "Q to (MW)": "",
                         "Power loss (MW)": np.round(loss, decimals=self.dec),
                         "Q loss (MVAR)": np.round(loss, decimals=self.dec),
-                        "Loading %": np.round(loading/counter, decimals=self.dec),
+                        "Loading %": avg_loading,
                         "Grid": g+1
                     })
         df_all = pd.DataFrame(rows) if rows else pd.DataFrame(
