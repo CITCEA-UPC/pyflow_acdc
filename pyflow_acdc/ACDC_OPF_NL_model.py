@@ -2304,6 +2304,7 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
         if grid.GPR:
             np_gen_values = {k: np.float64(pyo.value(v)) for k, v in model.np_gen.items()}
             try:
+                model.np_gen.display()  #to delete later
                 print(f"[DEBUG export] np_gen_values keys count={len(np_gen_values)} sample={list(np_gen_values.keys())[:10]}")  #to delete later
                 print(f"[DEBUG export] np_gen_values min={min(np_gen_values.values()) if np_gen_values else None} max={max(np_gen_values.values()) if np_gen_values else None}")  #to delete later
             except Exception as _exc:
@@ -2314,6 +2315,7 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
         if grid.rs_GPR:
             np_rsgen_values = {k: np.float64(pyo.value(v)) for k, v in model.np_rsgen.items()}
             try:
+                model.np_rsgen.display()  #to delete later
                 print(f"[DEBUG export] np_rsgen_values keys count={len(np_rsgen_values)} sample={list(np_rsgen_values.keys())[:10]}")  #to delete later
                 print(f"[DEBUG export] np_rsgen_values min={min(np_rsgen_values.values()) if np_rsgen_values else None} max={max(np_rsgen_values.values()) if np_rsgen_values else None}")  #to delete later
             except Exception as _exc:
@@ -2324,6 +2326,7 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
         if grid.TEP_AC:
             lines_AC_TEP = {k: np.float64(pyo.value(v)) for k, v in model.NumLinesACP.items()}
             try:
+                model.NumLinesACP.display()  #to delete later
                 print(f"[DEBUG export] lines_AC_TEP keys count={len(lines_AC_TEP)} sample={list(lines_AC_TEP.keys())[:10]}")  #to delete later
                 print(f"[DEBUG export] lines_AC_TEP min={min(lines_AC_TEP.values()) if lines_AC_TEP else None} max={max(lines_AC_TEP.values()) if lines_AC_TEP else None}")  #to delete later
             except Exception as _exc:
