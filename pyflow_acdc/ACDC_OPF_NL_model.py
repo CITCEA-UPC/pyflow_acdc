@@ -1103,17 +1103,19 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True):
         def S_to_AC_limit_rule_exp(model,line):
             if model.robust_mode and line in model.lines_AC_exp_np0:
                 npl = model.NumLinesACP[line]
-                return (
-                    npl * (model.exp_PAC_to[line]**2 + model.exp_QAC_to[line]**2)
-                    <= npl * (S_lineACexp_limit[line] * limit_flow_rate)**2
+                # Stronger form: when npl=0 (line inactive in the LP relaxation),
+                # this forces exp flows to 0. The previous multiplied-by-npl form
+                # becomes 0 <= 0 and lets exp flows float when npl=0.
+                return (model.exp_PAC_to[line]**2 + model.exp_QAC_to[line]**2) <= (
+                    npl * (S_lineACexp_limit[line] * limit_flow_rate)**2
                 )
             return model.exp_PAC_to[line]**2+model.exp_QAC_to[line]**2 <= (S_lineACexp_limit[line]*limit_flow_rate)**2
         def S_from_AC_limit_rule_exp(model,line):
             if model.robust_mode and line in model.lines_AC_exp_np0:
                 npl = model.NumLinesACP[line]
-                return (
-                    npl * (model.exp_PAC_from[line]**2 + model.exp_QAC_from[line]**2)
-                    <= npl * (S_lineACexp_limit[line] * limit_flow_rate)**2
+                # Same strengthening as S_to: if npl=0, exp flows must be 0.
+                return (model.exp_PAC_from[line]**2 + model.exp_QAC_from[line]**2) <= (
+                    npl * (S_lineACexp_limit[line] * limit_flow_rate)**2
                 )
             return model.exp_PAC_from[line]**2+model.exp_QAC_from[line]**2 <= (S_lineACexp_limit[line]*limit_flow_rate)**2
         
