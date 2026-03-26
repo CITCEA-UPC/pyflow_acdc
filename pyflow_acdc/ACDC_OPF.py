@@ -1066,109 +1066,6 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     bound_solutions = []  # Best-bound updates from callback log parsing
     debug_solution_check = bool((solver_options or {}).pop("debug_solution_check", True))
 
-    def _model_solution_is_feasible(model_obj, tol=1e-6):
-        """
-        Feasibility check for the currently loaded variable values.
-
-        Returns
-        -------
-        (is_feasible: bool, debug_reason: str)
-        """
-        checked_constraints = 0
-        try:
-            max_violations_to_print = 10
-            # Store worst bound violations only (to avoid huge debug output).
-            # Each entry: (violation_magnitude, constraint_name, idx, lb, ub, body)
-            top_violations = []
-            for con in model_obj.component_objects(pyo.Constraint, active=True):
-                for idx in con:
-                    checked_constraints += 1
-                    cd = con[idx]
-                    lb = getattr(cd, "lower", None)
-                    ub = getattr(cd, "upper", None)
-
-                    body_expr = getattr(cd, "body", None)
-                    if body_expr is None:
-                        body_expr = getattr(cd, "expr", None)
-                    if body_expr is None:
-                        reason = f"{con.name}[{idx}] unknown constraint body expression"
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
-
-                    try:
-                        body_val = pyo.value(body_expr)
-                    except Exception:
-                        reason = f"{con.name}[{idx}] body evaluation failed"
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
-                    if body_val is None or not np.isfinite(float(body_val)):
-                        reason = f"{con.name}[{idx}] non-finite body value ({body_val})"
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
-
-                    lb_val = pyo.value(lb) if lb is not None else None
-                    ub_val = pyo.value(ub) if ub is not None else None
-
-                    if lb_val is not None and not np.isfinite(float(lb_val)):
-                        reason = f"{con.name}[{idx}] non-finite lower bound ({lb_val})"
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
-                    if ub_val is not None and not np.isfinite(float(ub_val)):
-                        reason = f"{con.name}[{idx}] non-finite upper bound ({ub_val})"
-                        if debug_solution_check:
-                            print(f"[solution_check] FAIL: {reason}")
-                        return False, reason
-
-                    if lb_val is not None and body_val < lb_val - tol:
-                        viol_mag = (lb_val - body_val)
-                        if len(top_violations) < max_violations_to_print:
-                            top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
-                        else:
-                            worst_of_kept = min(top_violations, key=lambda t: t[0])
-                            if viol_mag > worst_of_kept[0]:
-                                top_violations.remove(worst_of_kept)
-                                top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
-                        continue
-                    if ub_val is not None and body_val > ub_val + tol:
-                        viol_mag = (body_val - ub_val)
-                        if len(top_violations) < max_violations_to_print:
-                            top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
-                        else:
-                            worst_of_kept = min(top_violations, key=lambda t: t[0])
-                            if viol_mag > worst_of_kept[0]:
-                                top_violations.remove(worst_of_kept)
-                                top_violations.append((viol_mag, con.name, idx, lb_val, ub_val, body_val))
-                        continue
-
-            if top_violations:
-                top_violations.sort(key=lambda t: t[0], reverse=True)
-                worst = top_violations[0]
-                reason = (
-                    f"{worst[1]}[{worst[2]}] violated by {worst[0]} "
-                    f"(lb={worst[3]}, ub={worst[4]}, body={worst[5]}), tol={tol}"
-                )
-                if debug_solution_check:
-                    print(f"[solution_check] FAIL: {reason}")
-                    for v in top_violations[1:max_violations_to_print]:
-                        print(
-                            f"[solution_check] top_violation: {v[1]}[{v[2]}] "
-                            f"viol={v[0]} lb={v[3]} ub={v[4]} body={v[5]}"
-                        )
-                return False, reason
-
-            if debug_solution_check:
-                print(f"[solution_check] PASS: checked {checked_constraints} active constraints")
-            return True, "ok"
-        except Exception as exc:
-            reason = f"unexpected checker exception: {exc}"
-            if debug_solution_check:
-                print(f"[solution_check] FAIL: {reason}")
-            return False, reason
-
     # NLP warm-start: solve continuous relaxation with IPOPT first
     if nlp_warmstart and solver in ('bonmin', 'minotaur'):
         print("=" * 60)
@@ -1238,6 +1135,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         else:
             print(f"No callback available for {solver}")
             callback = False
+    # Policy: if Pyomo successfully loads a solution record from `results.solution`,
+    # trust that incumbent and do not veto it with the custom feasibility checker.
+    solution_loaded_from_results = False
+
     if not callback:
         # For Minotaur, check if executable is specified in solver_options
         if solver == 'minotaur':
@@ -1294,6 +1195,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                         if solver == 'bonmin' and original_status == SolverStatus.error:
                             results.solver.status = SolverStatus.warning
                         model.solutions.load_from(results)
+                        solution_loaded_from_results = True
                         if solver == 'bonmin' and original_status == SolverStatus.error:
                             results.solver.status = original_status
                     else:
@@ -1302,20 +1204,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                         if debug_solution_check:
                             print("[solution_check] results.solution empty; incumbent values not reloaded")
                 except Exception:
-                    pass
+                    if debug_solution_check:
+                        print("[solution_check] FAIL: could not load results.solution default record")
             else:
                 results = opt.solve(model, tee=tee)
         except Exception as e:
             error_msg = str(e)
             print(f"  Solver crashed: {e}")
-
-            # Analysis-based: True only if current model values satisfy constraints.
-            # This captures both explicit model.solutions loads and solver autoload.
-            model_loaded_feasible = False
-            try:
-                model_loaded_feasible, _ = _model_solution_is_feasible(model)
-            except Exception:
-                model_loaded_feasible = False
 
             solver_stats = {
                 'solver': solver,
@@ -1328,7 +1223,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 'feasible_solutions': feasible_solutions,
                 'all_solutions': all_solutions,
                 'bound_solutions': bound_solutions,
-                'solution_found': bool(model_loaded_feasible),
+                'solution_found': False,
                 'solution_check_reason': 'solver_exception',
                 'solution_check_tol': None,
                 'obj_scaling': getattr(model, 'obj_scaling', 1.0),
@@ -1377,25 +1272,25 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'infeasible_or_unbounded',
     )
 
-    # Internal/error solver exits can still carry a numerically usable incumbent.
-    # Use a slightly looser checker tolerance for these cases.
-    relaxed_checker_tols = ("internalsolvererror", "error")
-    checker_tol = 1e-4 if tc in relaxed_checker_tols else 1e-6
-    checker_reason = "unchecked"
+    checker_reason = "not_used"
+    checker_tol = None
 
     if trusted_termination:
         loaded_solution_feasible = True
         checker_reason = "trusted_termination"
+    elif solution_loaded_from_results:
+        loaded_solution_feasible = True
+        checker_reason = "trusted_loaded_solution"
     elif explicit_infeasible_termination:
-        # Do not accept checker-pass states when solver explicitly reports infeasible.
         loaded_solution_feasible = False
         checker_reason = "explicit_infeasible_termination"
     else:
-        loaded_solution_feasible, checker_reason = _model_solution_is_feasible(model, tol=checker_tol)
+        loaded_solution_feasible = False
+        checker_reason = "no_loaded_solution"
 
-        # If the currently loaded state is infeasible, try loading alternative
-        # solution records (Bonmin/others can return multiple candidates).
-        if (not loaded_solution_feasible) and results is not None:
+        # Try loading alternative solution records (Bonmin/others can return
+        # multiple candidates). Any successful load is trusted.
+        if results is not None:
             try:
                 solution_list = getattr(results, "solution", None) or []
                 if debug_solution_check:
@@ -1407,15 +1302,17 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                         print(f"[solution_check] trying results.solution select={sel}")
                     try:
                         model.solutions.load_from(results, select=sel, clear=True)
+                        solution_loaded_from_results = True
                     except Exception:
                         if debug_solution_check:
                             print(f"[solution_check] FAIL: could not load select={sel}")
                         continue
-                    loaded_solution_feasible, checker_reason = _model_solution_is_feasible(model, tol=checker_tol)
-                    if loaded_solution_feasible:
-                        if debug_solution_check:
-                            print(f"[solution_check] PASS: feasible at select={sel}")
-                        break
+                    # If Pyomo loaded this solution record, trust it.
+                    loaded_solution_feasible = True
+                    checker_reason = f"trusted_loaded_solution_select={sel}"
+                    if debug_solution_check:
+                        print(f"[solution_check] PASS: trusted loaded solution at select={sel}")
+                    break
             except Exception:
                 pass
 
@@ -1423,10 +1320,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     solver_stats['solution_check_reason'] = checker_reason
     solver_stats['solution_check_tol'] = checker_tol
 
-    if results and results.solver.termination_condition == pyo.TerminationCondition.infeasible:
-        if not suppress_warnings:
-            logging.getLogger('pyomo').setLevel(logging.INFO)
-            log_infeasible_constraints(model)
+    pyomo_logger = logging.getLogger('pyomo')
+    if (not suppress_warnings) and (not solution_loaded_from_results):
+        pyomo_logger.setLevel(logging.INFO)
+        log_infeasible_constraints(model)
 
     _store_pyomo_results_on_grid(grid, model, results, solver_stats)
     return results, solver_stats

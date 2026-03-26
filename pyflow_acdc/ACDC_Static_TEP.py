@@ -899,6 +899,7 @@ def transmission_expansion(
     solver_options=None,
     obj_scaling=1.0,
     robust_mode=False,
+    nlp_warmstart=False,
 ):
     grid.reset_run_flags()
     t1 = time.perf_counter()
@@ -932,7 +933,16 @@ def transmission_expansion(
     
     # model.obj.pprint()
 
-    model_results,solver_stats = pyomo_model_solve(model,grid,solver,tee,time_limit,callback=callback,solver_options=solver_options)
+    model_results,solver_stats = pyomo_model_solve(
+        model,
+        grid,
+        solver,
+        tee,
+        time_limit,
+        callback=callback,
+        solver_options=solver_options,
+        nlp_warmstart=nlp_warmstart,
+    )
     
     t1 = time.perf_counter()
     if export:

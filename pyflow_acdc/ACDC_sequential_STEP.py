@@ -525,6 +525,7 @@ def sequential_STEP(
     save_svgs=False,
     export_steps=False,
     robust_mode=False,
+    nlp_warmstart=False,
 ):
     """
     Sequentially solve static transmission expansion one investment period at a time.
@@ -546,6 +547,7 @@ def sequential_STEP(
             solver_options=solver_options,
             obj_scaling=obj_scaling,
             robust_mode=robust_mode,
+            nlp_warmstart=nlp_warmstart,
         )
         return model, model_res, timing_info, solver_stats, {}
 
