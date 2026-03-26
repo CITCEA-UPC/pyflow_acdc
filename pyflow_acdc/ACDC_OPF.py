@@ -1244,12 +1244,25 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     checker_reason = "not_used"
     checker_tol = None
 
-    if trusted_termination:
-        loaded_solution_feasible = True
-        checker_reason = "trusted_termination"
-    elif explicit_infeasible_termination:
+    # Minimal policy: if Pyomo loaded a solution, treat as found.
+    # Many MINLP solvers (e.g. Bonmin) can return a usable incumbent with
+    # non-optimal termination (e.g. time limit). Pyomo will still load it
+    # when load_solutions=True.
+    has_loaded_solution = False
+    try:
+        has_loaded_solution = bool(results is not None and getattr(results, "solution", None) is not None and len(results.solution) > 0)
+    except Exception:
+        has_loaded_solution = False
+
+    if explicit_infeasible_termination:
         loaded_solution_feasible = False
         checker_reason = "explicit_infeasible_termination"
+    elif trusted_termination:
+        loaded_solution_feasible = True
+        checker_reason = "trusted_termination"
+    elif has_loaded_solution:
+        loaded_solution_feasible = True
+        checker_reason = "pyomo_loaded_solution"
     else:
         loaded_solution_feasible = False
         checker_reason = "untrusted_termination"
