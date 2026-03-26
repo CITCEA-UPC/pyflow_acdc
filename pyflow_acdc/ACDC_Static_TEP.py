@@ -951,6 +951,23 @@ def transmission_expansion(
         if grid.DCmode:
             grid.create_Ybus_DC()   
         ExportACDC_NLmodel_toPyflowACDC(model, grid, PZ,TEP=True)
+        try:
+            # DEBUG: verify np_* export mapping (#to delete later)
+            if hasattr(model, "np_gen"):
+                keys = list(getattr(model, "np_gen").keys())
+                print(f"[DEBUG export] model.np_gen keys count={len(keys)} sample={keys[:10]}")  #to delete later
+            print(f"[DEBUG export] grid.GPR={getattr(grid,'GPR',None)} ACmode={getattr(grid,'ACmode',None)}")  #to delete later
+            for gen in getattr(grid, "Generators", [])[:50]:
+                print(
+                    f"[DEBUG export] gen name={getattr(gen,'name',None)} "
+                    f"genNumber={getattr(gen,'genNumber',None)} "
+                    f"np_gen={getattr(gen,'np_gen',None)} "
+                    f"np_gen_opf={getattr(gen,'np_gen_opf',None)} "
+                    f"np_gen_mp={getattr(gen,'np_gen_mp',None)} "
+                    f"np_gen_max={getattr(gen,'np_gen_max',None)}"
+                )  #to delete later
+        except Exception as _exc:
+            print(f"[DEBUG export] failed to print gen snapshot: {_exc}")  #to delete later
         for obj in weights_def:
             weights_def[obj]['v']=calculate_objective(grid,obj,True)
             weights_def[obj]['NPV']=weights_def[obj]['v']*present_value
