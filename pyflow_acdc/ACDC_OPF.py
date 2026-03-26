@@ -1177,6 +1177,23 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         try:
             # Standard Pyomo solve: let Pyomo load solutions normally.
             results = opt.solve(model, tee=tee, load_solutions=True)
+            try:
+                # DEBUG: inspect raw Pyomo solve payload (#to delete later)
+                status = getattr(getattr(results, "solver", None), "status", None) if results is not None else None
+                term = getattr(getattr(results, "solver", None), "termination_condition", None) if results is not None else None
+                n_solutions = len(results.solution) if (results is not None and getattr(results, "solution", None) is not None) else 0
+                print(f"[DEBUG solve] solver.status={status}")  #to delete later
+                print(f"[DEBUG solve] solver.termination_condition={term}")  #to delete later
+                print(f"[DEBUG solve] len(results.solution)={n_solutions}")  #to delete later
+                if n_solutions > 0:
+                    sol0 = results.solution[0]
+                    has_variable_section = hasattr(sol0, "variable") and (getattr(sol0, "variable", None) is not None)
+                    var_count = len(sol0.variable) if has_variable_section else 0
+                    print(f"[DEBUG solve] solution[0] has variable section={has_variable_section} variable_count={var_count}")  #to delete later
+                else:
+                    print("[DEBUG solve] solution[0] has variable section=False variable_count=0")  #to delete later
+            except Exception as _exc:
+                print(f"[DEBUG solve] failed to inspect results payload: {_exc}")  #to delete later
         except Exception as e:
             error_msg = str(e)
             print(f"  Solver crashed: {e}")
