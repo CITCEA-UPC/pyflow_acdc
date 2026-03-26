@@ -1259,9 +1259,14 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     solver_stats['solution_check_tol'] = checker_tol
 
     pyomo_logger = logging.getLogger('pyomo')
-    if (not suppress_warnings) and (not trusted_termination):
+    if (not suppress_warnings) and explicit_infeasible_termination:
         pyomo_logger.setLevel(logging.INFO)
-        log_infeasible_constraints(model)
+        try:
+            log_infeasible_constraints(model)
+        except OverflowError as exc:
+            pyomo_logger.warning("Skipping infeasible-constraint logging due to overflow: %s", exc)
+        except Exception as exc:
+            pyomo_logger.warning("Skipping infeasible-constraint logging due to error: %s", exc)
 
     _store_pyomo_results_on_grid(grid, model, results, solver_stats)
     return results, solver_stats
