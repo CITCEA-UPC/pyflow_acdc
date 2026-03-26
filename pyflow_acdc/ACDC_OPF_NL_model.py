@@ -2303,16 +2303,31 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
         
         if grid.GPR:
             np_gen_values = {k: np.float64(pyo.value(v)) for k, v in model.np_gen.items()}
+            try:
+                print(f"[DEBUG export] np_gen_values keys count={len(np_gen_values)} sample={list(np_gen_values.keys())[:10]}")  #to delete later
+                print(f"[DEBUG export] np_gen_values min={min(np_gen_values.values()) if np_gen_values else None} max={max(np_gen_values.values()) if np_gen_values else None}")  #to delete later
+            except Exception as _exc:
+                print(f"[DEBUG export] failed np_gen_values stats: {_exc}")  #to delete later
             for gen in grid.Generators:
                 gen.np_gen = np_gen_values[gen.genNumber]
 
         if grid.rs_GPR:
             np_rsgen_values = {k: np.float64(pyo.value(v)) for k, v in model.np_rsgen.items()}
+            try:
+                print(f"[DEBUG export] np_rsgen_values keys count={len(np_rsgen_values)} sample={list(np_rsgen_values.keys())[:10]}")  #to delete later
+                print(f"[DEBUG export] np_rsgen_values min={min(np_rsgen_values.values()) if np_rsgen_values else None} max={max(np_rsgen_values.values()) if np_rsgen_values else None}")  #to delete later
+            except Exception as _exc:
+                print(f"[DEBUG export] failed np_rsgen_values stats: {_exc}")  #to delete later
             for rs in grid.RenSources:
                 rs.np_rsgen = np_rsgen_values[rs.rsNumber]
         
         if grid.TEP_AC:
             lines_AC_TEP = {k: np.float64(pyo.value(v)) for k, v in model.NumLinesACP.items()}
+            try:
+                print(f"[DEBUG export] lines_AC_TEP keys count={len(lines_AC_TEP)} sample={list(lines_AC_TEP.keys())[:10]}")  #to delete later
+                print(f"[DEBUG export] lines_AC_TEP min={min(lines_AC_TEP.values()) if lines_AC_TEP else None} max={max(lines_AC_TEP.values()) if lines_AC_TEP else None}")  #to delete later
+            except Exception as _exc:
+                print(f"[DEBUG export] failed lines_AC_TEP stats: {_exc}")  #to delete later
             lines_AC_TEP_fromP = {k: np.float64(pyo.value(v)) for k, v in model.exp_PAC_from.items()}
             lines_AC_TEP_toP = {k: np.float64(pyo.value(v)) for k, v in model.exp_PAC_to.items()}
             lines_AC_TEP_fromQ = {k: np.float64(pyo.value(v)) for k, v in model.exp_QAC_from.items()}
