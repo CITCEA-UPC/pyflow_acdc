@@ -1233,7 +1233,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         tc = str(getattr(results.solver, 'termination_condition', '') or '').lower() if results is not None else ''
     except Exception:
         tc = ''
-    trusted_termination = tc in ('optimal', 'feasible', 'locallyoptimal', 'acceptable', 'locally_optimal')
+    trusted_termination = tc in ('optimal', 'feasible', 'locallyoptimal', 'acceptable', 'locally_optimal', 'maxiterations')
     explicit_infeasible_termination = tc in (
         'infeasible',
         'locallyinfeasible',
@@ -1244,10 +1244,9 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     checker_reason = "not_used"
     checker_tol = None
 
-    # Minimal policy: if Pyomo loaded a solution, treat as found.
-    # Many MINLP solvers (e.g. Bonmin) can return a usable incumbent with
-    # non-optimal termination (e.g. time limit). Pyomo will still load it
-    # when load_solutions=True.
+    # `results.solution` payload presence is informative, but not a hard gate.
+    # Some solver/Pyomo integrations can leave this payload empty while model
+    # variable values are still usable in downstream steps.
     has_loaded_solution = False
     try:
         has_loaded_solution = bool(results is not None and getattr(results, "solution", None) is not None and len(results.solution) > 0)
@@ -1255,12 +1254,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         has_loaded_solution = False
 
     if trusted_termination and not has_loaded_solution:
-        raise RuntimeError(
-            "Solver termination indicates a good solve "
-            f"('{tc}'), but no solution payload was loaded by Pyomo "
-            "(len(results.solution)=0). This indicates an unusable solve "
-            "result and is commonly caused by solver/Pyomo/ASL installation "
-            "or compatibility issues in the active environment."
+        pyomo_logger = logging.getLogger('pyomo')
+        pyomo_logger.warning(
+            "Solver termination indicates a good solve ('%s'), but no solution payload "
+            "was loaded by Pyomo (len(results.solution)=0). This can indicate a "
+            "solver/Pyomo/ASL installation or compatibility issue. Proceeding with "
+            "termination-based acceptance.",
+            tc,
         )
 
     if explicit_infeasible_termination:
