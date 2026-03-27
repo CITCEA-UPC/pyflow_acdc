@@ -1255,12 +1255,12 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         has_loaded_solution = False
 
     if trusted_termination and not has_loaded_solution:
-        print(
-            "WARNING: Solver termination indicates a good solve "
+        raise RuntimeError(
+            "Solver termination indicates a good solve "
             f"('{tc}'), but no solution payload was loaded by Pyomo "
-            "(len(results.solution)=0). This can indicate a solver/Pyomo/ASL "
-            "installation or compatibility issue. Please verify your solver "
-            "installation and versions in the active environment."
+            "(len(results.solution)=0). This indicates an unusable solve "
+            "result and is commonly caused by solver/Pyomo/ASL installation "
+            "or compatibility issues in the active environment."
         )
 
     if explicit_infeasible_termination:
