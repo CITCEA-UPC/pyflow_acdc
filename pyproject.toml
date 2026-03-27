@@ -83,7 +83,7 @@ All = ["folium",
        "pyomo",
        "dash",
        "ortools",
-       "highs",
+       "highspy",
        "pymoo",
        "kaleido"]
 
