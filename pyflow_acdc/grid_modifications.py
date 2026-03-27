@@ -122,10 +122,8 @@ def add_DC_node(grid,kV_base,node_type='P', Voltage_0=1.01, Power_Gained=0, Powe
     
 def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm_km=None,L_mH_km=None, C_uF_km=0, G_uS_km=0, A_rating=None ,m=1, shift=0, name=None,tap_changer=False,Expandable=False,N_cables=1,Length_km=1,geometry=None,data_in='pu',Cable_type:str ='Custom',update_grid=True):
     
-    if isinstance(fromNode, str):
-        fromNode = next((node for node in grid.nodes_AC if node.name == fromNode), None)
-    if isinstance(toNode, str):
-        toNode = next((node for node in grid.nodes_AC if node.name == toNode), None)
+    fromNode = _look_up_node(grid, fromNode, ac_or_dc="AC")
+    toNode = _look_up_node(grid, toNode, ac_or_dc="AC")
     
     kV_base=toNode.kV_base
     if L_mH_km is not None:
@@ -294,10 +292,8 @@ def change_line_AC_to_tap_transformer(grid, line_name):
     s=1    
 
 def add_line_sizing(grid, fromNode, toNode,cable_types: list=[], active_config: int = 0,Length_km=1.0,S_base=100,name=None,cable_option=None,update_grid=True,geometry=None):       
-    if isinstance(fromNode, str):
-        fromNode = next((node for node in grid.nodes_AC if node.name == fromNode), None)
-    if isinstance(toNode, str):
-        toNode = next((node for node in grid.nodes_AC if node.name == toNode), None)
+    fromNode = _look_up_node(grid, fromNode, ac_or_dc="AC")
+    toNode = _look_up_node(grid, toNode, ac_or_dc="AC")
     
     line = Size_selection(fromNode, toNode,cable_types, active_config,Length_km,S_base,name)
     grid.lines_AC_ct.append(line)
@@ -314,10 +310,8 @@ def add_line_sizing(grid, fromNode, toNode,cable_types: list=[], active_config: 
 
 def add_line_DC(grid, fromNode, toNode, r=0.001, MW_rating=9999,Length_km=1,R_Ohm_km=None,A_rating=None,polarity='m', name=None,geometry=None,Cable_type:str ='Custom',data_in='pu',update_grid=True):
     
-    if isinstance(fromNode, str):
-        fromNode = next((node for node in grid.nodes_DC if node.name == fromNode), None)
-    if isinstance(toNode, str):
-        toNode = next((node for node in grid.nodes_DC if node.name == toNode), None)
+    fromNode = _look_up_node(grid, fromNode, ac_or_dc="DC")
+    toNode = _look_up_node(grid, toNode, ac_or_dc="DC")
     
     kV_base=toNode.kV_base
     if data_in == 'Ohm':
@@ -353,10 +347,8 @@ def add_line_DC(grid, fromNode, toNode, r=0.001, MW_rating=9999,Length_km=1,R_Oh
     return line
 
 def add_ACDC_converter(grid,AC_node , DC_node , AC_type='PV', DC_type=None, P_AC_MW=0, Q_AC_MVA=0, P_DC_MW=0, Transformer_resistance=0, Transformer_reactance=0, Phase_Reactor_R=0, Phase_Reactor_X=0, Filter=0, Droop=0, kV_base=None, MVA_max= None,nConvP=1,polarity =1 ,lossa=1.103,lossb= 0.887,losscrect=2.885,losscinv=4.371,Arm_R=None,Ucmin= 0.85, Ucmax= 1.2, name=None,geometry=None):
-    if isinstance(DC_node, str):
-        DC_node = next((node for node in grid.nodes_DC if node.name == DC_node), None)
-    if isinstance(AC_node, str):
-        AC_node = next((node for node in grid.nodes_AC if node.name == AC_node), None)
+    DC_node = _look_up_node(grid, DC_node, ac_or_dc="DC")
+    AC_node = _look_up_node(grid, AC_node, ac_or_dc="AC")
     
     
     
@@ -399,10 +391,8 @@ def add_ACDC_converter(grid,AC_node , DC_node , AC_type='PV', DC_type=None, P_AC
     return conv
 
 def add_DCDC_converter(grid,fromNode , toNode ,P_MW=None,Pset=None,R_Ohm=None, r=0.0001, MW_rating=99999,name=None,geometry=None):
-    if isinstance(fromNode, str):
-        fromNode = next((node for node in grid.nodes_DC if node.name == fromNode), None)
-    if isinstance(toNode, str):
-        toNode = next((node for node in grid.nodes_DC if node.name == toNode), None)
+    fromNode = _look_up_node(grid, fromNode, ac_or_dc="DC")
+    toNode = _look_up_node(grid, toNode, ac_or_dc="DC")
     
     if R_Ohm is not None:
         Z_base = toNode.kV_base**2/grid.S_base
@@ -525,8 +515,86 @@ def add_generators(grid,Gen_csv,curtailmet_allowed=1):
             if MVArmin is None:
                 MVArmin = -9999
             add_gen(grid, node_name,var_name, price_zone_link,lf,qf,fc,MWmax,MWmin,MVArmin,MVArmax,PsetMW,QsetMVA,fuel_type=fuel_type,geometry=geo,np_gen=np_value)  
-        
-def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=99999,MWmin=0,MVArmin=None,MVArmax=None,PsetMW=0,QsetMVA=0,Smax=None,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
+
+def _look_up_node(grid, node, ac_or_dc="AC"):
+    
+    # Object case: ensure it's registered on the appropriate grid list
+    if not isinstance(node, str):
+        # Determine target list based on ac_or_dc and actual node type
+        if ac_or_dc == "AC":
+            nodes = grid.nodes_AC
+        elif ac_or_dc == "DC":
+            nodes = grid.nodes_DC
+        elif ac_or_dc == "any":
+            # Prefer existing membership; else infer from class.
+            if node in grid.nodes_AC or node in grid.nodes_DC:
+                return node
+            if isinstance(node, Node_AC):
+                nodes = grid.nodes_AC
+            elif isinstance(node, Node_DC):
+                nodes = grid.nodes_DC
+            else:
+                raise ValueError(f"Unsupported node type {node!r}")
+        else:
+            raise ValueError(f"Unsupported node type {ac_or_dc!r}")
+
+        if node not in nodes:
+            nodes.append(node)
+        return node
+
+    # String case: look up by name
+    node_name = node
+    if ac_or_dc == "AC":
+        nodes = grid.nodes_AC
+        found = next((n for n in nodes if n.name == node_name), None)
+    elif ac_or_dc == "DC":
+        nodes = grid.nodes_DC
+        found = next((n for n in nodes if n.name == node_name), None)
+    elif ac_or_dc == "any":
+        found = next((n for n in grid.nodes_AC if n.name == node_name), None)
+        if found is None:
+            found = next((n for n in grid.nodes_DC if n.name == node_name), None)
+    else:
+        raise ValueError(f"Unsupported node type {ac_or_dc!r}")
+    
+    if found is None:
+        raise ValueError(f"Node {node_name} does not exist in {ac_or_dc} grid")
+    return found
+
+def _look_up_price_zone(grid, price_zone):
+    
+    price_zones = getattr(grid, "Price_Zones", [])
+    if not isinstance(price_zone, str):
+        # Already an object: ensure it belongs to this grid
+        if price_zone in price_zones:
+            return price_zone
+        else:
+            raise ValueError(f"Price_Zone {price_zone} not found in grid")
+
+    name = price_zone
+    pz = next((pz for pz in price_zones if pz.name == name), None)
+    if pz is None:
+        raise ValueError(f"Price_Zone {name} not found.")
+    return pz
+
+
+def _look_up_converter(grid, conv):
+    
+    converters = getattr(grid, "Converters_ACDC", [])
+    if not isinstance(conv, str):
+        # Already an object: ensure it belongs to this grid
+        if conv in converters:
+            return conv
+        else:
+            raise ValueError(f"Converter {conv} not found in grid")
+
+    conv_name = conv
+    conv_obj = next((c for c in converters if c.name == conv_name), None)
+    if conv_obj is None:
+        raise ValueError(f"Converter {conv_name} not found.")
+    return conv_obj
+
+def add_gen(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=99999,MWmin=0,MVArmin=None,MVArmax=None,PsetMW=0,QsetMVA=0,Smax=None,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
     
     if MVArmax is None:
         MVArmax=MWmax
@@ -541,33 +609,27 @@ def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,
     Min_pow_gen=MWmin/grid.S_base
     Pset=PsetMW/grid.S_base
     Qset=QsetMVA/grid.S_base
-    found=False    
-    for node in grid.nodes_AC:
-   
-        if node_name == node.name:
-             gen = Gen_AC(
-                 gen_name, node, Max_pow_gen, Min_pow_gen, Max_pow_genR, Min_pow_genR,
-                 qf, lf, fc, Pset, Qset, Smax,
-                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base, np_gen=np_gen
-             )
-             node.PGi = 0
-             node.QGi = 0
-             available_types = getattr(grid, 'gen_ac_types', ['other'])
-             gen_type_lookup = {str(t).lower(): str(t) for t in available_types}
-             normalized_fuel = str(fuel_type).lower()
-             if normalized_fuel == 'gas':
-                 normalized_fuel = 'natural gas'
-             gen.gen_type = gen_type_lookup.get(normalized_fuel, gen_type_lookup.get('other', 'other'))
-             if geometry is not None:
-                 if isinstance(geometry, str): 
-                      geometry = loads(geometry)  
-                 gen.geometry= geometry
-             found = True
-             break
 
-    if not found:
-            print('Node does not exist')
-            sys.exit()
+    node = _look_up_node(grid, node, ac_or_dc="AC")
+    if gen_name is None:
+        gen_name = f'gen_{node.name}'
+    gen = Gen_AC(
+        gen_name, node, Max_pow_gen, Min_pow_gen, Max_pow_genR, Min_pow_genR,
+        qf, lf, fc, Pset, Qset, Smax,
+        gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base, np_gen=np_gen
+    )
+    node.PGi = 0
+    node.QGi = 0
+    available_types = getattr(grid, 'gen_ac_types', ['other'])
+    gen_type_lookup = {str(t).lower(): str(t) for t in available_types}
+    normalized_fuel = str(fuel_type).lower()
+    if normalized_fuel == 'gas':
+        normalized_fuel = 'natural gas'
+    gen.gen_type = gen_type_lookup.get(normalized_fuel, gen_type_lookup.get('other', 'other'))
+    if geometry is not None:
+        if isinstance(geometry, str): 
+            geometry = loads(geometry)  
+        gen.geometry= geometry
     gen.price_zone_link=price_zone_link
     
     if price_zone_link:
@@ -578,37 +640,30 @@ def add_gen(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,
     
     return gen
             
-def add_gen_DC(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=99999,MWmin=0,PsetMW=0,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
+def add_gen_DC(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=99999,MWmin=0,PsetMW=0,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
     
     Max_pow_gen=MWmax/grid.S_base
     Min_pow_gen=MWmin/grid.S_base
     Pset=PsetMW/grid.S_base
-    
-    found=False    
-    for node in grid.nodes_DC:
-   
-        if node_name == node.name:
-             gen = Gen_DC(
-                 gen_name, node, Max_pow_gen, Min_pow_gen, qf, lf, fc, Pset,
-                 gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base, np_gen=np_gen
-             )
-             node.PGi = 0
-             available_types = getattr(grid, 'gen_dc_types', ['other'])
-             gen_type_lookup = {str(t).lower(): str(t) for t in available_types}
-             normalized_fuel = str(fuel_type).lower()
-             if normalized_fuel == 'gas':
-                 normalized_fuel = 'natural gas'
-             gen.gen_type = gen_type_lookup.get(normalized_fuel, gen_type_lookup.get('other', 'other'))
-             if geometry is not None:
-                 if isinstance(geometry, str): 
-                      geometry = loads(geometry)  
-                 gen.geometry= geometry
-             found = True
-             break
 
-    if not found:
-            print('Node does not exist')
-            sys.exit()
+    node = _look_up_node(grid, node, ac_or_dc="DC")
+    if gen_name is None:
+        gen_name = f'gen_DC_{node.name}'
+    gen = Gen_DC(
+        gen_name, node, Max_pow_gen, Min_pow_gen, qf, lf, fc, Pset,
+        gen_type=fuel_type, installation_cost=installation_cost, S_base=grid.S_base, np_gen=np_gen
+    )
+    node.PGi = 0
+    available_types = getattr(grid, 'gen_dc_types', ['other'])
+    gen_type_lookup = {str(t).lower(): str(t) for t in available_types}
+    normalized_fuel = str(fuel_type).lower()
+    if normalized_fuel == 'gas':
+        normalized_fuel = 'natural gas'
+    gen.gen_type = gen_type_lookup.get(normalized_fuel, gen_type_lookup.get('other', 'other'))
+    if geometry is not None:
+        if isinstance(geometry, str): 
+            geometry = loads(geometry)  
+        gen.geometry= geometry
     gen.price_zone_link=price_zone_link
     
     if price_zone_link:
@@ -621,14 +676,7 @@ def add_gen_DC(grid, node_name,gen_name=None, price_zone_link=False,lf=0,qf=0,fc
 
 
 def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax=99999,MWmax=None,MVArmin=None,MVArmax=None,Allow_sell=True,P_load_MW=0):
-    if isinstance(node, str):
-        node_name = node
-        # Search in AC nodes first, then DC nodes
-        node = next((n for n in grid.nodes_AC if n.name == node_name), None)
-        
-        if node is None:
-            print(f'Node {node_name} does not exist')
-            sys.exit()
+    node = _look_up_node(grid, node, ac_or_dc="AC")
     if MWmax is None:
         MWmax=MVAmax
 
@@ -636,7 +684,8 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
         MVArmin=-MVAmax
     if MVArmax is None:
         MVArmax=MVAmax
-    
+    if gen_name is None:
+        gen_name = f'extgrid_{node.name}'
     Max_pow_gen=MWmax/grid.S_base
  
     Max_pow_genR=MVArmax/grid.S_base
@@ -655,12 +704,8 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
         # Keep aggregated price-zone load consistent after extgrid load is introduced.
         pz_name = getattr(node, "PZ", None)
         if pz_name:
-            pz = None
-            if hasattr(grid, "Price_Zones_dic"):
-                pz = next((p for p in grid.Price_Zones if p.name == pz_name), None)
-            else:
-                pz = next((p for p in grid.Price_Zones if p.name == pz_name), None)
-            if pz is not None and hasattr(pz, "recalc_PLi_base_and_total"):
+            pz = _look_up_price_zone(grid, pz_name)
+            if hasattr(pz, "recalc_PLi_base_and_total"):
                 pz.recalc_PLi_base_and_total()
     
     gen.price_zone_link=price_zone_link
@@ -677,16 +722,7 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
 
 def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', min_gamma=0, Qrel=0,Qmin=None,Qmax=None,np_rsgen: int = 1):
     
-    # Handle string input by finding the node
-    if isinstance(node, str):
-        node_name = node
-        # Search in AC nodes first, then DC nodes
-        node = next((n for n in grid.nodes_AC if n.name == node_name), None)
-        if node is None:
-            node = next((n for n in grid.nodes_DC if n.name == node_name), None)
-        if node is None:
-            print(f'Node {node_name} does not exist')
-            sys.exit()
+    node = _look_up_node(grid, node, ac_or_dc="any")
     
     # Set default ren_source_name if not provided
     if ren_source_name is None:
@@ -717,8 +753,7 @@ def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=N
         ACDC = 'DC'
         grid.rs2node['DC'][rensource.rsNumber] = node.nodeNumber
     else:
-        print(f'Node {node.name} is not in AC or DC nodes')
-        sys.exit()
+        raise ValueError(f'Node {node.name} is not in AC or DC nodes')
     
     # Handle geometry
     if geometry is not None:
@@ -750,7 +785,7 @@ def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=N
             
             MTDC_price_zone.add_linked_price_zone(main_price_zone)
             main_price_zone.import_expand += base_MW / grid.S_base
-            assign_nodeToPrice_Zone(grid, node_name,MTDC, ACDC)
+            assign_nodeToPrice_Zone(grid, node.name,MTDC, ACDC)
             # Additional logic for MTDC can be placed here
         elif Offshore:
             rensource.Offshore = True
@@ -1360,108 +1395,71 @@ def assign_RenToZone(grid,ren_source_name,new_zone_name):
  
 "Assigning components to zones"
     
-def assign_nodeToPrice_Zone(grid,node_name, new_price_zone_name,ACDC='AC',link_load=True):
+def assign_nodeToPrice_Zone(grid, node, new_price_zone_name, ACDC='AC', link_load=True):
         """ Assign node to a new price_zone and remove it from its previous price_zone """
-        new_price_zone = None
-        old_price_zone = None
-        node_to_reassign = None
-        
-        nodes_attr = 'nodes_DC' if ACDC == 'DC' else 'nodes_AC'
-        
-        # Find the new price_zone
-        for price_zone in grid.Price_Zones:
-            if price_zone.name == new_price_zone_name:
-                new_price_zone = price_zone
-                break
-
-        if new_price_zone is None:
-            raise ValueError(f"Price_Zone {new_price_zone_name} not found.")
+        acdc_norm = ACDC if ACDC in ('AC', 'DC') else 'any'
+        nodes_attr = 'nodes_DC' if acdc_norm == 'DC' else 'nodes_AC'
+        node = _look_up_node(grid, node, ac_or_dc=acdc_norm)
+        new_price_zone = _look_up_price_zone(grid, new_price_zone_name)
         
         # Remove node from its old price_zone
+        old_price_zone = None
         for price_zone in grid.Price_Zones:
             nodes = getattr(price_zone, nodes_attr)
-            for node in nodes:
-                if node.name == node_name:
-                    old_price_zone = price_zone
-                    node_to_reassign = node
-                    break
-            if old_price_zone:
+            if node in nodes:
+                old_price_zone = price_zone
                 break
-            
         if old_price_zone is not None:
-            setattr(old_price_zone, nodes_attr, [node for node in getattr(old_price_zone, nodes_attr) if node.name != node_name])
+            old_nodes = getattr(old_price_zone, nodes_attr)
+            setattr(old_price_zone, nodes_attr, [n for n in old_nodes if n is not node])
             if hasattr(old_price_zone, "recalc_PLi_base_and_total"):
                 old_price_zone.recalc_PLi_base_and_total()
-
-        # If the node was not found in any price_zone, check grid.nodes_AC
-        if node_to_reassign is None:
-            nodes = getattr(grid, nodes_attr)
-            for node in nodes:
-                if node.name == node_name:
-                    node_to_reassign = node
-                    break
-                
-        if node_to_reassign is None:
-            raise ValueError(f"Node {node_name} not found.")
         
         # Add node to the new price_zone
         new_price_zone_nodes = getattr(new_price_zone, nodes_attr)
-        if node_to_reassign not in new_price_zone_nodes:
-            new_price_zone_nodes.append(node_to_reassign)
-            node_to_reassign.PZ=new_price_zone.name
-            node_to_reassign.price=new_price_zone.price
-            node_to_reassign.PLi_linked=link_load
+        if node not in new_price_zone_nodes:
+            new_price_zone_nodes.append(node)
+            node.PZ = new_price_zone.name
+            node.price = new_price_zone.price
+            node.PLi_linked = link_load
             if hasattr(new_price_zone, "recalc_PLi_base_and_total"):
                 new_price_zone.recalc_PLi_base_and_total()
 
-def assign_ConvToPrice_Zone(grid, conv_name, new_price_zone_name):
-        """ Assign node to a new price_zone and remove it from its previous price_zone """
-        new_price_zone = None
-        old_price_zone = None
-        conv_to_reassign = None
-        
-        # Find the new price_zone
+def assign_ConvToPrice_Zone(grid, conv, new_price_zone_name):
+        """ Assign converter to a new price_zone and remove it from its previous price_zone """
+        new_price_zone = _look_up_price_zone(grid, new_price_zone_name)
+        conv_obj = _look_up_converter(grid, conv)
+
+        # Remove converter from its old price_zone, if any
         for price_zone in grid.Price_Zones:
-            if price_zone.name == new_price_zone_name:
-                new_price_zone = price_zone
+            if conv_obj in price_zone.ConvACDC:
+                price_zone.ConvACDC = [c for c in price_zone.ConvACDC if c is not conv_obj]
                 break
 
-        if new_price_zone is None:
-            raise ValueError(f"Price_Zone {new_price_zone_name} not found.")
-        
-        # Remove node from its old price_zone
-        for price_zone in grid.Price_Zones:
-            for conv in price_zone.ConvACDC:
-                if conv.name == conv_name:
-                    old_price_zone = price_zone
-                    conv_to_reassign = conv
-                    break
-            if old_price_zone:
-                break
-            
-        if old_price_zone is not None:
-            old_price_zone.ConvACDC = [conv for conv in old_price_zone.ConvACDC if conv.name != conv_name]
-        
-        # If the node was not found in any price_zone, check grid.nodes_AC
-        if conv_to_reassign is None:
-            for conv in grid.Converters_ACDC:
-                if conv.name == conv_name:
-                    conv_to_reassign = conv
-                    break
-                
-        if conv_to_reassign is None:
-            raise ValueError(f"Converter {conv_name} not found.")
-        
-        # Add node to the new price_zone
-        if conv_to_reassign not in new_price_zone.ConvACDC:
-            new_price_zone.ConvACDC.append(conv_to_reassign)            
+        # Add converter to the new price_zone
+        if conv_obj not in new_price_zone.ConvACDC:
+            new_price_zone.ConvACDC.append(conv_obj)            
 
-def assign_lineToCable_options(grid,line_name, new_cable_option_name):
+def assign_lineToCable_options(grid, line, new_cable_option_name):
     """ Assign line to a new cable_type and remove it from its previous cable_type """
     new_cable_option = None
     old_cable_option = None
-    line_to_reassign = None
 
+    # Normalize to a line object present in grid.lines_AC_ct
+    lines_ct = getattr(grid, "lines_AC_ct", [])
+    if isinstance(line, str):
+        line_obj = next((l for l in lines_ct if l.name == line), None)
+        if line_obj is None:
+            raise ValueError(f"Line {line} not found.")
+    else:
+        if line in lines_ct:
+            line_obj = line
+        else:
+            name = getattr(line, "name", None)
+            line_obj = next((l for l in lines_ct if l.name == name), None) if name is not None else None
+            if line_obj is None:
+                raise ValueError(f"Line {name or line} not found in grid.")
+    
     for cable_option in grid.Cable_options:
         if cable_option.name == new_cable_option_name:
             new_cable_option = cable_option
@@ -1470,31 +1468,17 @@ def assign_lineToCable_options(grid,line_name, new_cable_option_name):
     if new_cable_option is None:
         raise ValueError(f"Cable_option {new_cable_option_name} not found.")
 
-    # Remove line from its old cable_option
+    # Remove line from its old cable_option (if any), using identity
     for cable_option in grid.Cable_options: 
-        for line in cable_option.lines:
-            if line.name == line_name:
-                old_cable_option = cable_option
-                line_to_reassign = line
-                break
-        if old_cable_option:
+        if line_obj in cable_option.lines:
+            old_cable_option = cable_option
+            cable_option.lines = [l for l in cable_option.lines if l is not line_obj]
             break
 
-    if old_cable_option is not None:
-        old_cable_option.lines = [line for line in old_cable_option.lines if line.name != line_name]    
-
-    if line_to_reassign is None:
-        for line in grid.lines_AC_ct:
-            if line.name == line_name:
-                line_to_reassign = line
-                break
-        if line_to_reassign is None:
-            raise ValueError(f"Line {line_name} not found.")
-
     # Add line to the new cable_option
-    if line_to_reassign not in new_cable_option.lines:
-        new_cable_option.lines.append(line_to_reassign) 
-        line_to_reassign.cable_types = new_cable_option._cable_types
+    if line_obj not in new_cable_option.lines:
+        new_cable_option.lines.append(line_obj) 
+        line_obj.cable_types = new_cable_option._cable_types
 
 
 
