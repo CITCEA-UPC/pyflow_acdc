@@ -322,29 +322,9 @@ def _run_sequential_core(
             _update_grid_investment_period(grid, k)
             load_multiplier = None
 
-            try:
-                # DEBUG: show generator stocks before decommission (#to delete later)
-                gen21 = next((g for g in getattr(grid, "Generators", []) if str(getattr(g, "name", "")) == "gen21"), None)
-                if gen21 is not None:
-                    print(f"[DEBUG seq] run={k+1} BEFORE decomm gen21 np_gen={getattr(gen21,'np_gen',None)} np_gen_opf={getattr(gen21,'np_gen_opf',None)} np_gen_mp={getattr(gen21,'np_gen_mp',None)}")  #to delete later
-            except Exception as _exc:
-                print(f"[DEBUG seq] failed pre-decomm print: {_exc}")  #to delete later
-
             linked_now, planned_now, applied_decommission = _apply_decommission_for_run(
                 grid, aged_decommission_schedule, k
             )
-
-            try:
-                # DEBUG: show generator stocks after decommission (#to delete later)
-                gen21 = next((g for g in getattr(grid, "Generators", []) if str(getattr(g, "name", "")) == "gen21"), None)
-                if gen21 is not None:
-                    print(f"[DEBUG seq] run={k+1} AFTER decomm gen21 np_gen={getattr(gen21,'np_gen',None)}")  #to delete later
-                if planned_now or linked_now:
-                    print(f"[DEBUG seq] run={k+1} planned_decommission keys={list(planned_now.keys())[:10]} linked_decommission keys={list(linked_now.keys())[:10]}")  #to delete later
-                    if 'gen21' in planned_now or 'gen21' in linked_now:
-                        print(f"[DEBUG seq] run={k+1} gen21 planned={planned_now.get('gen21',0.0)} linked={linked_now.get('gen21',0.0)}")  #to delete later
-            except Exception as _exc:
-                print(f"[DEBUG seq] failed post-decomm print: {_exc}")  #to delete later
             _apply_sequential_run_np_caps(grid, k, absolute_np_max_by_name)
             _apply_generation_type_limits_from_run(grid, k)
             _round_dynamic_np_to_nearest_integer(grid)
