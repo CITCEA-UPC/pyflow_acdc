@@ -14,6 +14,7 @@ import sys
 from contextlib import redirect_stdout
 
 import time
+import math
 from concurrent.futures import ThreadPoolExecutor
 import re
 
@@ -1016,6 +1017,45 @@ def _store_pyomo_results_on_grid(grid_obj, model_obj, results_obj, solver_stats)
         pass
 
 
+def _quick_feasible_point_check(
+    model,
+    int_tol=1e-3,
+    check_integrality=False,
+    max_examples=5,
+):
+    """
+    Very relaxed fallback check for ambiguous solver terminations.
+    Only verifies active variables are finite; integrality check is optional.
+    """
+    examples = []
+    n_none = 0
+    n_bad_int = 0
+
+    for var_data in model.component_data_objects(pyo.Var, active=True, descend_into=True):
+        value = var_data.value
+        if value is None or not math.isfinite(value):
+            n_none += 1
+            if len(examples) < max_examples:
+                examples.append(f"{var_data.name} has invalid value {value}")
+            continue
+
+        if check_integrality and (var_data.is_integer() or var_data.is_binary()):
+            if abs(value - round(value)) > int_tol:
+                n_bad_int += 1
+                if len(examples) < max_examples:
+                    examples.append(
+                        f"{var_data.name}={value:.10g} not integer within tol {int_tol}"
+                    )
+
+    ok = (n_none == 0 and n_bad_int == 0)
+    return ok, {
+        "reason": "feasible" if ok else "violations_found",
+        "n_none": n_none,
+        "n_bad_int": n_bad_int,
+        "examples": examples,
+    }
+
+
 def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=None, callback=False, 
               suppress_warnings=False, solver_options=None, objective_name=None, nlp_warmstart=False):
     """
@@ -1222,6 +1262,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'all_solutions': all_solutions,
         'bound_solutions': bound_solutions,
         'solution_found': None,  # Set below from feasibility validation
+        'solution_check_info': None,
         'obj_scaling': obj_scaling,
     }
 
@@ -1243,6 +1284,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
 
     checker_reason = "not_used"
     checker_tol = None
+    checker_info = None
 
     # `results.solution` payload presence is informative, but not a hard gate.
     # Some solver/Pyomo integrations can leave this payload empty while model
@@ -1273,12 +1315,21 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         loaded_solution_feasible = True
         checker_reason = "pyomo_loaded_solution"
     else:
-        loaded_solution_feasible = False
-        checker_reason = "untrusted_termination"
+        loaded_solution_feasible, checker_info = _quick_feasible_point_check(
+            model,
+            int_tol=1e-3,
+            check_integrality=False,
+        )
+        checker_reason = (
+            "quick_point_check_passed"
+            if loaded_solution_feasible
+            else "untrusted_termination"
+        )
 
     solver_stats['solution_found'] = bool(loaded_solution_feasible)
     solver_stats['solution_check_reason'] = checker_reason
     solver_stats['solution_check_tol'] = checker_tol
+    solver_stats['solution_check_info'] = checker_info
 
     pyomo_logger = logging.getLogger('pyomo')
     if (not suppress_warnings) and explicit_infeasible_termination:
