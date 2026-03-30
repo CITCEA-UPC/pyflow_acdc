@@ -317,14 +317,16 @@ Inherits from :class:`Line_AC` with the following additional attributes:
    * - ``np_line_b``
      - float
      - Base number of lines
-   * - ``np_line_i``
-     - float
-     - Initial number of lines
    * - ``np_line_max``
      - float
      - Maximum number of lines
 
-Where :math:`n_b \leq n_i \leq n_{max}` 
+Where :math:`n_b \leq n_{max}`.
+
+Note:
+
+- The previous ``np_line_i`` attribute (used as a solver initialization / first guess) has been removed from the element classes.
+- Solver initial values are now computed in the modelling layer (see ``get_TEP_variables``) and passed to Pyomo variables via the ``*_model_first_guess`` data structures.
 
 AC reconducting branch
 ~~~~~~~~~~~~~~~~~~~~~~

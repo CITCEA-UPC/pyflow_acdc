@@ -1197,8 +1197,9 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
     Parameters:
     -----------
     square_ratio : bool
-        If True, forces both x and y axes to have the same range (uses the largest range needed)
-        so that one step in x equals one step in y in the coordinate space.
+        If True, expands the data bounds so both axes span the same range, then scales uniformly.
+        If False, uses the true data extent and **one scale factor for both x and y** (one data unit
+        in x equals one data unit in y on the figure); the SVG size is then fitted to that extent.
     poly_size : tuple or None
         If provided and poly is not None, specifies the target size (width, height) in pixels
         for the polygon. Everything else will be scaled to fit this polygon size.
@@ -1370,10 +1371,23 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                 scale = min(available_width, available_height) / max_range
             else:
                 padding = 25  # pixels of padding
-                # Original scaling logic
-                scale_x = (width - 2*padding) / (maxx - minx)
-                scale_y = (height - 2*padding) / (maxy - miny)
-                scale = min(scale_x, scale_y)
+                x_range = maxx - minx
+                y_range = maxy - miny
+                # Uniform scale: same factor for x and y so 1 data unit in x = 1 data unit in y.
+                if x_range > 0 and y_range > 0:
+                    scale_x = (width - 2 * padding) / x_range
+                    scale_y = (height - 2 * padding) / y_range
+                    scale = min(scale_x, scale_y)
+                    # Fit canvas to geographic aspect ratio (no fixed 5:4 letterboxing).
+                    width = int(x_range * scale + 2 * padding)
+                    height = int(y_range * scale + 2 * padding)
+                    dwg = svgwrite.Drawing(
+                        f"{name}.svg", size=(f"{width}px", f"{height}px"), profile="tiny"
+                    )
+                else:
+                    scale_x = (width - 2 * padding) / max(x_range, 1e-12)
+                    scale_y = (height - 2 * padding) / max(y_range, 1e-12)
+                    scale = min(scale_x, scale_y)
         
         def transform_coords(x, y):
             """Transform coordinates to SVG space"""

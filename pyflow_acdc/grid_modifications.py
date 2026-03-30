@@ -726,7 +726,7 @@ def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=N
     
     # Set default ren_source_name if not provided
     if ren_source_name is None:
-        ren_source_name = node.name
+        ren_source_name = f'rsgen_{node.name}'
     
     # Create renewable source
     rensource = Ren_Source(ren_source_name, node, base_MW/grid.S_base,S_base=grid.S_base,np_rsgen=np_rsgen)    

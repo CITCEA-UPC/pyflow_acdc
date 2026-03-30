@@ -1274,6 +1274,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         tc = str(getattr(results.solver, 'termination_condition', '') or '').lower() if results is not None else ''
     except Exception:
         tc = ''
+    solver_name_lc = str(solver).lower() if solver is not None else ''
     trusted_termination = tc in ('optimal', 'feasible', 'locallyoptimal', 'acceptable', 'locally_optimal', 'maxiterations')
     explicit_infeasible_termination = tc in (
         'infeasible',
@@ -1281,6 +1282,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'infeasibleorunbounded',
         'infeasible_or_unbounded',
     )
+    # Treat IPOPT maxIterations as explicit non-favorable termination.
+    if solver_name_lc == 'ipopt' and tc == 'maxiterations':
+        trusted_termination = False
+        explicit_infeasible_termination = True
 
     checker_reason = "not_used"
     checker_tol = None

@@ -144,31 +144,75 @@ def expand_elements_from_pd(grid,exp_elements):
         if text in {'0', 'false', 'f', 'no', 'n'}:
             return False
         return None
-    
-    # Apply the Expand_element function for each element in exp_elements
-    exp_elements.iloc[:, 0].apply(lambda name: Expand_element(
-        grid,
-        name,
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_b'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_i'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_max'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'life_time'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'base_cost'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'per_unit_cost'),
-        get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'exp'),
-        update_grid=False,
-        n_inv_max=get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'n_inv_max'),
-        planned_installation=(
-            get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_installation')
-            if get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_installation') is not None
-            else get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'planned_install')
-        ),
-        allow_planned_decrease=parse_optional_bool(
-            get_column_value(exp_elements.loc[exp_elements[exp_elements.iloc[:, 0] == name].index[0], :], 'allow_planned_decrease')
-        ),
-    ))
+
+    # Build an index/set on grid and validate all requested names first.
+    element_index = _rebuild_expand_element_index(grid)
+    requested_names = exp_elements.iloc[:, 0].tolist()
+    missing = [name for name in requested_names if name not in element_index]
+    if missing:
+        raise ValueError(f"Expandable element name(s) not found: {sorted(set(missing))}")
+
+    for _, row in exp_elements.iterrows():
+        name = row.iloc[0]
+        planned_installation = get_column_value(row, 'planned_installation')
+        if planned_installation is None:
+            planned_installation = get_column_value(row, 'planned_install')
+
+        Expand_element(
+            grid,
+            name,
+            get_column_value(row, 'n_b'),
+            get_column_value(row, 'n_i'),
+            get_column_value(row, 'n_max'),
+            get_column_value(row, 'life_time'),
+            get_column_value(row, 'base_cost'),
+            get_column_value(row, 'per_unit_cost'),
+            get_column_value(row, 'exp'),
+            update_grid=False,
+            n_inv_max=get_column_value(row, 'n_inv_max'),
+            planned_installation=planned_installation,
+            allow_planned_decrease=parse_optional_bool(get_column_value(row, 'allow_planned_decrease')),
+        )
     grid.Update_Graph_AC()
     grid.create_Ybus_AC() 
+
+
+def _rebuild_expand_element_index(grid):
+    """
+    Build and store a unique expandable-element name index on grid.
+
+    Index keys are element names. Values are (group, object), where group is one of:
+    line_ac, line_dc, conv_acdc, gen_ac, ren_source.
+    """
+    groups = [
+        ("line_ac", grid.lines_AC),
+        ("line_dc", grid.lines_DC),
+        ("conv_acdc", grid.Converters_ACDC),
+        ("gen_ac", grid.Generators),
+        ("ren_source", grid.RenSources),
+    ]
+
+    name_index = {}
+    duplicates = {}
+    for group, elements in groups:
+        for element in elements:
+            element_name = getattr(element, "name", None)
+            if element_name is None:
+                continue
+            if element_name in name_index:
+                duplicates.setdefault(element_name, [name_index[element_name][0]])
+                duplicates[element_name].append(group)
+            else:
+                name_index[element_name] = (group, element)
+
+    if duplicates:
+        duplicated = ", ".join(sorted(duplicates.keys()))
+        raise ValueError(f"Duplicate expandable element names found in grid: {duplicated}")
+
+    # Keep both a dict and a set on grid for fast checks.
+    grid._expand_element_index = name_index
+    grid._expand_element_name_set = set(name_index.keys())
+    return name_index
 
 def repurpose_element_from_pd(grid,rec_elements):
     from .grid_modifications import change_line_AC_to_reconducting
@@ -211,29 +255,45 @@ def update_attributes(
     allow_planned_decrease=None,
 ):
    """Updates the attributes of the given element if not None."""
+   def _sync_inv0(key, value):
+       """
+       Keep MP 'investment_decisions' period-0 aligned with object attributes.
+       Only sync if the element already supports the key.
+       """
+       if not hasattr(element, 'investment_decisions'):
+           return
+       inv = element.investment_decisions
+       if key not in inv:
+           return
+       if inv[key] is None:
+           inv[key] = [value]
+           return
+       # Accept scalars or sequences; always ensure we can set index 0.
+       try:
+           series = list(inv[key])
+       except TypeError:
+           series = [inv[key]]
+       if len(series) == 0:
+           series = [value]
+       else:
+           series[0] = value
+       inv[key] = series
+
    if n_b is not None:
        if n_i is None:
            n_i = n_b
        if hasattr(element, 'np_line'):
            element.np_line_b = n_b
            element.np_line = n_b
-       if hasattr(element, 'np_line_i'):
-           element.np_line_i = n_i
        if hasattr(element, 'np_conv'):
            element.np_conv_b = n_b  
            element.np_conv = n_b
-       if hasattr(element, 'np_conv_i'):
-           element.np_conv_i = n_i      # Only set if it exists
        if hasattr(element, 'np_gen'):
            element.np_gen_b = n_b
            element.np_gen = n_b
-       if hasattr(element, 'np_gen_i'):
-           element.np_gen_i = n_i
        if hasattr(element, 'np_rsgen'):
            element.np_rsgen_b = n_b
            element.np_rsgen = n_b
-       if hasattr(element, 'np_rsgen_i'):
-           element.np_rsgen_i = n_i
        
    def _apply_max_rule(max_attr, current_attr):
        if not hasattr(element, max_attr):
@@ -257,9 +317,24 @@ def update_attributes(
 
    if planned_installation is not None:
        element.planned_installation = planned_installation
+       _sync_inv0('planned_installation', planned_installation)
    if allow_planned_decrease is not None:
        element.allow_planned_decrease = allow_planned_decrease
     
+   # MP max_inv is driven by n_inv_max (when provided), not by static np_*_max.
+   if n_inv_max is not None:
+       _sync_inv0('max_inv', n_inv_max)
+
+   # Sync period-0 np_dynamic to the current stock (when supported).
+   if hasattr(element, 'np_line'):
+       _sync_inv0('np_dynamic', element.np_line)
+   elif hasattr(element, 'np_conv'):
+       _sync_inv0('np_dynamic', element.np_conv)
+   elif hasattr(element, 'np_gen'):
+       _sync_inv0('np_dynamic', element.np_gen)
+   elif hasattr(element, 'np_rsgen'):
+       _sync_inv0('np_dynamic', element.np_rsgen)
+
    if life_time is not None:
        element.life_time = life_time
    
@@ -304,57 +379,34 @@ def Expand_element(
     if legacy_kwargs:
         unexpected = ", ".join(sorted(legacy_kwargs.keys()))
         raise TypeError(f"Unexpected keyword arguments: {unexpected}")
-    
-    for l in grid.lines_AC:
-        if name == l.name:
-            from .grid_modifications import change_line_AC_to_expandable
-            exp_l=change_line_AC_to_expandable(grid, name,update_grid)
-            exp_l.np_line_opf = True
-            update_attributes(
-                exp_l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
-                n_inv_max=n_inv_max, planned_installation=planned_installation,
-                allow_planned_decrease=allow_planned_decrease
-            )
-            continue
 
-    for l in grid.lines_DC:
-        if name == l.name:
-            l.np_line_opf = True
-            update_attributes(
-                l, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
-                n_inv_max=n_inv_max, planned_installation=planned_installation,
-                allow_planned_decrease=allow_planned_decrease
-            )
-            continue
-            
-    for cn in grid.Converters_ACDC:
-        if name == cn.name:
-            cn.np_conv_opf = True
-            update_attributes(
-                cn, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
-                n_inv_max=n_inv_max, planned_installation=planned_installation,
-                allow_planned_decrease=allow_planned_decrease
-            )
-            continue
-        
-    for gen in grid.Generators:
-        if name == gen.name:
-            gen.np_gen_opf = True
-            update_attributes(
-                gen, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
-                n_inv_max=n_inv_max, planned_installation=planned_installation,
-                allow_planned_decrease=allow_planned_decrease
-            )
-            continue
-    for rs in grid.RenSources:
-        if name == rs.name:
-            rs.np_rsgen_opf = True
-            update_attributes(
-                rs, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
-                n_inv_max=n_inv_max, planned_installation=planned_installation,
-                allow_planned_decrease=allow_planned_decrease
-            )
-            continue
+    # Rebuild each call so line-type reassignments remain consistent.
+    element_index = _rebuild_expand_element_index(grid)
+    element_data = element_index.get(name)
+    if element_data is None:
+        raise ValueError(f"Expandable element '{name}' not found in grid")
+
+    group, element = element_data
+    if group == "line_ac":
+        from .grid_modifications import change_line_AC_to_expandable
+        element = change_line_AC_to_expandable(grid, name, update_grid)
+        element.np_line_opf = True
+    elif group == "line_dc":
+        element.np_line_opf = True
+    elif group == "conv_acdc":
+        element.np_conv_opf = True
+    elif group == "gen_ac":
+        element.np_gen_opf = True
+    elif group == "ren_source":
+        element.np_rsgen_opf = True
+    else:
+        raise ValueError(f"Unsupported expandable element group '{group}' for '{name}'")
+
+    update_attributes(
+        element, n_b, n_i, n_max, life_time, base_cost, per_unit_cost, exp,
+        n_inv_max=n_inv_max, planned_installation=planned_installation,
+        allow_planned_decrease=allow_planned_decrease
+    )
 def base_cost_calculation(element):
     from .Classes import Exp_Line_AC 
     if isinstance(element, Exp_Line_AC):
@@ -415,13 +467,13 @@ def Translate_pd_TEP(grid):
 
 def get_TEP_variables(grid):
     
-    np_conv,np_conv_i,np_conv_max={},{},{}
+    np_conv, np_conv_model_first_guess, np_conv_max = {}, {}, {}
     np_conv_planned_install = {}
     S_limit_conv={}
     P_lineDC_limit ={}
-    NP_lineDC,NP_lineDC_i,NP_lineDC_max ={},{},{}
+    NP_lineDC, NP_lineDC_model_first_guess, NP_lineDC_max = {}, {}, {}
     NP_lineDC_planned_install = {}
-    NP_lineAC,NP_lineAC_i,NP_lineAC_max = {},{},{}
+    NP_lineAC, NP_lineAC_model_first_guess, NP_lineAC_max = {}, {}, {}
     NP_lineAC_planned_install = {}
     Line_length ={}
     REC_branch ={}
@@ -430,16 +482,17 @@ def get_TEP_variables(grid):
     for l in grid.lines_AC_rec:
         REC_branch[l.lineNumber] = 0 if not l.rec_branch  else 1
 
-    def _init_with_planned(base, n_i, n_max, planned_install, active):
+    def _init_with_planned(base, n_max, planned_install, active):
         if not active:
             return base
-        return max(base, min(n_i + planned_install, n_max))
+        # Model first guess: start from current stock + planned additions, capped by max.
+        return max(base, min(base + planned_install, n_max))
 
     for l in grid.lines_AC_exp:
         planned_install = getattr(l, 'planned_installation', 0)
         NP_lineAC[l.lineNumber]     = l.np_line
-        NP_lineAC_i[l.lineNumber]   = _init_with_planned(
-            l.np_line, l.np_line_i, l.np_line_max, planned_install, l.np_line_opf
+        NP_lineAC_model_first_guess[l.lineNumber] = _init_with_planned(
+            l.np_line, l.np_line_max, planned_install, l.np_line_opf
         )
         NP_lineAC_max[l.lineNumber]   = l.np_line_max
         NP_lineAC_planned_install[l.lineNumber] = planned_install
@@ -452,8 +505,8 @@ def get_TEP_variables(grid):
     for conv in grid.Converters_ACDC:
         planned_install = getattr(conv, 'planned_installation', 0)
         np_conv [conv.ConvNumber]  = conv.np_conv 
-        np_conv_i[conv.ConvNumber] = _init_with_planned(
-            conv.np_conv, conv.np_conv_i, conv.np_conv_max, planned_install, conv.np_conv_opf
+        np_conv_model_first_guess[conv.ConvNumber] = _init_with_planned(
+            conv.np_conv, conv.np_conv_max, planned_install, conv.np_conv_opf
         )
         np_conv_max[conv.ConvNumber] = conv.np_conv_max
         np_conv_planned_install[conv.ConvNumber] = planned_install
@@ -462,49 +515,49 @@ def get_TEP_variables(grid):
         planned_install = getattr(l, 'planned_installation', 0)
         P_lineDC_limit[l.lineNumber]  = l.MW_rating/grid.S_base
         NP_lineDC[l.lineNumber]     = l.np_line 
-        NP_lineDC_i[l.lineNumber]   = _init_with_planned(
-            l.np_line, l.np_line_i, l.np_line_max, planned_install, l.np_line_opf
+        NP_lineDC_model_first_guess[l.lineNumber] = _init_with_planned(
+            l.np_line, l.np_line_max, planned_install, l.np_line_opf
         )
         NP_lineDC_max[l.lineNumber]   = l.np_line_max
         NP_lineDC_planned_install[l.lineNumber] = planned_install
         Line_length[l.lineNumber]     = l.Length_km
         
     np_gen={}
-    np_gen_i={}
+    np_gen_model_first_guess={}
     np_gen_max={}
     np_gen_planned_install = {}
     for gen in grid.Generators:
         planned_install = getattr(gen, 'planned_installation', 0)
         np_gen_max[gen.genNumber] = gen.np_gen_max
         np_gen[gen.genNumber] = gen.np_gen
-        np_gen_i[gen.genNumber] = _init_with_planned(
-            gen.np_gen, gen.np_gen_i, gen.np_gen_max, planned_install, gen.np_gen_opf
+        np_gen_model_first_guess[gen.genNumber] = _init_with_planned(
+            gen.np_gen, gen.np_gen_max, planned_install, gen.np_gen_opf
         )
         np_gen_planned_install[gen.genNumber] = planned_install
     
     np_gen_DC={}
-    np_gen_DC_i={}
+    np_gen_DC_model_first_guess={}
     np_gen_max_DC={}
     np_gen_DC_planned_install = {}
     for gen in grid.Generators_DC:
         planned_install = getattr(gen, 'planned_installation', 0)
         np_gen_max_DC[gen.genNumber_DC] = gen.np_gen_max
         np_gen_DC[gen.genNumber_DC] = gen.np_gen
-        np_gen_DC_i[gen.genNumber_DC] = _init_with_planned(
-            gen.np_gen, gen.np_gen_i, gen.np_gen_max, planned_install, gen.np_gen_opf
+        np_gen_DC_model_first_guess[gen.genNumber_DC] = _init_with_planned(
+            gen.np_gen, gen.np_gen_max, planned_install, gen.np_gen_opf
         )
         np_gen_DC_planned_install[gen.genNumber_DC] = planned_install
     
     np_rsgen={}
-    np_rsgen_i={}
+    np_rsgen_model_first_guess={}
     np_rsgen_max={}
     np_rsgen_planned_install = {}
     for rs in grid.RenSources:
         planned_install = getattr(rs, 'planned_installation', 0)
         np_rsgen[rs.rsNumber] = rs.np_rsgen
         np_rsgen_max[rs.rsNumber] = rs.np_rsgen_max
-        np_rsgen_i[rs.rsNumber] = _init_with_planned(
-            rs.np_rsgen, rs.np_rsgen_i, rs.np_rsgen_max, planned_install, rs.np_rsgen_opf
+        np_rsgen_model_first_guess[rs.rsNumber] = _init_with_planned(
+            rs.np_rsgen, rs.np_rsgen_max, planned_install, rs.np_rsgen_opf
         )
         np_rsgen_planned_install[rs.rsNumber] = planned_install
     
@@ -512,7 +565,7 @@ def get_TEP_variables(grid):
     return {
         'converters': {
             'np_conv': np_conv,
-            'np_conv_i': np_conv_i,
+            'np_conv_model_first_guess': np_conv_model_first_guess,
             'np_conv_max': np_conv_max,
             'np_conv_planned_install': np_conv_planned_install,
             'S_limit_conv': S_limit_conv
@@ -520,14 +573,14 @@ def get_TEP_variables(grid):
         'dc_lines': {
             'P_lineDC_limit': P_lineDC_limit,
             'NP_lineDC': NP_lineDC,
-            'NP_lineDC_i': NP_lineDC_i,
+            'NP_lineDC_model_first_guess': NP_lineDC_model_first_guess,
             'NP_lineDC_max': NP_lineDC_max,
             'NP_lineDC_planned_install': NP_lineDC_planned_install,
             'Line_length': Line_length
         },
         'ac_lines': {
             'NP_lineAC': NP_lineAC,
-            'NP_lineAC_i': NP_lineAC_i,
+            'NP_lineAC_model_first_guess': NP_lineAC_model_first_guess,
             'NP_lineAC_max': NP_lineAC_max,
             'NP_lineAC_planned_install': NP_lineAC_planned_install,
             'Line_length': Line_length,
@@ -536,17 +589,17 @@ def get_TEP_variables(grid):
         },
         'generators': {
             'np_gen': np_gen,
-            'np_gen_i': np_gen_i,
+            'np_gen_model_first_guess': np_gen_model_first_guess,
             'np_gen_planned_install': np_gen_planned_install,
             'np_gen_max': np_gen_max,
             'np_gen_DC': np_gen_DC,
-            'np_gen_DC_i': np_gen_DC_i,
+            'np_gen_DC_model_first_guess': np_gen_DC_model_first_guess,
             'np_gen_DC_planned_install': np_gen_DC_planned_install,
             'np_gen_max_DC': np_gen_max_DC
         },
         'ren_sources': {
             'np_rsgen': np_rsgen,
-            'np_rsgen_i': np_rsgen_i,
+            'np_rsgen_model_first_guess': np_rsgen_model_first_guess,
             'np_rsgen_planned_install': np_rsgen_planned_install,
             'np_rsgen_max': np_rsgen_max
         }
@@ -2220,7 +2273,7 @@ def export_TEP_multiScenario_results_to_excel(grid,export):
         for l in grid.lines_AC_exp:
             if l.np_line_opf:
                 element = l.name
-                ini = l.np_line_i
+                ini = l.np_line_b
                 opt = l.np_line
                 pr = opt * l.MVA_rating
                 cost = ((opt - ini) * l.base_cost)  / 1000
@@ -2257,7 +2310,7 @@ def export_TEP_multiScenario_results_to_excel(grid,export):
         for l in grid.lines_DC:
             if l.np_line_opf:
                 element = l.name
-                ini = l.np_line_i
+                ini = l.np_line_b
                 opt = l.np_line
                 pr = opt * l.MW_rating
                 cost = ((opt - ini) * l.base_cost)  / 1000
@@ -2270,7 +2323,7 @@ def export_TEP_multiScenario_results_to_excel(grid,export):
         for cn in grid.Converters_ACDC:
             if cn.np_conv_opf:
                 element = cn.name
-                ini = cn.np_conv_i
+                ini = cn.np_conv_b
                 opt = cn.np_conv
                 pr = opt * cn.MVA_max
                 cost = ((opt - ini) * cn.base_cost)  / 1000

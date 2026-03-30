@@ -1110,7 +1110,6 @@ class Gen_AC:
         self.planned_installation = 0
         self.allow_planned_decrease = False
 
-        self.np_gen_i = np_gen
         self.np_gen_b = np_gen
         self.np_gen = np_gen
         self.np_gen_max = np_gen * 3   # maximum number of generators to be present at the same time
@@ -1243,7 +1242,6 @@ class Gen_DC:
         self.planned_installation = 0
         self.allow_planned_decrease = False
 
-        self.np_gen_i = np_gen
         self.np_gen_b = np_gen
         self.np_gen = np_gen
         self.np_gen_max = np_gen * 3
@@ -1362,7 +1360,6 @@ class Ren_Source:
         self.planned_installation = 0
         self.allow_planned_decrease = False
 
-        self.np_rsgen_i = np_rsgen
         self.np_rsgen_b = np_rsgen
         self.np_rsgen = np_rsgen
         self.np_rsgen_max= np_rsgen *3   # maximum number of generators to be present at the same time
@@ -1535,12 +1532,8 @@ class Node_AC:
             'Load' : None,
             'price': None,
             }
-        
-        self.inv_dic ={
-            'Load' : None
-        }
         self.investment_decisions = {
-            'Load': []
+            'Load': [self._PLi_inv_factor]
         }
         
         self.QGi = Reactive_Gained
@@ -1716,12 +1709,8 @@ class Node_DC:
             'Load' : None,
             'price': None,
             }
-        
-        self.inv_dic ={
-            'Load' : None
-        }
         self.investment_decisions = {
-            'Load': []
+            'Load': [self._PLi_inv_factor]
         }
         
         self.V = np.copy(self.V_ini)
@@ -2070,7 +2059,6 @@ class Exp_Line_AC(Line_AC):
         self.np_line=0  #Actual number of lines
 
         self.np_line_b=0  #N_b base attribute
-        self.np_line_i= 0 #N_i initial guess
         self.np_line_max = 1 #N_max max number of lines
         self.np_line_opf=True
         self.planned_installation = 0
@@ -2751,7 +2739,6 @@ class Line_DC:
         self.np_line=N_cables
 
         self.np_line_b=N_cables
-        self.np_line_i= N_cables
         self.np_line_max = N_cables
         self.np_line_opf=False
         self.planned_installation = 0
@@ -3019,7 +3006,6 @@ class AC_DC_converter:
         self._np_conv= nConvP
 
         self.np_conv_b= nConvP
-        self.np_conv_i= nConvP
         self.np_conv_max = nConvP
         
         self.np_conv_opf=False
@@ -3429,12 +3415,7 @@ class Price_Zone:
             'c_CG': None,
             'PGL_min': None,
             'PGL_max': None
-        }
-        self.investment_decisions = {
-            'Load': [],
-            'curvature_factor': [],
-            'import_expand': []
-        }
+        }  
         
         self.df= pd.DataFrame(columns=['time','a', 'b', 'c','price','PGL_min','PGL_max'])        
         self.df.set_index('time', inplace=True)
@@ -3446,6 +3427,12 @@ class Price_Zone:
         # Used by MP-MS validation (pz._PLi_base, pz.PLi).
         self._PLi_base = 0.0
         self.PLi = 0.0
+
+        self.investment_decisions = {
+            'Load': [self._PLi_inv_factor],
+            'curvature_factor': [self._curvature_factor],
+            'import_expand': [self._import_expand]
+        }
         
         if name is None:
             self._name = str(self.price_zone_num)

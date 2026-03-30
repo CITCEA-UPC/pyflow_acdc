@@ -581,7 +581,7 @@ def TEP_variables(model,grid):
     
     # Extract AC line variables
     NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
-    NP_lineAC_i = tep_vars['ac_lines']['NP_lineAC_i']
+    NP_lineAC_model_first_guess = tep_vars['ac_lines']['NP_lineAC_model_first_guess']
     NP_lineAC_max = tep_vars['ac_lines']['NP_lineAC_max']
     REC_branch = tep_vars['ac_lines']['REC_branch']
     ct_ini = tep_vars['ac_lines']['ct_ini']
@@ -631,7 +631,7 @@ def TEP_variables(model,grid):
             else:
                 return (NP_lineAC[line], NP_lineAC_max[line])
         
-        model.NumLinesACP = pyo.Var(model.lines_AC_exp, within=pyo.NonNegativeIntegers,bounds=NPline_bounds_AC,initialize=NP_lineAC_i)
+        model.NumLinesACP = pyo.Var(model.lines_AC_exp, within=pyo.NonNegativeIntegers,bounds=NPline_bounds_AC,initialize=NP_lineAC_model_first_guess)
         model.NumLinesACP_base  =pyo.Param(model.lines_AC_exp,initialize=NP_lineAC)
 
     if grid.REC_AC:

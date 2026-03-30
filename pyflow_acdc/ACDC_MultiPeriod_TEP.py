@@ -432,7 +432,7 @@ def _MP_TEP_variables(model, grid):
         def np_rsgen_i(model, rs, i):
             return np_rsgen[rs]
         model.np_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen_i)
-        model.installed_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=np_rsgen_bounds_install)
+        model.installed_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_rsgen_init,bounds=np_rsgen_bounds_install)
         model.planned_installation_rsgen = pyo.Param(model.ren_sources,model.inv_periods,initialize=planned_installation_rsgen_init)
         model.opt_installation_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.Integers,initialize=0,bounds=np_rsgen_bounds_install_opt)
         
@@ -462,7 +462,7 @@ def _MP_TEP_variables(model, grid):
         def np_gen_i(model, g, i):
             return np_gen[g]
         model.np_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_i)
-        model.installed_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=np_gen_bounds_install)
+        model.installed_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_gen_init,bounds=np_gen_bounds_install)
         model.planned_installation_gen = pyo.Param(model.gen_AC,model.inv_periods,initialize=planned_installation_gen_init)
         model.opt_installation_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.Integers,initialize=0,bounds=np_gen_bounds_install_opt)
         
@@ -490,7 +490,7 @@ def _MP_TEP_variables(model, grid):
             def NP_lineAC_i(model, l, i):
                 return NP_lineAC[l]
             model.ACLinesMP = pyo.Var(model.lines_AC_exp,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_AC_line_bounds,initialize=NP_lineAC_i)
-            model.installed_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_AC_line_bounds_install)
+            model.installed_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_ACline_init,bounds=MP_AC_line_bounds_install)
             model.planned_installation_ACline = pyo.Param(model.lines_AC_exp,model.inv_periods,initialize=planned_installation_ACline_init)
             model.opt_installation_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_AC_line_bounds_install_opt)
             model.decomision_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
@@ -516,7 +516,7 @@ def _MP_TEP_variables(model, grid):
         def NP_lineDC_i(model, l, i):
             return NP_lineDC[l]
         model.DCLinesMP = pyo.Var(model.lines_DC,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_DC_line_bounds,initialize=NP_lineDC_i)
-        model.installed_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_DC_line_bounds_install)
+        model.installed_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_DCline_init,bounds=MP_DC_line_bounds_install)
         model.planned_installation_DCline = pyo.Param(model.lines_DC,model.inv_periods,initialize=planned_installation_DCline_init)
         model.opt_installation_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_DC_line_bounds_install_opt)
         model.decomision_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
@@ -542,7 +542,7 @@ def _MP_TEP_variables(model, grid):
         def np_conv_i(model, c, i):
             return np_conv[c]
         model.ConvMP = pyo.Var(model.conv,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_Conv_bounds,initialize=np_conv_i)
-        model.installed_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=MP_Conv_bounds_install)
+        model.installed_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_Conv_init,bounds=MP_Conv_bounds_install)
         model.planned_installation_Conv = pyo.Param(model.conv,model.inv_periods,initialize=planned_installation_Conv_init)
         model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_Conv_bounds_install_opt)
         model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
@@ -1761,17 +1761,24 @@ def run_opf_for_all_investment_periods(
 
     return period_results
 
-def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):    
+def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):
+    def _np_dynamic_at(inv_dict, period, fallback):
+        """Return np_dynamic[period] if in range; otherwise fallback."""
+        series = inv_dict["np_dynamic"]
+        if period < len(series):
+            return series[period]
+        return fallback
+
     for line in grid.lines_AC_exp:
-        line.np_line = line.investment_decisions['np_dynamic'][investment_period]
+        line.np_line = _np_dynamic_at(line.investment_decisions, investment_period, line.np_line)
     for line in grid.lines_DC:
-        line.np_line = line.investment_decisions['np_dynamic'][investment_period]
+        line.np_line = _np_dynamic_at(line.investment_decisions, investment_period, line.np_line)
     for conv in grid.Converters_ACDC:
-        conv.np_conv = conv.investment_decisions['np_dynamic'][investment_period]
+        conv.np_conv = _np_dynamic_at(conv.investment_decisions, investment_period, conv.np_conv)
     for rs in grid.RenSources:
-        rs.np_rsgen = rs.investment_decisions['np_dynamic'][investment_period]
+        rs.np_rsgen = _np_dynamic_at(rs.investment_decisions, investment_period, rs.np_rsgen)
     for gen in grid.Generators:
-        gen.np_gen = gen.investment_decisions['np_dynamic'][investment_period]
+        gen.np_gen = _np_dynamic_at(gen.investment_decisions, investment_period, gen.np_gen)
     _update_grid_investment_period(grid, investment_period)
     # Keep active single-period limits aligned with selected period.
     series_map = grid.generation_type_limits

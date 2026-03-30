@@ -1174,7 +1174,6 @@ def Create_grid_from_mat(matfile):
                 DC_lines[var_name].np_line_opf = True
                 DC_lines[var_name].np_line   = 0
                 DC_lines[var_name].np_line_b = 0
-                DC_lines[var_name].np_line_i = 0
                 DC_lines[var_name].np_line_max = 3
                 DC_lines[var_name].base_cost = DC_line_data.at[index, 'cost']
 
@@ -1245,7 +1244,6 @@ def Create_grid_from_mat(matfile):
                 Converters[var_name].np_conv_opf = True
                 Converters[var_name].np_conv   = 0
                 Converters[var_name].np_conv_b = 0
-                Converters[var_name].np_conv_i = 0
                 Converters[var_name].np_conv_max = 1
                 Converters[var_name].base_cost = Converter_data.at[index, 'cost']
         Convertor_list = list(Converters.values())
@@ -1290,7 +1288,6 @@ def Create_grid_from_mat(matfile):
             line.lineNumber = index
             line.np_line = 0
             line.np_line_b = 0
-            line.np_line_i = 1
             line.np_line_max = 3
             G.lines_AC_exp.append(line)
         G.Update_Graph_AC()

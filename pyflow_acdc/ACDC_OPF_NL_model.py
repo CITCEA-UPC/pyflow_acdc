@@ -1369,7 +1369,7 @@ def Converter_variables(model,grid,Conv_info):
     
     Conv_Lists, Conv_Volt = Conv_info
         
-    lista_conv,np_conv_i = Conv_Lists
+    lista_conv,np_conv = Conv_Lists
     u_c_min,u_c_max,S_limit_conv,P_conv_limit = Conv_Volt
 
 
@@ -2044,34 +2044,34 @@ def TEP_variables(model,grid):
 
     # Extract converter variables
     np_conv = tep_vars['converters']['np_conv']
-    np_conv_i = tep_vars['converters']['np_conv_i']
+    np_conv_model_first_guess = tep_vars['converters']['np_conv_model_first_guess']
     np_conv_max = tep_vars['converters']['np_conv_max']
     S_limit_conv = tep_vars['converters']['S_limit_conv']
     
     # Extract DC line variables
     P_lineDC_limit = tep_vars['dc_lines']['P_lineDC_limit']
     NP_lineDC = tep_vars['dc_lines']['NP_lineDC']
-    NP_lineDC_i = tep_vars['dc_lines']['NP_lineDC_i']
+    NP_lineDC_model_first_guess = tep_vars['dc_lines']['NP_lineDC_model_first_guess']
     NP_lineDC_max = tep_vars['dc_lines']['NP_lineDC_max']
     Line_length = tep_vars['dc_lines']['Line_length']
     
     # Extract AC line variables
     NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
-    NP_lineAC_i = tep_vars['ac_lines']['NP_lineAC_i']
+    NP_lineAC_model_first_guess = tep_vars['ac_lines']['NP_lineAC_model_first_guess']
     NP_lineAC_max = tep_vars['ac_lines']['NP_lineAC_max']
     REC_branch = tep_vars['ac_lines']['REC_branch']
     ct_ini = tep_vars['ac_lines']['ct_ini']
     
     # Extract generator variables
     np_gen = tep_vars['generators']['np_gen']
-    np_gen_i = tep_vars['generators']['np_gen_i']
+    np_gen_model_first_guess = tep_vars['generators']['np_gen_model_first_guess']
     np_gen_max = tep_vars['generators']['np_gen_max']
     np_gen_DC = tep_vars['generators']['np_gen_DC']
-    np_gen_DC_i = tep_vars['generators']['np_gen_DC_i']
+    np_gen_DC_model_first_guess = tep_vars['generators']['np_gen_DC_model_first_guess']
     np_gen_max_DC = tep_vars['generators']['np_gen_max_DC']    
 
     np_rsgen = tep_vars['ren_sources']['np_rsgen']
-    np_rsgen_i = tep_vars['ren_sources']['np_rsgen_i']
+    np_rsgen_model_first_guess = tep_vars['ren_sources']['np_rsgen_model_first_guess']
     np_rsgen_max = tep_vars['ren_sources']['np_rsgen_max']
 
     "TEP variables"
@@ -2085,7 +2085,7 @@ def TEP_variables(model,grid):
                 return (np_rsgen[rs], np_rsgen_max[rs])
             else:
                 return (np_rsgen[rs], np_rsgen[rs])
-        model.np_rsgen = pyo.Var(model.ren_sources,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen_i)
+        model.np_rsgen = pyo.Var(model.ren_sources,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen_model_first_guess)
         model.np_rsgen_base = pyo.Param(model.ren_sources,initialize=np_rsgen)
     elif hasattr(model,'ren_sources'):
         model.np_rsgen = pyo.Param(model.ren_sources,initialize=np_rsgen)
@@ -2119,7 +2119,7 @@ def TEP_variables(model,grid):
                 return (model.QGi_gen[g] <= gen.Max_pow_genR * model.np_gen[g])
 
 
-            model.np_gen = pyo.Var(model.gen_AC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_i)
+            model.np_gen = pyo.Var(model.gen_AC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_model_first_guess)
             model.np_gen_base = pyo.Param(model.gen_AC,initialize=np_gen)  
 
             model.PGi_lower_bound = pyo.Constraint(model.gen_AC,rule=P_gen_lower_bound_rule)
@@ -2142,7 +2142,7 @@ def TEP_variables(model,grid):
                 else:
                     return (NP_lineAC[line], NP_lineAC_max[line])
             
-            model.NumLinesACP = pyo.Var(model.lines_AC_exp, within=pyo.NonNegativeIntegers,bounds=NPline_bounds_AC,initialize=NP_lineAC_i)
+            model.NumLinesACP = pyo.Var(model.lines_AC_exp, within=pyo.NonNegativeIntegers,bounds=NPline_bounds_AC,initialize=NP_lineAC_model_first_guess)
             model.NumLinesACP_base  =pyo.Param(model.lines_AC_exp,initialize=NP_lineAC)
 
         if grid.REC_AC:
@@ -2176,7 +2176,7 @@ def TEP_variables(model,grid):
 
     
 
-            model.np_gen_DC = pyo.Var(model.gen_DC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds_DC,initialize=np_gen_DC_i)
+            model.np_gen_DC = pyo.Var(model.gen_DC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds_DC,initialize=np_gen_DC_model_first_guess)
             model.np_gen_DC_base = pyo.Param(model.gen_DC,initialize=np_gen_DC)  
 
             model.PGi_lower_bound = pyo.Constraint(model.gen_DC,rule=P_gen_DC_lower_bound_rule)
@@ -2193,7 +2193,7 @@ def TEP_variables(model,grid):
             else:
                 return (NP_lineDC[line], NP_lineDC_max[line])
         
-        model.NumLinesDCP = pyo.Var(model.lines_DC, within=pyo.NonNegativeIntegers,bounds=NPline_bounds,initialize=NP_lineDC_i)
+        model.NumLinesDCP = pyo.Var(model.lines_DC, within=pyo.NonNegativeIntegers,bounds=NPline_bounds,initialize=NP_lineDC_model_first_guess)
         model.NumLinesDCP_base  =pyo.Param(model.lines_DC,initialize=NP_lineDC)
        
     if grid.ACmode and grid.DCmode:
@@ -2204,7 +2204,7 @@ def TEP_variables(model,grid):
             else:
                 return (np_conv[conv], np_conv_max[conv])
         
-        model.np_conv = pyo.Var(model.conv, within=pyo.NonNegativeIntegers,bounds=NPconv_bounds,initialize=np_conv_i)
+        model.np_conv = pyo.Var(model.conv, within=pyo.NonNegativeIntegers,bounds=NPconv_bounds,initialize=np_conv_model_first_guess)
         model.np_conv_base  =pyo.Param(model.conv,initialize=np_conv)
 
 
