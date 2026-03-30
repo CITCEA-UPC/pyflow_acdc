@@ -882,7 +882,15 @@ def _parse_ipopt_log(log_path):
     
     return progress_events
 
-def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_path, tee_console=True):
+def _solver_progress(
+    model,
+    feasible_solutions,
+    solver_name,
+    time_limit,
+    log_path,
+    tee_console=True,
+    solver_options=None,
+):
     """Unified progress tracking for Ipopt, Bonmin, and HiGHS solvers.
     
     Always writes to log file for parsing. Uses Pyomo's tee parameter to control console output.
@@ -914,6 +922,14 @@ def _solver_progress(model, feasible_solutions, solver_name, time_limit, log_pat
     elif solver_name == 'bonmin':
         # Continue MINLP search if an NLP subproblem fails, so incumbents can still be returned.
         opt.options['bonmin.nlp_failure_behavior'] = 'fathom'
+
+    # Apply custom solver options in callback mode as well.
+    # Keep internal flags (e.g., debug_solution_check) out of backend options.
+    if solver_options:
+        for param_name, param_value in solver_options.items():
+            if param_name == 'debug_solution_check':
+                continue
+            opt.options[param_name] = param_value
     
     start = time.perf_counter()
     
@@ -1167,11 +1183,11 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             # For Gurobi, all_solutions is the same as feasible_solutions
             all_solutions = feasible_solutions.copy()
         elif solver == 'bonmin':
-            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'bonmin', time_limit, 'bonmin.log', tee_console=tee)
+            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'bonmin', time_limit, 'bonmin.log', tee_console=tee, solver_options=solver_options)
         elif solver == 'ipopt':
-            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'ipopt', time_limit, 'ipopt.log', tee_console=tee)
+            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'ipopt', time_limit, 'ipopt.log', tee_console=tee, solver_options=solver_options)
         elif solver == 'highs':
-            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'highs', time_limit, 'highs.log', tee_console=tee)
+            results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'highs', time_limit, 'highs.log', tee_console=tee, solver_options=solver_options)
         else:
             print(f"No callback available for {solver}")
             callback = False
@@ -1300,7 +1316,16 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     except Exception:
         has_loaded_solution = False
 
-    if trusted_termination and not has_loaded_solution:
+    # Empty results.solution can be normal with IPOPT in some setups.
+    # Keep this warning for branch-and-bound/MINLP-style solvers where a
+    # missing payload is more suspicious.
+    bnb_like_solvers = {"bonmin", "couenne", "scip", "cbc", "cplex", "gurobi"}
+    should_warn_missing_payload = (
+        trusted_termination
+        and not has_loaded_solution
+        and solver_name_lc in bnb_like_solvers
+    )
+    if should_warn_missing_payload:
         pyomo_logger = logging.getLogger('pyomo')
         pyomo_logger.warning(
             "Solver termination indicates a good solve ('%s'), but no solution payload "
