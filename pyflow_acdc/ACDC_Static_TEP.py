@@ -1956,7 +1956,17 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     SW= sum(pyo.value(model.weights[t]) for t in model.scenario_frames)
     def process_ren_source(renSource):
         rs = renSource.rsNumber
-        renSource.gamma =  np.float64(sum(pyo.value(model.scenario_model[t].gamma[rs]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
+        renSource.gamma = np.float64(
+            sum(pyo.value(model.scenario_model[t].gamma[rs]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW
+        )
+        # Keep MP+MS export contract aligned with single-scenario OPF export:
+        # renewable source active/reactive outputs are available on the Ren_Source object.
+        renSource.PGi_ren = np.float64(
+            sum(pyo.value(model.scenario_model[t].PGi_ren[rs]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW
+        )
+        renSource.QGi_ren = np.float64(
+            sum(pyo.value(model.scenario_model[t].QGi_ren[rs]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW
+        )
     
     def process_gen(gen):
         gn = gen.genNumber
@@ -1966,7 +1976,9 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     
     def process_ac_node(node):
         nAC = node.nodeNumber
-        node.V_AC = np.float64(sum(pyo.value(model.scenario_model[t].V_AC[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
+        node.V = np.float64(
+            sum(pyo.value(model.scenario_model[t].V_AC[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW
+        )
         node.theta = np.float64(sum(pyo.value(model.scenario_model[t].thetha_AC[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         if grid.DCmode:
             node.P_s = np.float64(sum(pyo.value(model.scenario_model[t].P_conv_AC[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
@@ -1974,8 +1986,12 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     
         node.PGi_opt = np.float64(sum(pyo.value(model.scenario_model[t].PGi_opt[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
         node.QGi_opt = np.float64(sum(pyo.value(model.scenario_model[t].QGi_opt[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
+        # Keep OPF export contract consistent with single-scenario OPF export:
+        # Results_class expects node.PGi_ren and node.QGi_ren to exist after OPF.
+        node.PGi_ren = np.float64(sum(pyo.value(model.scenario_model[t].PGi_ren[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
+        node.QGi_ren = np.float64(sum(pyo.value(model.scenario_model[t].QGi_ren[nAC]) * pyo.value(model.weights[t]) for t in model.scenario_frames) / SW)
     
-        grid.V_AC[nAC] = node.V_AC
+        grid.V_AC[nAC] = node.V
         grid.Theta_V_AC[nAC] = node.theta
     
     # Helper function for DC nodes
