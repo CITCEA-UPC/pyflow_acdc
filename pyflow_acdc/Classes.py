@@ -1032,6 +1032,14 @@ class Gen_AC:
         return self._name
 
     @property
+    def base_cost(self):
+        return self._base_cost * (1 + self.lamda_capex)
+
+    @base_cost.setter
+    def base_cost(self, value):
+        self._base_cost = value
+
+    @property
     def S_base(self):
         return self._S_base
     
@@ -1113,13 +1121,15 @@ class Gen_AC:
         self.np_gen_b = np_gen
         self.np_gen = np_gen
         self.np_gen_max = np_gen * 3   # maximum number of generators to be present at the same time
+        self.lamda_capex = 0
         
         # Used in multi period TEP
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_gen_max],
-            'np_dynamic': [self.np_gen]
+            'np_dynamic': [self.np_gen],
+            'lamda_capex': [self.lamda_capex],
         }
         
 
@@ -1190,6 +1200,14 @@ class Gen_DC:
         return self._name
 
     @property
+    def base_cost(self):
+        return self._base_cost * (1 + self.lamda_capex)
+
+    @base_cost.setter
+    def base_cost(self, value):
+        self._base_cost = value
+
+    @property
     def S_base(self):
         return self._S_base
     
@@ -1245,6 +1263,14 @@ class Gen_DC:
         self.np_gen_b = np_gen
         self.np_gen = np_gen
         self.np_gen_max = np_gen * 3
+        self.lamda_capex = 0
+        self.investment_decisions = {
+            'planned_installation': [self.planned_installation],
+            'planned_decomision': [0],
+            'max_inv': [self.np_gen_max],
+            'np_dynamic': [self.np_gen],
+            'lamda_capex': [self.lamda_capex],
+        }
         
         self.lf=linear_cost_factor
         self.qf=quadratic_cost_factor
@@ -1289,6 +1315,14 @@ class Ren_Source:
     @property
     def name(self):
         return self._name
+
+    @property
+    def base_cost(self):
+        return self._base_cost * (1 + self.lamda_capex)
+
+    @base_cost.setter
+    def base_cost(self, value):
+        self._base_cost = value
 
     @property
     def S_base(self):
@@ -1363,13 +1397,15 @@ class Ren_Source:
         self.np_rsgen_b = np_rsgen
         self.np_rsgen = np_rsgen
         self.np_rsgen_max= np_rsgen *3   # maximum number of generators to be present at the same time
+        self.lamda_capex = 0
 
         # Used in multi period TEP
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_rsgen_max],
-            'np_dynamic': [self.np_rsgen]
+            'np_dynamic': [self.np_rsgen],
+            'lamda_capex': [self.lamda_capex],
         }
 
         self.base_cost = installation_cost
@@ -2045,11 +2081,20 @@ class Exp_Line_AC(Line_AC):
     def capacity_MVA(self):
         return self.MVA_rating * self.np_line
 
+    @property
+    def base_cost(self):
+        return self._base_cost * (1 + self.lamda_capex)
+
+    @base_cost.setter
+    def base_cost(self, value):
+        self._base_cost = value
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
     
         self.kV_base = self.fromNode.kV_base
         self.direction = 'from'
+        self.lamda_capex = 0
         self.base_cost = 0
         self.life_time = 50
         self.exp_inv=1
@@ -2067,7 +2112,8 @@ class Exp_Line_AC(Line_AC):
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_line_max],
-            'np_dynamic': [self.np_line]
+            'np_dynamic': [self.np_line],
+            'lamda_capex': [self.lamda_capex],
         }
         self.hover_text = None
 
@@ -2681,6 +2727,15 @@ class Line_DC:
     @property
     def name(self):
         return self._name
+
+    @property
+    def base_cost(self):
+        return self._base_cost * (1 + self.lamda_capex)
+
+    @base_cost.setter
+    def base_cost(self, value):
+        self._base_cost = value
+
     @property
     def power_MW(self):
         return max(abs(self.fromP), abs(self.toP)) * self.S_base
@@ -2743,11 +2798,13 @@ class Line_DC:
         self.np_line_opf=False
         self.planned_installation = 0
         self.allow_planned_decrease = False
+        self.lamda_capex = 0
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_line_max],
-            'np_dynamic': [self.np_line]
+            'np_dynamic': [self.np_line],
+            'lamda_capex': [self.lamda_capex],
         }
 
         self.R = r
@@ -2910,6 +2967,14 @@ class AC_DC_converter:
         Q_s = self.Q_AC 
         S = np.sqrt(P_s**2 + Q_s**2)
         self.Node_DC.conv_loading = max(S, abs(P_DC)) 
+
+    @property
+    def base_cost(self):
+        return self._base_cost * (1 + self.lamda_capex)
+
+    @base_cost.setter
+    def base_cost(self, value):
+        self._base_cost = value
         
     @property
     def life_time_hours(self):
@@ -3011,13 +3076,16 @@ class AC_DC_converter:
         self.np_conv_opf=False
         self.planned_installation = 0
         self.allow_planned_decrease = False
+        self.lamda_capex = 0
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
             'planned_decomision': [0],
             'max_inv': [self.np_conv_max],
-            'np_dynamic': [self.np_conv]
+            'np_dynamic': [self.np_conv],
+            'lamda_capex': [self.lamda_capex],
         }
         self.base_cost = 0
+
         self.life_time = 50
         self.exp_inv=1
         self.cost_perMVA = None

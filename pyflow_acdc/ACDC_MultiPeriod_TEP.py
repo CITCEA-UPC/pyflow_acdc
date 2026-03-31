@@ -141,6 +141,12 @@ def _fill_investment_decisions(grid):
 def _update_grid_investment_period(grid, i):
     idx = i
 
+    def _inv_at(inv, key, period_idx, fallback):
+        series = inv.get(key)
+        if isinstance(series, (list, tuple)) and period_idx < len(series):
+            return series[period_idx]
+        return fallback
+
     for price_zone in grid.Price_Zones:
         inv = price_zone.investment_decisions
         price_zone.PLi_inv_factor = inv['Load'][idx]
@@ -158,6 +164,10 @@ def _update_grid_investment_period(grid, i):
             continue
         inv = node.investment_decisions
         node.PLi_inv_factor = inv['Load'][idx]
+
+    for element in grid.Generators + grid.RenSources + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC:
+        inv = element.investment_decisions
+        element.lamda_capex = _inv_at(inv, 'lamda_capex', idx, element.lamda_capex)
 
 
 def _MP_TEP_constraints(model,grid):
@@ -1805,6 +1815,9 @@ def run_opf_for_all_investment_periods(
     plot:bool =False,
     save_grid_pkl: bool = False,
     MS: bool = False,
+    ts_start: int = 1,
+    ts_end: int = 99999,
+    ts_use_clusters: bool = True,
 ):
     """
     Run OPF for every dynamic investment period and export one Excel per period.
@@ -1854,7 +1867,11 @@ def run_opf_for_all_investment_periods(
             times = run_ts_opf_for_investment_period(
                 grid,
                 investment_period=i,
+                start=ts_start,
+                end=ts_end,
                 ObjRule=ObjRule,
+                print_step=tee,
+                use_clusters=ts_use_clusters,
                 solver=solver,
                 obj_scaling=obj_scaling,
                 export_excel=export_excel,
