@@ -1303,6 +1303,32 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         trusted_termination = False
         explicit_infeasible_termination = True
 
+        # If callback mode was used, analyze the last Ipopt iteration from the log
+        # to measure how close we are to acceptable feasibility with default tolerances.
+        if callback:
+            try:
+                events = _parse_ipopt_log('ipopt.log')
+            except Exception:
+                events = []
+            if events:
+                last_iter, last_obj, last_feas, last_inf_pr, last_inf_du = events[-1]
+                # PyFlow-ACDC "acceptable" tolerances (stricter than Ipopt defaults).
+                acceptable_pr_tol = 1e-4
+                acceptable_du_tol = 1e-6
+                within_acc_pr = bool(last_inf_pr <= acceptable_pr_tol)
+                within_acc_du = bool(last_inf_du <= acceptable_du_tol)
+                # If both primal and dual are within these strict tolerances,
+                # PyFlow-ACDC takes this maxIterations point as an acceptable solution.
+                if within_acc_pr and within_acc_du:
+                    trusted_termination = True
+                    explicit_infeasible_termination = False
+                if tee and not suppress_warnings:
+                    print(
+                        "[pyomo_model_solve] Ipopt maxIterations: "
+                        f"last_iter={last_iter}, inf_pr={last_inf_pr:.3e}, inf_du={last_inf_du:.3e}, "
+                        f"within_acc_pr(1e-4)={within_acc_pr}, within_acc_du(1e-6)={within_acc_du}"
+                    )
+
     checker_reason = "not_used"
     checker_tol = None
     checker_info = None
