@@ -169,6 +169,7 @@ try:
         'multi_period_MS_TEP',
         'export_and_save_inv_period_svgs',
         'run_opf_for_investment_period',
+        'run_ts_opf_for_investment_period',
     ])
 except ImportError:
     pass

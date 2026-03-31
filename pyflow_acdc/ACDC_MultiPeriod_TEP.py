@@ -15,7 +15,7 @@ from .ACDC_Static_TEP import (
     ExportACDC_TEP_MS_toPyflowACDC,
 )
 from .grid_analysis import analyse_grid, current_fuel_type_distribution
-from .Time_series import _modify_parameters
+from .Time_series import _modify_parameters, TS_ACDC_OPF, results_TS_OPF
 from .Graph_and_plot import save_network_svg, create_geometries
 from .Results_class import Results
 
@@ -27,6 +27,7 @@ __all__ = [
     'save_MP_TEP_period_svgs',
     'export_and_save_inv_period_svgs',
     'run_opf_for_investment_period',
+    'run_ts_opf_for_investment_period',
     'run_opf_for_all_investment_periods',
 ]
 
@@ -1703,6 +1704,92 @@ def run_opf_for_investment_period(
     return model, model_res, timing_info, solver_stats, res
 
 
+def run_ts_opf_for_investment_period(
+    grid,
+    investment_period,
+    start=1,
+    end=99999,
+    ObjRule=None,
+    price_zone_restrictions=False,
+    print_step=False,
+    limit_flow_rate=True,
+    use_clusters=True,
+    solver='ipopt',
+    obj_scaling=1.0,
+    warm_start_mode='roll',
+    export_to_grid=True,
+    export_excel=True,
+    export_location='MP_investment_periods_TS',
+    file_name=None,
+    plot_ts=False,
+    save_grid_pkl: bool = False,
+):
+    """
+    Apply a dynamic investment state for a given MP period and run TS-OPF over [start, end].
+
+    This mirrors `run_opf_for_investment_period`, but calls `TS_ACDC_OPF`
+    to perform a time-series OPF for that investment period.
+    """
+    period_idx = int(investment_period)
+    n_periods = int(getattr(grid, 'TEP_n_periods', 0) or 0)
+    if n_periods > 0 and (period_idx < 0 or period_idx >= n_periods):
+        raise ValueError(
+            f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
+        )
+
+    _, PZ = obj_w_rule(grid, ObjRule, True)
+    _set_grid_to_multiperiod_state(grid, period_idx, PZ)
+
+    times = TS_ACDC_OPF(
+        grid,
+        start=start,
+        end=end,
+        ObjRule=ObjRule,
+        price_zone_restrictions=price_zone_restrictions,
+        expand=False,
+        print_step=print_step,
+        limit_flow_rate=limit_flow_rate,
+        use_clusters=use_clusters,
+        solver=solver,
+        obj_scaling=obj_scaling,
+        warm_start_mode=warm_start_mode,
+        export_to_grid=export_to_grid,
+    )
+
+    # Export TS results to Excel, following the same naming conventions used elsewhere.
+    export_location = export_location or 'MP_investment_periods_TS'
+    os.makedirs(export_location, exist_ok=True)
+    base_name = file_name or f"{getattr(grid, 'name', 'grid')}_TS_period_{period_idx}"
+    excel_path = os.path.join(export_location, base_name)
+
+    if export_excel:
+        results_TS_OPF(grid, excel_file_path=excel_path, times=times)
+
+    if save_grid_pkl:
+        from .Export_files import save_pickle
+
+        pkl_path = os.path.join(export_location, f"{base_name}_results.pkl")
+        save_pickle(grid, pkl_path, compress=True)
+
+    if plot_ts:
+        try:
+            from .Graph_and_plot import plot_TS_res
+
+            plot_TS_res(
+                grid,
+                start=start,
+                end=end,
+                show=False,
+                path=export_location,
+                save_format='svg',
+                skip_failed=True,
+            )
+        except Exception as exc:
+            print(f"Warning: TS plotting skipped ({exc})")
+
+    return times
+
+
 def run_opf_for_all_investment_periods(
     grid,
     ObjRule=None,
@@ -1715,8 +1802,9 @@ def run_opf_for_all_investment_periods(
     file_name_prefix=None,
     print_table=False,
     decimals=3,
-    plot_folium=None,
+    plot:bool =False,
     save_grid_pkl: bool = False,
+    MS: bool = False,
 ):
     """
     Run OPF for every dynamic investment period and export one Excel per period.
@@ -1733,29 +1821,52 @@ def run_opf_for_all_investment_periods(
     period_results = {}
 
     for i in range(n_periods):
-        run_out = run_opf_for_investment_period(
-            grid,
-            investment_period=i,
-            ObjRule=ObjRule,
-            solver=solver,
-            tee=tee,
-            limit_flow_rate=limit_flow_rate,
-            obj_scaling=obj_scaling,
-            export_excel=export_excel,
-            export_location=export_location,
-            file_name=f"{prefix}_{i}",
-            print_table=print_table,
-            decimals=decimals,
-            plot_folium=plot_folium,
-            save_grid_pkl=save_grid_pkl,
-        )
-        period_results[i] = {
-            'model': run_out[0],
-            'model_res': run_out[1],
-            'timing_info': run_out[2],
-            'solver_stats': run_out[3],
-            'results_obj': run_out[4],
-        }
+        if not MS:
+            # Standard snapshot OPF for each investment period.
+            run_out = run_opf_for_investment_period(
+                grid,
+                investment_period=i,
+                ObjRule=ObjRule,
+                solver=solver,
+                tee=tee,
+                limit_flow_rate=limit_flow_rate,
+                obj_scaling=obj_scaling,
+                export_excel=export_excel,
+                export_location=export_location,
+                file_name=f"{prefix}_{i}",
+                print_table=print_table,
+                decimals=decimals,
+                plot_folium=plot,
+                save_grid_pkl=save_grid_pkl,
+            )
+            period_results[i] = {
+                'model': run_out[0],
+                'model_res': run_out[1],
+                'timing_info': run_out[2],
+                'solver_stats': run_out[3],
+                'results_obj': run_out[4],
+            }
+        else:
+            # MS=True: run a TS-OPF for each investment period instead of a single snapshot OPF.
+            # PyFlow-ACDC takes this as a time-series post-analysis on the MP solution.
+            ts_prefix = f"{prefix}_TS"
+            ts_export_location = export_location or 'MP_investment_periods_TS'
+            times = run_ts_opf_for_investment_period(
+                grid,
+                investment_period=i,
+                ObjRule=ObjRule,
+                solver=solver,
+                obj_scaling=obj_scaling,
+                export_excel=export_excel,
+                export_location=ts_export_location,
+                file_name=f"{ts_prefix}_{i}",
+                plot_ts=bool(plot),
+                save_grid_pkl=save_grid_pkl,
+            )
+            period_results[i] = {
+                'times': times,
+                'export_location': ts_export_location,
+            }
 
     
 
