@@ -2243,6 +2243,19 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
         columns=frames
         )
 
+    if Price_Zones:
+        pz_lb_df = pd.DataFrame(
+            [{pz.name: float(pz.PGL_min) for pz in grid.Price_Zones}],
+            index=['PGL_min']
+        )
+        pz_ub_df = pd.DataFrame(
+            [{pz.name: float(pz.PGL_max) for pz in grid.Price_Zones}],
+            index=['PGL_max']
+        )
+    else:
+        pz_lb_df = pd.DataFrame()
+        pz_ub_df = pd.DataFrame()
+
     # Pack all variables into the final result
     TEP_multiScenario_res =     {
     'clustering': clustering,
@@ -2259,6 +2272,8 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     'lines': flipped_data_lines,
     'converters': flipped_data_conv,
     'price': flipped_data_price,
+    'PZ_lb': pz_lb_df,
+    'PZ_ub': pz_ub_df,
     'pgen': flipped_data_pgen,
     'qgen': flipped_data_qgen,
     }

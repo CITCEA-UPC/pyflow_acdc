@@ -1788,12 +1788,14 @@ def run_ts_opf_for_investment_period(
         try:
             from .Graph_and_plot import plot_TS_res
 
+            ts_svg_dir = os.path.join(export_location, f"ts_svg_period_{period_idx}")
+            os.makedirs(ts_svg_dir, exist_ok=True)
             plot_TS_res(
                 grid,
                 start=start,
                 end=end,
                 show=False,
-                path=export_location,
+                path=ts_svg_dir,
                 save_format='svg',
                 skip_failed=True,
             )

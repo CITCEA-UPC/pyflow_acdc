@@ -1290,6 +1290,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         tc = str(getattr(results.solver, 'termination_condition', '') or '').lower() if results is not None else ''
     except Exception:
         tc = ''
+    solver_message_lc = solver_message.lower()
     solver_name_lc = str(solver).lower() if solver is not None else ''
     trusted_termination = tc in ('optimal', 'feasible', 'locallyoptimal', 'acceptable', 'locally_optimal', 'maxiterations')
     explicit_infeasible_termination = tc in (
@@ -1297,6 +1298,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'locallyinfeasible',
         'infeasibleorunbounded',
         'infeasible_or_unbounded',
+    )
+    # Guard against false positives from relaxed acceptance logic:
+    # unbounded outcomes must always be rejected.
+    explicit_unbounded_termination = (
+        ('unbounded' in tc)
+        or ('unbounded' in solver_message_lc)
+        or ('continuous relaxation is unbounded' in solver_message_lc)
     )
     # Treat IPOPT maxIterations as explicit non-favorable termination.
     if solver_name_lc == 'ipopt' and tc == 'maxiterations':
@@ -1361,7 +1369,10 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             tc,
         )
 
-    if explicit_infeasible_termination:
+    if explicit_unbounded_termination:
+        loaded_solution_feasible = False
+        checker_reason = "explicit_unbounded_termination"
+    elif explicit_infeasible_termination:
         loaded_solution_feasible = False
         checker_reason = "explicit_infeasible_termination"
     elif trusted_termination:

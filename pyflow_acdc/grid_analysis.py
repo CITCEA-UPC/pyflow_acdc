@@ -205,7 +205,10 @@ def current_fuel_type_distribution(grid, output="df"):
     total_units = sum(type_units.values())
     load_nodes_count = sum(1 for node in grid.nodes_AC if node.PLi != 0.0) + sum(1 for node in grid.nodes_DC if node.PLi != 0.0)
 
-    total_system_load = sum(node.PLi for node in grid.nodes_AC) + sum(node.PLi for node in grid.nodes_DC)
+    total_system_load = (
+        sum((node.PLi_base + node._PLi_extgrid) * node.PLi_inv_factor for node in grid.nodes_AC)
+        + sum(node.PLi_base * node.PLi_inv_factor for node in grid.nodes_DC)
+    )
     load_pct_of_total_cap = round((total_system_load / total_cap) * 100.0, 2) if total_cap > 0 else 0.0
 
     rows = []

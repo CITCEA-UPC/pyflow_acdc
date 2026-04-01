@@ -3404,12 +3404,41 @@ class Price_Zone:
             self.PGL_min = -self.b/(self.a*2)
         else:
             self.PGL_min = self._PGL_min_base
+        self._update_pgl_max_from_positive_price_delta()
             
     def calc_import_expand(self):
         if self.b > 0 and self.expand_import:
             self.PGL_min = self.PGL_min_base - self._import_expand
             a = -self.b / (2 * self.PGL_min * self.S_base) 
             self.a = a*self._curvature_factor
+        self._update_pgl_max_from_positive_price_delta()
+
+    def _update_pgl_max_from_positive_price_delta(self):
+        delta = self.posisitve_price_delta
+        if delta is None:
+            return
+
+        delta = float(delta)
+        if delta <= 0:
+            return
+
+        a = float(self.a)
+        b = float(self.b)
+
+        if abs(a) < 1e-12:
+            self.PGL_max = np.inf
+            return
+
+        disc = b * b + 4.0 * a * delta
+        if disc < 0:
+            self.PGL_max = np.inf
+            return
+
+        root_disc = np.sqrt(disc)
+        p1 = (-b + root_disc) / (2.0 * a)
+        p2 = (-b - root_disc) / (2.0 * a)
+        non_negative_roots = [p for p in (p1, p2) if p >= 0]
+        self.PGL_max = max(non_negative_roots) if non_negative_roots else np.inf
        
 
     @property
@@ -3444,7 +3473,7 @@ class Price_Zone:
         # Keep aggregated zone load consistent with node updates.
         self._sync_PLi_total()
 
-    def __init__(self,price=1,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand=0,curvature_factor=1,S_base:float=100,name=None):
+    def __init__(self,price=1,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand=0,curvature_factor=1,S_base:float=100,name=None,posisitve_price_delta=None):
         self.price_zone_num = Price_Zone.price_zone_num
         Price_Zone.price_zone_num += 1
         
@@ -3466,6 +3495,7 @@ class Price_Zone:
         self.a=a
         self._b=b
         self.c=c
+        self.posisitve_price_delta = posisitve_price_delta
         self.PGL_min_base=-np.inf
 
         self.PGL_min=self.PGL_min_base
