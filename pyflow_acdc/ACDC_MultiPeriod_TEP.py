@@ -1010,10 +1010,12 @@ def export_MP_TEP_results_toPyflowACDC(
     *,
     pre_opt_fuel_type_distribution,
     export_last_opf_state=True,
+    MS = False,
 ):
     
 
-    grid.MP_TEP_run=True
+    grid.MP_TEP_run = (not MS)
+    grid.MP_MS_TEP_run = MS
     
     n_periods = grid.TEP_n_periods
     
@@ -1510,6 +1512,7 @@ def multi_period_MS_TEP(
         MINLP=MINLP,
         pre_opt_fuel_type_distribution=pre_opt_fuel_type_distribution,
         export_last_opf_state=False,
+        MS=True,
     )
     _save_inv_models(model, grid)
 

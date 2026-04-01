@@ -131,6 +131,11 @@ class Results:
             self.MP_TEP_results(print_table=print_table)
             self.MP_TEP_obj_res(print_table=print_table)
             self.MP_TEP_fuel_type_distribution(print_table=print_table)
+        if self.Grid.MP_MS_TEP_run:
+            self.MP_TEP_results(print_table=print_table)
+            self.MP_MS_TEP_results(print_table=print_table)
+            self.MP_MS_TEP_obj_res(print_table=print_table)
+            self.MP_TEP_fuel_type_distribution(print_table=print_table)
         if getattr(self.Grid, "Seq_STEP_run", False):
             self.Seq_STEP_results(print_table=print_table)
             self.Seq_STEP_obj_res(print_table=print_table)
@@ -2033,6 +2038,47 @@ class Results:
                 print(self.Grid.MP_TEP_results)
             return self.Grid.MP_TEP_results
 
+    def MP_MS_TEP_results(self, print_table=True):
+        data = getattr(self.Grid, "MP_MS_TEP_results", None)
+        if not isinstance(data, dict):
+            if print_table:
+                print("No MP_MS_TEP_results found")
+            return data
+
+        period_results = data.get("period_results")
+        objective_summary = data.get("objective_summary")
+        investment_summary = data.get("investment_summary")
+
+        if isinstance(objective_summary, pd.DataFrame):
+            self.tables["MP_MS_TEP_results_objective_summary"] = objective_summary
+        if isinstance(investment_summary, pd.DataFrame):
+            self.tables["MP_MS_TEP_results_investment_summary"] = investment_summary
+
+        meta_df = pd.DataFrame([{
+            "n_clusters": data.get("n_clusters"),
+            "n_period_results": len(period_results) if isinstance(period_results, list) else np.nan,
+            "has_period_scenario_grid_res": isinstance(data.get("period_scenario_grid_res"), dict),
+        }])
+        self.tables["MP_MS_TEP_results_meta"] = meta_df
+
+        if print_table:
+            print('--------------')
+            print('Dynamic Transmission Expansion Problem (MP+MS)')
+            print('')
+            print('Stored run summary')
+            print('')
+            table = pt()
+            table.field_names = ["Item", "Value"]
+            table.add_row(["n_clusters", data.get("n_clusters")])
+            table.add_row(["period_results", len(period_results) if isinstance(period_results, list) else "n/a"])
+            table.add_row(["period_scenario_grid_res", "yes" if isinstance(data.get("period_scenario_grid_res"), dict) else "no"])
+            table.add_row(["objective_summary_df", "yes" if isinstance(objective_summary, pd.DataFrame) else "no"])
+            table.add_row(["investment_summary_df", "yes" if isinstance(investment_summary, pd.DataFrame) else "no"])
+            print(table)
+            print('')
+
+        return data
+
     def MP_TEP_obj_res(self, print_table=True):
         df = self.Grid.MP_TEP_obj_res
         self.tables["MP_TEP_obj_res"] = df
@@ -2087,6 +2133,70 @@ class Results:
             print(table2)
             print('')
 
+        return df
+
+    def MP_MS_TEP_obj_res(self, print_table=True):
+        df = getattr(self.Grid, "MP_MS_TEP_obj_res", None)
+        if df is None:
+            if print_table:
+                print("No MP_MS_TEP_obj_res found")
+            return df
+
+        self.tables["MP_MS_TEP_obj_res"] = df
+
+        if print_table:
+            print('')
+            print('Dynamic Transmission Expansion Problem (MP+MS)')
+            print('')
+            print('Objective results:')
+            print('')
+            table = pt()
+            preferred_columns = [
+                ("Investment_Period", "Investment Period"),
+                ("OPEX_Objective", "Operational Cost [€]"),
+                ("TEP_Objective", "Investment Cost [€]"),
+                ("STEP_Objective", "Total STEP Cost [€]"),
+                ("STEP_Objective_Economic", "Total STEP Cost (Economic) [€]"),
+            ]
+            columns_to_show = [c for c, _ in preferred_columns if c in df.columns]
+            display_names = [d for c, d in preferred_columns if c in df.columns]
+
+            if columns_to_show:
+                table.field_names = display_names
+                for _, row in df.iterrows():
+                    formatted_row = []
+                    for col in columns_to_show:
+                        val = row[col]
+                        if isinstance(val, (int, float)):
+                            rounded_val = val if isinstance(val, int) else np.round(val, decimals=self.dec)
+                            formatted_row.append(f"{rounded_val:,.{self.dec}f}".replace(',', ' '))
+                        else:
+                            formatted_row.append(val)
+                    table.add_row(formatted_row)
+                print(table)
+            else:
+                print(df)
+
+            if "NPV_STEP_Objective" in df.columns:
+                table2 = pt()
+                table2.field_names = ["Investment_Period", "NPV Cost"]
+                tot_npv_cost = 0
+                for _, row in df.iterrows():
+                    inv = row["Investment_Period"] if "Investment_Period" in df.columns else ""
+                    npv_cost = row["NPV_STEP_Objective"]
+                    if isinstance(npv_cost, (int, float)):
+                        rounded_val = np.round(npv_cost, decimals=self.dec)
+                        formatted_npv_cost = f"{rounded_val:,.{self.dec}f}".replace(',', ' ')
+                    else:
+                        formatted_npv_cost = npv_cost
+                    table2.add_row([inv, formatted_npv_cost])
+                    if isinstance(npv_cost, (int, float)):
+                        tot_npv_cost += npv_cost
+                table2.add_row(['', ''])
+                formatted_total = f"{np.round(tot_npv_cost, decimals=self.dec):,.{self.dec}f}".replace(',', ' ')
+                table2.add_row(['Total', formatted_total])
+                print(table2)
+            print('')
         return df
 
     def MP_TEP_fuel_type_distribution(self, print_table=True):

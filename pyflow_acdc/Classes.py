@@ -244,7 +244,9 @@ class Grid:
         self.OPF_run = False
         self.TEP_run = False
         self.MP_TEP_run = False
+        self.MP_MS_TEP_run = False
         self.Seq_STEP_run = False
+        self.Seq_MS_STEP_run = False
         
     @property
     def nodes_AC(self):
