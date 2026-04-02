@@ -35,13 +35,12 @@ try:
         OPF_step_results,
         pack_variables,
         Translate_pyf_OPF,
-        TS_parallel_OPF,
         reset_to_initialize,
         calculate_objective
     )
     pyomo_imp= True
     # Add OPF-dependent functions to __all__ only if pyomo is available
-    __all__.extend(['TS_ACDC_OPF_parallel', 'TS_ACDC_OPF', 'results_TS_OPF'])
+    __all__.extend(['TS_ACDC_OPF', 'results_TS_OPF'])
     
 except ImportError:    
     pyomo_imp= False
@@ -359,6 +358,30 @@ def calculate_net_price_zone_power_from_model(grid, model, idx):
                 net_price_zone_power[m.name] = pn_values[m.price_zone_num] * grid.S_base
     return net_price_zone_power
 
+
+def calculate_pn_min_max_from_model(grid, model, idx):
+    """
+    Compute PN lower/upper bounds (MW) from the model's PN bounds.
+
+    In Pyomo these are the price-zone power bounds: model.PGL_min / model.PGL_max.
+    They bound model.PN with: PGL_min <= PN <= PGL_max.
+    """
+    pn_min = {'time': idx + 1}
+    pn_max = {'time': idx + 1}
+
+    if hasattr(model, 'PGL_min') and hasattr(model, 'PGL_max'):
+        pgl_min_values = {k: np.float64(pyo.value(v)) for k, v in model.PGL_min.items()}
+        pgl_max_values = {k: np.float64(pyo.value(v)) for k, v in model.PGL_max.items()}
+
+        for m in grid.Price_Zones:
+            # model.PGL_min/max are indexed by price_zone_num
+            if m.price_zone_num in pgl_min_values:
+                pn_min[m.name] = pgl_min_values[m.price_zone_num] * grid.S_base
+            if m.price_zone_num in pgl_max_values:
+                pn_max[m.name] = pgl_max_values[m.price_zone_num] * grid.S_base
+
+    return pn_min, pn_max
+
 def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=100):
     idx = start-1
     TS_len = len(grid.Time_series[0].data)
@@ -445,81 +468,6 @@ def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=
     grid.Time_series_ran = True
 
 
-def TS_ACDC_OPF_parallel(grid,start=1,end=99999,obj=None ,price_zone_restrictions=False,parallel=10,print_step=False):
-    idx = start-1
-    TS_len = len(grid.Time_series[0].data)
-    total_elapsed_time = 0
-    count = 0
-    
-    if TS_len < end:
-        max_time = TS_len
-    else:
-        max_time = end
-    
-    
-    Time_series_line_res = []
-    Time_series_grid_loading = []
-  
-    Time_series_price = []
-    
-    Time_series_Opt_res_P_conv_DC = []
-    Time_series_Opt_res_P_conv_AC = []
-    Time_series_Opt_res_Q_conv_AC = []
-    Time_series_Opt_res_P_extGrid = []
-    Time_series_Opt_res_Q_extGrid=[]
-    Time_series_Opt_curtailment =[]
-    Time_series_conv_res=[]
-    Time_series_Opt_res_P_Load = []
-
-    while idx < max_time:
-        # print('----')
-        
-        # Determine the range of iterations based on the parallel value
-        current_range = min(parallel, max_time - idx)  # Ensures we don't exceed `end`
-        
-        model,range_res,t,elapsed_time = TS_parallel_OPF(grid,idx,current_range,ObjRule=obj,Price_Zones=price_zone_restrictions,print_step=print_step)
-        total_elapsed_time+=elapsed_time
-        count+=current_range
-        [opt_res_Loading_conv_list,opt_res_Loading_lines_list,opt_res_Loading_grid_list,
-         opt_res_P_conv_AC_list,opt_res_Q_conv_AC_list,opt_res_P_conv_DC_list,
-         opt_res_P_extGrid_list,opt_res_P_Load_list,opt_res_Q_extGrid_list,
-         opt_res_curtailment_list,opt_res_price_list]= range_res
-        
-       
-        Time_series_conv_res.extend(opt_res_Loading_conv_list)
-        Time_series_Opt_res_P_conv_DC.extend(opt_res_P_conv_DC_list)
-        Time_series_Opt_res_P_conv_AC.extend(opt_res_P_conv_AC_list)
-        Time_series_Opt_res_Q_conv_AC.extend(opt_res_Q_conv_AC_list)
-        Time_series_Opt_res_P_Load.extend(opt_res_P_Load_list)
-        Time_series_Opt_res_P_extGrid.extend(opt_res_P_extGrid_list)
-        Time_series_Opt_res_Q_extGrid.extend(opt_res_Q_extGrid_list)
-        Time_series_Opt_curtailment.extend(opt_res_curtailment_list)
-        Time_series_line_res.extend(opt_res_Loading_lines_list)
-        Time_series_grid_loading.extend(opt_res_Loading_grid_list)
-        Time_series_price.extend(opt_res_price_list)
-        
-        idx += parallel
-        
-        
-        
-        
-        
-    ExportACDC_NLmodel_toPyflowACDC(model.submodel[t],grid,price_zone_restrictions)
-    
-    touple = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
-                            Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
-                            Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-                            Time_series_Opt_res_P_Load,Time_series_price)
-    save_TS_to_grid (grid,touple)
-    grid.OPF_run=True  
-    grid.Time_series_ran = True
-    average_elapsed_time = total_elapsed_time / count
-
-
-    return average_elapsed_time
-
-
-                
 def _modify_parameters(grid,model,Price_Zones):
     opf_data = Translate_pyf_OPF(grid,Price_Zones=Price_Zones)
     AC_info = opf_data['AC_info']
@@ -656,6 +604,8 @@ def TS_ACDC_OPF(
     
     Time_series_price = []
     Time_series_net_price_zone_power = []
+    Time_series_PN_min = []
+    Time_series_PN_max = []
     
     weights_def = {
        'Ext_Gen': {'w': 0},
@@ -818,11 +768,15 @@ def TS_ACDC_OPF(
         else:
             price_zone_price = calculate_price_zone_price(grid,idx)
             net_price_zone_power = {'time': idx + 1}
+
+        pn_min, pn_max = calculate_pn_min_max_from_model(grid, model, idx)
         
         
         
         Time_series_price.append(price_zone_price)
         Time_series_net_price_zone_power.append(net_price_zone_power)
+        Time_series_PN_min.append(pn_min)
+        Time_series_PN_max.append(pn_max)
             
        
         Time_series_conv_res.append(opt_res_Loading_conv)
@@ -853,10 +807,15 @@ def TS_ACDC_OPF(
         t_modelexport = t2 - t1
     else:
         t_modelexport = 0.0
+
+    # Persist timestep indices that failed / were skipped during the TS loop.
+    # These are 1-based indices (matching the public TS time step numbering).
+    grid.ts_infeasible_indices = sorted(set(inf_list))
     touple = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-                            Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power)
+                            Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power,
+                            Time_series_PN_min,Time_series_PN_max)
     
     av_t_modelsolve = total_solve_time / count if count else 0.0
     av_t_modelupdate=total_update_time / count if count else 0.0
@@ -886,7 +845,8 @@ def save_TS_to_grid (grid,touple,infeasible):
     (Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
     Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
     Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-    Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power)= touple
+    Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power,
+    Time_series_PN_min,Time_series_PN_max)= touple
 
     def to_dataframe(data):
         df = pd.DataFrame(data)
@@ -912,6 +872,8 @@ def save_TS_to_grid (grid,touple,infeasible):
     
     grid.time_series_results['prices_by_zone'] = to_dataframe(Time_series_price)
     grid.time_series_results['net_price_zone_power'] = to_dataframe(Time_series_net_price_zone_power)
+    grid.time_series_results['PN_min'] = to_dataframe(Time_series_PN_min)
+    grid.time_series_results['PN_max'] = to_dataframe(Time_series_PN_max)
     
     
     # Split into AC and DC line results first, keeping the original index

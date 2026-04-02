@@ -5,6 +5,7 @@ import time
 import math
 from concurrent.futures import ThreadPoolExecutor
 import os
+import copy
 
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC,TEP_variables,ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,calculate_objective_from_model,Optimal_PF
@@ -33,6 +34,14 @@ __all__ = [
 
 def pack_variables(*args):
     return args
+
+
+def _snapshot_ts_results(grid):
+    """Deep-copy TS DataFrames from grid after TS_ACDC_OPF (for Dash / comparisons)."""
+    return {
+        'time_series_results': copy.deepcopy(grid.time_series_results),
+        'S_base': float(getattr(grid, 'S_base', 100.0)),
+    }
 
 def _inv_decision(element, key):
     return element.investment_decisions[key]
@@ -1681,7 +1690,7 @@ def run_opf_for_investment_period(
 
     if plot_folium:
         try:
-            from .Mapping import plot_folium as plot_folium_fn
+            from .Mapping import plot_folium_network as plot_folium_fn
             default_map_name = f"{grid.name}_period_{period_idx}"
             default_map_name = os.path.join(export_location, default_map_name)
 
@@ -1717,6 +1726,48 @@ def run_opf_for_investment_period(
     return model, model_res, timing_info, solver_stats, res
 
 
+def _set_grid_inv_factors_unity(grid):
+    """Reset load / price-zone investment scaling to neutral (no MP growth on demand)."""
+    for price_zone in grid.Price_Zones:
+        price_zone.PLi_inv_factor = 1.0
+        price_zone.curvature_factor = 1.0
+        price_zone.import_expand = 0.0
+    for node in grid.nodes_AC:
+        if getattr(node, 'PLi_linked', False):
+            continue
+        node.PLi_inv_factor = 1.0
+    for node in grid.nodes_DC:
+        if getattr(node, 'PLi_linked', False):
+            continue
+        node.PLi_inv_factor = 1.0
+
+
+def _set_grid_to_nominal_base(grid):
+    """
+    Set expandable assets to nominal multiplicities (``np_line_b``, ``np_conv_b``,
+    ``np_gen_b``, ``np_rsgen_b``). Investment scaling on loads / price zones is
+    reset to unity (``_set_grid_inv_factors_unity``).
+
+    ``current_generation_type_limits`` is set to 1.0 for every ``generation_types``
+    entry. Those limits feed TEP / reporting (e.g. ``GEN_balance_constraints``),
+    not the standard TS-OPF model; keeping them neutral avoids pulling an
+    arbitrary MP-period slice for a run that is meant to be a nominal hardware base.
+    """
+    for line in grid.lines_AC_exp:
+        line.np_line = float(getattr(line, 'np_line_b', line.np_line))
+    for line in grid.lines_DC:
+        line.np_line = float(getattr(line, 'np_line_b', line.np_line))
+    for conv in grid.Converters_ACDC:
+        conv.np_conv = float(getattr(conv, 'np_conv_b', conv.np_conv))
+    for rs in grid.RenSources:
+        rs.np_rsgen = int(getattr(rs, 'np_rsgen_b', rs.np_rsgen))
+    for gen in grid.Generators:
+        gen.np_gen = int(getattr(gen, 'np_gen_b', gen.np_gen))
+    _set_grid_inv_factors_unity(grid)
+    for gen_type in grid.generation_types:
+        grid.current_generation_type_limits[gen_type] = 1.0
+
+
 def run_ts_opf_for_investment_period(
     grid,
     investment_period,
@@ -1736,22 +1787,31 @@ def run_ts_opf_for_investment_period(
     file_name=None,
     plot_ts=False,
     save_grid_pkl: bool = False,
+    nominal_base=False,
 ):
     """
     Apply a dynamic investment state for a given MP period and run TS-OPF over [start, end].
 
     This mirrors `run_opf_for_investment_period`, but calls `TS_ACDC_OPF`
     to perform a time-series OPF for that investment period.
-    """
-    period_idx = int(investment_period)
-    n_periods = int(getattr(grid, 'TEP_n_periods', 0) or 0)
-    if n_periods > 0 and (period_idx < 0 or period_idx >= n_periods):
-        raise ValueError(
-            f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
-        )
 
-    _, PZ = obj_w_rule(grid, ObjRule, True)
-    _set_grid_to_multiperiod_state(grid, period_idx, PZ)
+    If ``nominal_base=True``, ignore ``investment_period`` and apply
+    ``_set_grid_to_nominal_base`` (nominal ``np``, unity inv factors, neutral
+    ``current_generation_type_limits``).
+    """
+    if nominal_base:
+        period_tag = 'base'
+        _set_grid_to_nominal_base(grid)
+    else:
+        period_idx = int(investment_period)
+        n_periods = int(getattr(grid, 'TEP_n_periods', 0) or 0)
+        if n_periods > 0 and (period_idx < 0 or period_idx >= n_periods):
+            raise ValueError(
+                f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
+            )
+        period_tag = period_idx
+        _, PZ = obj_w_rule(grid, ObjRule, True)
+        _set_grid_to_multiperiod_state(grid, period_idx, PZ)
 
     times = TS_ACDC_OPF(
         grid,
@@ -1772,7 +1832,10 @@ def run_ts_opf_for_investment_period(
     # Export TS results to Excel, following the same naming conventions used elsewhere.
     export_location = export_location or 'MP_investment_periods_TS'
     os.makedirs(export_location, exist_ok=True)
-    base_name = file_name or f"{getattr(grid, 'name', 'grid')}_TS_period_{period_idx}"
+    if nominal_base:
+        base_name = file_name or f"{getattr(grid, 'name', 'grid')}_TS_base"
+    else:
+        base_name = file_name or f"{getattr(grid, 'name', 'grid')}_TS_period_{period_tag}"
     excel_path = os.path.join(export_location, base_name)
 
     if export_excel:
@@ -1788,7 +1851,7 @@ def run_ts_opf_for_investment_period(
         try:
             from .Graph_and_plot import plot_TS_res
 
-            ts_svg_dir = os.path.join(export_location, f"ts_svg_period_{period_idx}")
+            ts_svg_dir = os.path.join(export_location, f"ts_svg_period_{period_tag}")
             os.makedirs(ts_svg_dir, exist_ok=True)
             plot_TS_res(
                 grid,
@@ -1823,6 +1886,7 @@ def run_opf_for_all_investment_periods(
     ts_start: int = 1,
     ts_end: int = 99999,
     ts_use_clusters: bool = True,
+    ts_include_base_case: bool = True,
 ):
     """
     Run OPF for every dynamic investment period and export one Excel per period.
@@ -1831,12 +1895,48 @@ def run_opf_for_all_investment_periods(
     - `<grid.name>_res_invperiod_0_results.xlsx`
     - `<grid.name>_res_invperiod_1_results.xlsx`
     - ...
+
+    When ``MS=True``, each integer key ``i`` also has ``ts_results`` (snapshot of
+    ``grid.time_series_results`` and ``S_base``), and ``period_results['ts_inv']``
+    maps period index to that snapshot for ``create_mp_ts_dash`` / ``run_mp_ts_dash``.
+
+    If ``ts_include_base_case`` is True (default), run a **nominal-base** TS first
+    (see ``_set_grid_to_nominal_base``). Results go under ``period_results['base']``
+    and ``ts_inv['base']`` for Dash comparison.
     """
     n_periods = grid.TEP_n_periods
 
 
     prefix = file_name_prefix or f"{grid.name}_res_invperiod"
     period_results = {}
+    ts_export_location = export_location or 'MP_investment_periods_TS'
+
+    if MS and ts_include_base_case:
+        ts_prefix = f"{prefix}_TS"
+        times = run_ts_opf_for_investment_period(
+            grid,
+            investment_period=0,
+            start=ts_start,
+            end=ts_end,
+            ObjRule=ObjRule,
+            print_step=tee,
+            use_clusters=ts_use_clusters,
+            solver=solver,
+            obj_scaling=obj_scaling,
+            export_excel=export_excel,
+            export_location=ts_export_location,
+            file_name=f"{ts_prefix}_base",
+            plot_ts=bool(plot),
+            save_grid_pkl=save_grid_pkl,
+            nominal_base=True,
+        )
+        ts_snap = _snapshot_ts_results(grid)
+        ts_snap['times'] = times
+        period_results['base'] = {
+            'times': times,
+            'export_location': ts_export_location,
+            'ts_results': ts_snap,
+        }
 
     for i in range(n_periods):
         if not MS:
@@ -1868,7 +1968,6 @@ def run_opf_for_all_investment_periods(
             # MS=True: run a TS-OPF for each investment period instead of a single snapshot OPF.
             # PyFlow-ACDC takes this as a time-series post-analysis on the MP solution.
             ts_prefix = f"{prefix}_TS"
-            ts_export_location = export_location or 'MP_investment_periods_TS'
             times = run_ts_opf_for_investment_period(
                 grid,
                 investment_period=i,
@@ -1885,14 +1984,26 @@ def run_opf_for_all_investment_periods(
                 plot_ts=bool(plot),
                 save_grid_pkl=save_grid_pkl,
             )
+            ts_snap = _snapshot_ts_results(grid)
+            ts_snap['times'] = times
             period_results[i] = {
                 'times': times,
                 'export_location': ts_export_location,
+                'ts_results': ts_snap,
             }
 
-    
+    if MS and period_results:
+        ts_inv = {}
+        if 'base' in period_results and 'ts_results' in period_results['base']:
+            ts_inv['base'] = period_results['base']['ts_results']
+        for k, v in period_results.items():
+            if isinstance(k, int) and 'ts_results' in v:
+                ts_inv[k] = v['ts_results']
+        period_results['ts_inv'] = ts_inv
+        grid.ts_inv = ts_inv
 
     return period_results
+
 
 def _set_grid_to_multiperiod_state(grid, investment_period,Price_Zones=False):
     def _np_dynamic_at(inv_dict, period, fallback):

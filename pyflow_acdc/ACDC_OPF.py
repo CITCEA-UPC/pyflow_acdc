@@ -39,7 +39,6 @@ __all__ = [
     'Translate_pyf_OPF',
     'Optimal_L_PF',
     'Optimal_PF',
-    'TS_parallel_OPF',
     'pyomo_model_solve',
     'OPF_updateParam',
     'OPF_obj',
@@ -246,125 +245,6 @@ def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,lim
     "export": t_modelexport,
     }
     return model, model_res , timing_info, solver_stats
-
-
-def TS_parallel_OPF(grid,idx,current_range,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,print_step=False):
-    grid.reset_run_flags()
-    from .Time_series import update_grid_data,_modify_parameters
-    
-    weights_def, Price_Zones = obj_w_rule(grid,ObjRule,OnlyGen)
-        
-        
-    model = pyo.ConcreteModel()
-    model.name="TS MTDC AC/DC hybrid OPF"
-    
-    
-    model.Time_frames = pyo.Set(initialize=range(idx, idx + current_range))
-    model.submodel = pyo.Block(model.Time_frames)
-    # Run parallel iterations
-    base_model = pyo.ConcreteModel()
-    base_model = OPF_create_NLModel_ACDC(base_model,grid,PV_set=False,Price_Zones=True,TEP=True)
-
-    for i in range(current_range):
-        t = idx + i
-        if print_step:
-            print(t)
-        base_model_copy = base_model.clone()
-        model.submodel[t].transfer_attributes_from(base_model_copy)
-
-        for ts in grid.Time_series:
-            update_grid_data(grid, ts, t)
-                    
-        _modify_parameters(grid,model.submodel[t],Price_Zones) 
-        subobj = OPF_obj(model.submodel[t],grid,weights_def,OnlyGen)
-        model.submodel[t].obj = pyo.Objective(rule=subobj, sense=pyo.minimize)
-
-    obj_rule= TS_parallel_obj(model)
-    model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
-    model_results,elapsed_time= pyomo_model_solve(model,grid)
-    
-    Current_range_res = obtain_results_TSOPF(model,grid,current_range,idx,Price_Zones)
-      
-    return model, Current_range_res,t,elapsed_time
-
-
-def obtain_results_TSOPF(model,grid,current_range,idx,Price_Zones) :
-    opt_res_P_conv_DC_list = []
-    opt_res_P_conv_AC_list =[]
-    opt_res_Q_conv_AC_list =[]
-    opt_res_P_Load_list =[]
-    opt_res_P_extGrid_list = []
-    opt_res_curtailment_list = []
-    opt_res_Q_extGrid_list = []
-    opt_res_Loading_conv_list =[]
-    opt_res_Loading_lines_list =[]
-    opt_res_price_list =[]
-    opt_res_Loading_grid_list=[]
-    for i in range(current_range):
-        
-        t = idx + i
-        # print(t+1)
-        
-        (opt_res_P_conv_DC, opt_res_P_conv_AC, opt_res_Q_conv_AC, opt_P_load,
-         opt_res_P_extGrid, opt_res_Q_extGrid, opt_res_curtailment,opt_res_Loading_conv) = OPF_step_results(model.submodel[t], grid)
-        
-        opt_res_Loading_lines,opt_res_Loading_grid=OPF_line_res (model.submodel[t],grid)
-        
-        if Price_Zones:
-           opt_res_price=OPF_price_priceZone (model.submodel[t],grid)
-        else:
-            opt_res_price={}
-            for ts in grid.Time_series:
-                if ts.type == 'price':
-                    opt_res_price[ts.name]=ts.data[t]
-                        
-        # Add the time index to the dictionaries
-        opt_res_curtailment['time'] = t + 1
-        opt_res_P_conv_DC['time'] = t + 1
-        opt_res_P_conv_AC['time'] = t + 1
-        opt_res_Q_conv_AC['time'] = t + 1
-        opt_res_P_extGrid['time'] = t + 1
-        opt_res_Q_extGrid['time']=t+1
-        opt_P_load['time']        = t+1
-        opt_res_Loading_conv['time'] = t + 1
-        opt_res_Loading_lines['time'] = t + 1
-        opt_res_Loading_grid['time'] =t+1
-        opt_res_price['time']=t+1
-        
-        # Append the dictionaries to the respective lists
-        opt_res_P_conv_DC_list.append(opt_res_P_conv_DC)
-        opt_res_P_conv_AC_list.append(opt_res_P_conv_AC)
-        opt_res_Q_conv_AC_list.append(opt_res_Q_conv_AC)
-        
-        opt_res_P_extGrid_list.append(opt_res_P_extGrid)
-        opt_res_P_Load_list.append(opt_P_load)
-        opt_res_curtailment_list.append(opt_res_curtailment)
-        opt_res_Q_extGrid_list.append(opt_res_Q_extGrid)
-        opt_res_Loading_conv_list.append(opt_res_Loading_conv)
-        opt_res_Loading_lines_list.append(opt_res_Loading_lines)
-        opt_res_price_list.append(opt_res_price)
-        opt_res_Loading_grid_list.append(opt_res_Loading_grid)
-
-    # After processing all time steps, pack the results into tuples
-    touple = (opt_res_Loading_conv_list,opt_res_Loading_lines_list,opt_res_Loading_grid_list,
-             opt_res_P_conv_AC_list,opt_res_Q_conv_AC_list,opt_res_P_conv_DC_list,
-             opt_res_P_extGrid_list,opt_res_P_Load_list,opt_res_Q_extGrid_list,
-             opt_res_curtailment_list,opt_res_price_list)
-    
-    
-    return touple
-
-def TS_parallel_obj(model):
-   
-    # Calculate the weighted social cost for each submodel (subblock)
-    total_obj = 0
-    for t in model.Time_frames:
-        submodel_obj = model.submodel[t].obj
-        model.submodel[t].obj.deactivate()
-        total_obj+=submodel_obj
-      
-        
-    return total_obj 
 
 
 def fx_conv(model,grid):

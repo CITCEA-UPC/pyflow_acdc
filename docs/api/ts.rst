@@ -167,24 +167,6 @@ Cross-sectional time series
 
        res_dict = grid.time_series_results
 
-        
-
-Parallel cross-sectional time series
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. py:function:: TS_ACDC_OPF_parallel(grid, ObjRule=None, PV_set=False, OnlyGen=True, Price_Zones=False)
-
-   Performs parallel time series optimal power flow analysis. Creates parallel sub-models to speed up the calculation.
-
-   **Returns**
-   Results are saved in ``grid.time_series_results`` and the average elapsed time is returned.
-
-   **Example**
-
-   .. code-block:: python
-
-       average_elapsed_time=pyf.TS_ACDC_OPF_parallel(grid)
-
 
 Data handling
 -------------

@@ -238,8 +238,25 @@ class Grid:
         
     def reset_run_flags(self):
         """
-        Helper to clear run-type flags before starting a new analysis.
-        Call this before setting one of OPF_run / TEP_run / MP_TEP_run to True.
+        Clear **only** the run-type booleans used by ``Results.All`` and solvers.
+
+        Set at the **start** of top-level solves that export back to the grid:
+        ``Optimal_PF`` / ``Optimal_L_PF``, ``ACDC_PF`` entry points, static TEP
+        (``transmission_expansion``, ``linear_transmission_expansion``, …),
+        ``multi_period_transmission_expansion``, ``multi_period_MS_TEP``, and
+        ``sequential_STEP`` / ``sequential_MS_STEP`` internals.
+
+        Typical combinations after a run: ``OPF_run`` alone (snapshot OPF/TS-OPF);
+        ``TEP_run`` (static TEP); ``MP_TEP_run`` *or* ``MP_MS_TEP_run`` (mutually
+        exclusive in MP helpers); ``Seq_STEP_run`` *or* ``Seq_MS_STEP_run``.
+
+        **Not** called from ``TS_ACDC_OPF`` / ``run_ts_opf_for_investment_period``:
+        those runs set ``OPF_run`` / ``Time_series_ran`` while keeping an existing
+        ``MP_*`` / ``TEP_run`` context for reporting.
+
+        Optional UI / post-processing attributes (``ts_inv``, ``dash_mode``,
+        ``folium_mode``) are **not** cleared here; set or delete them in the
+        workflow that owns them (e.g. MP TS post-processing sets ``ts_inv``).
         """
         self.OPF_run = False
         self.TEP_run = False
@@ -247,7 +264,7 @@ class Grid:
         self.MP_MS_TEP_run = False
         self.Seq_STEP_run = False
         self.Seq_MS_STEP_run = False
-        
+
     @property
     def nodes_AC(self):
         return self._nodes_AC

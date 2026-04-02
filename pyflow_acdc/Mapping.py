@@ -111,7 +111,7 @@ def create_geometries(grid):
         if gen.x_coord is not None and gen.y_coord is not None and gen.geometry is None:
             gen.geometry = Point(gen.x_coord, gen.y_coord)
 
-def plot_folium(
+def plot_folium_network(
     grid,
     text='data',
     name=None,
@@ -1273,6 +1273,74 @@ def plot_folium_inv_results(
     if show:
         webbrowser.open(f"file://{abs_map_filename}")
     return m
+
+
+def _folium_has_inv_results(grid):
+    candidates = [
+        getattr(grid, 'MP_TEP_results', None),
+        getattr(grid, 'Seq_MS_STEP_results', None),
+        getattr(grid, 'Seq_STEP_results', None),
+    ]
+    for cand in candidates:
+        if isinstance(cand, pd.DataFrame) and not cand.empty:
+            return True
+    return False
+
+
+def _folium_has_ts_line_loading(grid):
+    if not getattr(grid, 'Time_series_ran', False):
+        return False
+    tsr = getattr(grid, 'time_series_results', None) or {}
+    ll = tsr.get('line_loading')
+    return ll is not None and not getattr(ll, 'empty', True)
+
+
+def _resolve_folium_mode(grid, mode):
+    """mode: 'auto' | 'network' | 'ts' | 'inv'."""
+    gm = getattr(grid, 'folium_mode', 'auto')
+    if mode == 'auto' and gm in ('network', 'ts', 'inv'):
+        return gm
+    if mode != 'auto':
+        return mode
+    if gm in ('network', 'ts', 'inv'):
+        return gm
+    if _folium_has_ts_line_loading(grid):
+        return 'ts'
+    if _folium_has_inv_results(grid) and (
+        getattr(grid, 'TEP_run', False)
+        or getattr(grid, 'MP_TEP_run', False)
+        or getattr(grid, 'MP_MS_TEP_run', False)
+        or getattr(grid, 'Seq_STEP_run', False)
+        or getattr(grid, 'Seq_MS_STEP_run', False)
+    ):
+        return 'inv'
+    return 'network'
+
+
+def plot_folium(grid, mode='auto', **kwargs):
+    """
+    Choose the folium helper using the same run flags as ``Grid.reset_run_flags``.
+
+    mode: 'auto' | 'network' | 'ts' | 'inv'
+
+    * **auto** — ``grid.folium_mode`` if set to a concrete mode; else prefer a TS
+      loading animation if ``Time_series_ran`` and ``line_loading`` exist; else an
+      investment timeline map if a MP/Seq results table exists and any of
+      ``TEP_run``, ``MP_TEP_run``, ``MP_MS_TEP_run``, ``Seq_STEP_run``,
+      ``Seq_MS_STEP_run`` is true; else static ``plot_folium_network``.
+
+    Extra keyword arguments are forwarded to the selected function.
+    """
+    resolved = _resolve_folium_mode(grid, mode)
+    if resolved == 'ts':
+        return plot_folium_ts_results(grid, **kwargs)
+    if resolved == 'inv':
+        return plot_folium_inv_results(grid, **kwargs)
+    return plot_folium_network(grid, **kwargs)
+
+
+
+
 
 def _default_type_keys():
     from .Classes import Grid

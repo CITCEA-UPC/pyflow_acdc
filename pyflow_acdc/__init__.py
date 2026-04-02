@@ -110,6 +110,8 @@ __all__ = [
     'Time_series_prob',
     'plot_neighbour_graph',
     'plot_TS_res',
+    'plot_folium',
+    'plot_folium_network',
     'save_network_svg',
     'plot_model_feasebility',
     'plot_3D',
@@ -129,7 +131,7 @@ try:
     __all__.extend([
         'Optimal_PF', 'Optimal_L_PF', 'pyomo_model_solve', 'OPF_obj', 'OPF_line_res',
         'OPF_price_priceZone', 'Translate_pyf_OPF',
-        'TS_ACDC_OPF', 'TS_ACDC_OPF_parallel', 'results_TS_OPF'
+        'TS_ACDC_OPF', 'results_TS_OPF'
     ])
     HAS_OPF = True
     
@@ -183,7 +185,13 @@ except ImportError:
 
 try:
     from .Graph_Dash import *
-    __all__.append('run_dash')
+    __all__.extend([
+        'run_dash',
+        'run_ts_dash',
+        'run_mp_ts_dash',
+        'create_mp_ts_dash',
+        'plot_TS_res_from_ts',
+    ])
     HAS_DASH = True
 except ImportError:
     HAS_DASH = False
