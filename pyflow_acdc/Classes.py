@@ -3577,6 +3577,62 @@ class Price_Zone:
         """Sync aggregated zone load (PLi) using stored PLi base + current scaling factors."""
         self.PLi = float(self._PLi_base) * float(self._PLi_factor) * float(self._PLi_inv_factor)
 
+    @property
+    def min_PGL_min(self):
+        """Fallback lower PN bound (pu) from worst-case import composition."""
+    
+        max_inv_factor = max(self.investment_decisions['Load'])
+        max_load_factor = max_inv_factor
+
+        # Worst-case import:
+        # - base load contribution: PLi_base * max_inv_factor
+        # - ext-grid contribution:
+        #   * if allow_sell: Max_pow_gen*np_gen_max
+        #   * else: p_load_base * max_load_factor
+        worst_import = max(0.0, float(self._PLi_base)) * max_load_factor
+        for node in list(self.nodes_AC) + list(self.nodes_DC):
+            for gen in node.connected_gen:
+                if not gen.is_ext_grid:
+                    continue
+                if gen.allow_sell:
+                    worst_import += max(0.0, float(gen.Max_pow_gen) * float(gen.np_gen_max))
+                else:
+                    worst_import += max(0.0, float(gen.p_load_base)) * max_load_factor
+
+        if worst_import > 0:
+            return -worst_import
+        if np.isfinite(self.PGL_min):
+            return float(self.PGL_min)
+        return 0.0
+
+    @property
+    def max_PGL_max(self):
+        """Fallback upper envelope for PN (pu): zonal max producible power."""
+        gen_cap = 0.0
+        ren_cap = 0.0
+        seen_gens = set()
+        seen_rs = set()
+        for node in list(self.nodes_AC) + list(self.nodes_DC):
+            for gen in node.connected_gen:
+                gid = id(gen)
+                if gid in seen_gens:
+                    raise ValueError(
+                        f"Generator '{gen.name}' appears multiple times "
+                        f"in price zone '{self.name}'."
+                    )
+                seen_gens.add(gid)
+                gen_cap += float(gen.Max_pow_gen) * float(gen.np_gen_max)
+            for rs in node.connected_RenSource:
+                rid = id(rs)
+                if rid in seen_rs:
+                    raise ValueError(
+                        f"Ren source '{rs.name}' appears multiple times "
+                        f"in price zone '{self.name}'."
+                    )
+                seen_rs.add(rid)
+                ren_cap += float(rs.PGi_ren_base) * float(rs.np_rsgen_max)
+        return gen_cap + ren_cap
+
     def recalc_PLi_base_and_total(self):
         """Recompute this price zone base load from all linked nodes.
 

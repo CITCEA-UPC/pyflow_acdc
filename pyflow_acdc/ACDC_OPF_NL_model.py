@@ -1764,7 +1764,7 @@ def price_zone_variables(model,grid,Price_Zone_info,AC_info,DC_info,gen_info):
     "Price_Zone Variables"
     def Price_Zone_P_bounds(model, price_zone):
         nM = grid.Price_Zones[price_zone]
-        return (nM.PGL_min,nM.PGL_max)
+        return (nM.min_PGL_min,nM.max_PGL_max)
     
     def lf_bounds(model, g):
         gen = grid.Generators[g]

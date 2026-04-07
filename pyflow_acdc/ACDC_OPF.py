@@ -1536,46 +1536,6 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
     node2price_zone = {'DC': {}, 'AC': {}}
     price_zone2node = {'DC': {}, 'AC': {}}
     if Price_Zones:
-        def _pz_capacity_and_load_bounds(price_zone):
-            """Fallback finite bounds in pu for zones with non-finite PGL limits.
-
-            - max export fallback: sum(gen Max_pow_gen*np_gen_max + ren PGi_ren_base*np_rsgen_max)
-            - max import fallback: -sum(node PLi)
-            """
-            gen_cap = 0.0
-            ren_cap = 0.0
-            load_cap = 0.0
-            seen_gens = set()
-            seen_rs = set()
-
-            nodes = list(price_zone.nodes_AC) + list(price_zone.nodes_DC)
-            for node in nodes:
-                load_cap += max(0.0, float(getattr(node, 'PLi', 0.0)))
-
-                for gen in getattr(node, 'connected_gen', []):
-                    gid = id(gen)
-                    if gid in seen_gens:
-                        raise ValueError(
-                            f"Generator '{getattr(gen, 'name', '<unnamed>')}' appears multiple times "
-                            f"in price zone '{getattr(price_zone, 'name', price_zone.price_zone_num)}'. "
-                            "Each generator must be connected to exactly one node in a price zone."
-                        )
-                    seen_gens.add(gid)
-                    gen_cap += float(gen.Max_pow_gen) * float(gen.np_gen_max)
-
-                for rs in getattr(node, 'connected_RenSource', []):
-                    rid = id(rs)
-                    if rid in seen_rs:
-                        raise ValueError(
-                            f"Ren source '{getattr(rs, 'name', '<unnamed>')}' appears multiple times "
-                            f"in price zone '{getattr(price_zone, 'name', price_zone.price_zone_num)}'. "
-                            "Each ren source must be connected to exactly one node in a price zone."
-                        )
-                    seen_rs.add(rid)
-                    ren_cap += float(rs.PGi_ren_base) * float(rs.np_rsgen_max)
-
-            return -(load_cap), (gen_cap + ren_cap)
-
         for m in grid.Price_Zones:
             
             nn_M += 1
@@ -1595,12 +1555,10 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
                     node2price_zone['DC'][n.nodeNumber] = m.price_zone_num
             pgl_min_val = float(getattr(m, 'PGL_min', -np.inf))
             pgl_max_val = float(getattr(m, 'PGL_max', np.inf))
-
-            fallback_min, fallback_max = _pz_capacity_and_load_bounds(m)
             if not np.isfinite(pgl_min_val):
-                pgl_min_val = float(fallback_min)
+                pgl_min_val = float(m.min_PGL_min)
             if not np.isfinite(pgl_max_val):
-                pgl_max_val = float(fallback_max)
+                pgl_max_val = float(m.max_PGL_max)
 
             PGL_min[m.price_zone_num] = pgl_min_val
             PGL_max[m.price_zone_num] = pgl_max_val
