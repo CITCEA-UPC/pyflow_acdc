@@ -939,6 +939,9 @@ def save_TS_to_grid (grid,touple,infeasible):
         Ext_Gen_joined  = Ext_Gen_joined[[col for col in Ext_Gen_joined.columns if col != 'RenSource'] + ['RenSource']]
     grid.ts_infeasible_count = infeasible
     grid.time_series_results['real_load_by_zone']  = Ext_Load_joined
+    # Track the *model* P_known_AC sign convention aggregated by price zone.
+    # In OPF_step_results: opt_P_load = -P_known_AC, so real_load_by_zone is the sign-flipped view.
+    grid.time_series_results['real_load_known_by_zone'] = -Ext_Load_joined
     grid.time_series_results['real_power_by_zone'] = Ext_Gen_joined
     grid.time_series_results['reactive_power_opf'].columns = grid.time_series_results['reactive_power_opf'].columns.str.replace('Reactor_' , '',regex=False)
     grid.time_series_results['real_power_opf'].columns = grid.time_series_results['real_power_opf'].columns.str.replace('RenSource_','', regex=False)
@@ -991,6 +994,7 @@ def Time_series_statistics(grid, curtail=0.99,over_loading=0.9):
             'converter_q_ac': grid.time_series_results['converter_q_ac'].add_suffix('_convQ_AC'),
             'converter_p_ac': grid.time_series_results['converter_p_ac'].add_suffix('_convP_AC'),
             'real_load_by_zone': grid.time_series_results['real_load_by_zone'].add_suffix('_PL_OPF'),
+            'real_load_known_by_zone': grid.time_series_results['real_load_known_by_zone'].add_suffix('_PL_Pknown'),
             'real_power_opf': grid.time_series_results['real_power_opf'].add_suffix('_P_OPF'),
             'reactive_power_opf': grid.time_series_results['reactive_power_opf'].add_suffix('_Q_OPF'),
             'curtailment': grid.time_series_results['curtailment'].add_suffix('_curtail'),
@@ -1074,6 +1078,7 @@ def results_TS_OPF(grid,excel_file_path,grid_names=None,stats=None,times=None):
         (grid.time_series_results['converter_q_ac']*grid.S_base).to_excel(writer, sheet_name='Converter Q AC', index=True)
         (grid.time_series_results['converter_p_ac']*grid.S_base).to_excel(writer, sheet_name='Converter P AC', index=True)
         (grid.time_series_results['real_load_by_zone']*grid.S_base).to_excel(writer, sheet_name='Real Load', index=True)
+        (grid.time_series_results['real_load_known_by_zone']*grid.S_base).to_excel(writer, sheet_name='Known Load', index=True)
         (grid.time_series_results['real_power_opf']*grid.S_base).to_excel(writer, sheet_name='Real power OPF', index=True)
         (grid.time_series_results['reactive_power_opf']*grid.S_base).to_excel(writer, sheet_name='Reactive OPF', index=True)
         (grid.time_series_results['curtailment']* 100).to_excel(writer, sheet_name='Curtailment', index=True)

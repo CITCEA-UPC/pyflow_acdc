@@ -1191,7 +1191,7 @@ def create_geometries(grid):
                     x, y = pos[node_obj]
                     gen.geometry = Point(x, y)
 
-def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=True, legend=True, square_ratio=False,poly=None,linestrings=None,coloring=None, poly_size=None, tee=False):
+def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=True, legend=True, square_ratio=False,poly=None,linestrings=None,coloring=None, poly_size=None, tee=False, line_size_factor=1.0):
     """Save the network as SVG file
     
     Parameters:
@@ -1207,6 +1207,9 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
     """
     try:
         import svgwrite
+        line_size_factor = float(line_size_factor)
+        if line_size_factor <= 0:
+            raise ValueError("line_size_factor must be > 0.")
         
         # Check if all elements have geometries, if not create them
         elements_without_geometry = []
@@ -1502,7 +1505,8 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     else:
                         color = "red" if getattr(line, 'isTf', False) else "black"
                 
-                dwg.add(dwg.path(d=path_data, stroke=color, stroke_width=2, fill='none'))
+                stroke_width = float(2.0 / line_size_factor)
+                dwg.add(dwg.path(d=path_data, stroke=color, stroke_width=stroke_width, fill='none'))
         
 
         for line in grid.lines_AC_exp:
@@ -1526,7 +1530,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
 
                 # Ensure stroke width is a plain Python float (svgwrite validator
                 # does not accept NumPy scalar types).
-                stroke_width = float(2 * float(line.np_line))
+                stroke_width = float((2 * float(line.np_line)) / line_size_factor)
                 dwg.add(dwg.path(d=path_data, stroke=color, stroke_width=stroke_width, fill='none'))
 
 
@@ -1539,7 +1543,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
-                stroke_width = float(2 * float(line.np_line))
+                stroke_width = float((2 * float(line.np_line)) / line_size_factor)
                 dwg.add(dwg.path(d=path_data, stroke='blue', stroke_width=stroke_width, fill='none'))
         
         # Draw converters
@@ -1551,7 +1555,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
-                stroke_width = float(2 * float(conv.np_conv))
+                stroke_width = float((2 * float(conv.np_conv)) / line_size_factor)
                 dwg.add(dwg.path(d=path_data, stroke='purple', stroke_width=stroke_width, fill='none'))
         
         # Draw nodes

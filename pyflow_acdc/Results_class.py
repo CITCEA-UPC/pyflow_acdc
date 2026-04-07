@@ -2456,7 +2456,7 @@ class Results:
         
         for m in self.Grid.Price_Zones:
             
-            Rgen = sum(rs.PGi_ren * rs.gamma for node in m.nodes_AC for rs in node.connected_RenSource) * self.Grid.S_base
+            Rgen = sum(rs.PGi_ren * rs.gamma *rs.np_rsgen for node in m.nodes_AC for rs in node.connected_RenSource) * self.Grid.S_base
             
             gen = sum(node.PGi+node.PGi_opt for node in m.nodes_AC)*self.Grid.S_base
             load = sum(node.PLi for node in m.nodes_AC)*self.Grid.S_base
@@ -2472,7 +2472,7 @@ class Results:
             if self.Grid.CurtCost==False:
                 curt_cost=0
             else:  
-                curt_cost= sum((rs.PGi_ren-rs.PGi_ren * rs.gamma)*rs.sigma*node.price for node in m.nodes_AC for rs in node.connected_RenSource)*self.Grid.S_base
+                curt_cost= sum((rs.PGi_ren-rs.PGi_ren * rs.gamma)*rs.np_rsgen*rs.sigma*node.price for node in m.nodes_AC for rs in node.connected_RenSource)*self.Grid.S_base
             m_tot= Rgen_cost+gen_cost+curt_cost+sc
             
             tot_sc+=sc
@@ -2487,13 +2487,34 @@ class Results:
             else: 
                 export = 0
                 imp = abs(ie)
+
+            # Price-zone import/export capability bounds (from OPF constraints).
+            # PN is expressed in pu and converted to MW by S_base in other parts of the code.
+            # We expose these bounds in MW for easier comparison with the energy balance terms above.
+            pgl_min = getattr(m, "PGL_min", None)
+            pgl_max = getattr(m, "PGL_max", None)
+            max_import_mw = None
+            max_export_mw = None
+            if pgl_min is not None:
+                try:
+                    max_import_mw = max(0.0, -float(pgl_min) * self.Grid.S_base)
+                except Exception:
+                    max_import_mw = None
+            if pgl_max is not None:
+                try:
+                    # Allow inf to pass through; prettytable will print it.
+                    max_export_mw = max(0.0, float(pgl_max) * self.Grid.S_base)
+                except Exception:
+                    max_export_mw = None
             rows.append({
                 "Price_Zone": m.name,
                 "Renewable Generation(MW)": np.round(Rgen, decimals=self.dec),
                 "Generation (MW)": np.round(gen, decimals=self.dec),
                 "Load (MW)": np.round(load, decimals=self.dec),
                 "Import (MW)": np.round(imp, decimals=self.dec),
+                "Max import (MW)": "" if max_import_mw is None else np.round(max_import_mw, decimals=self.dec),
                 "Export (MW)": np.round(export, decimals=self.dec),
+                "Max export (MW)": "" if max_export_mw is None else np.round(max_export_mw, decimals=self.dec),
                 "Price (€/MWh)": np.round(price, decimals=2),
                 "Social Cost [k€]": np.round(sc, decimals=self.dec),
                 "Renewable Gen Cost [k€]": np.round(Rgen_cost, decimals=self.dec),
@@ -2509,7 +2530,9 @@ class Results:
                 "Generation (MW)": "",
                 "Load (MW)": "",
                 "Import (MW)": "",
+                "Max import (MW)": "",
                 "Export (MW)": "",
+                "Max export (MW)": "",
                 "Price (€/MWh)": "",
                 "Social Cost [k€]": np.round(tot_sc, decimals=self.dec),
                 "Renewable Gen Cost [k€]": np.round(tot_Rgen_cost, decimals=self.dec),
@@ -2521,7 +2544,7 @@ class Results:
         df = pd.DataFrame(rows) if rows else pd.DataFrame(
             columns=[
                 "Price_Zone","Renewable Generation(MW)","Generation (MW)", "Load (MW)",
-                "Import (MW)","Export (MW)","Price (€/MWh)",
+                "Import (MW)","Max import (MW)","Export (MW)","Max export (MW)","Price (€/MWh)",
                 "Social Cost [k€]","Renewable Gen Cost [k€]","Curtailment Cost [k€]",
                 "Generation Cost [k€]","Total Cost [k€]"
             ]
@@ -2533,7 +2556,17 @@ class Results:
             print('Price_Zone')
             # First table: energy balance & price
             table = pt()
-            table.field_names = ["Price_Zone","Renewable Generation(MW)" ,"Generation (MW)", "Load (MW)","Import (MW)","Export (MW)","Price (€/MWh)"]
+            table.field_names = [
+                "Price_Zone",
+                "Renewable Generation(MW)",
+                "Generation (MW)",
+                "Load (MW)",
+                "Import (MW)",
+                "Max import (MW)",
+                "Export (MW)",
+                "Max export (MW)",
+                "Price (€/MWh)",
+            ]
             for _, row in df.iterrows():
                 if row["Price_Zone"] == "Total":
                     continue
@@ -2543,7 +2576,9 @@ class Results:
                     row["Generation (MW)"],
                     row["Load (MW)"],
                     row["Import (MW)"],
+                    row["Max import (MW)"],
                     row["Export (MW)"],
+                    row["Max export (MW)"],
                     row["Price (€/MWh)"],
                 ])
             # Second table: cost breakdown

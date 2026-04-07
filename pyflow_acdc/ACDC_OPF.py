@@ -1531,7 +1531,7 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
 
     "Price zone info"
    
-    price_zone_prices, price_zone_as, price_zone_bs, PGL_min, PGL_max, PL_price_zone =  {}, {}, {}, {}, {}, {}
+    price_zone_prices, price_zone_as, price_zone_bs, PGL_min, PGL_max =  {}, {}, {}, {}, {}
     nn_M, lista_M = 0, []
     node2price_zone = {'DC': {}, 'AC': {}}
     price_zone2node = {'DC': {}, 'AC': {}}
@@ -1542,25 +1542,19 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
             price_zone_prices[m.price_zone_num] = m.price
             price_zone_as[m.price_zone_num] = m.a
             price_zone_bs[m.price_zone_num] = m.b
-            import_M = m.import_pu_L
-            export_M = m.export_pu_G * (sum(sum(rs.PGi_ren for rs in node.connected_RenSource) + sum(gen.Max_pow_gen for gen in node.connected_gen) for node in m.nodes_AC))*grid.S_base
-            PL_price_zone[m.price_zone_num] = 0
-            
             if ACmode:
                 price_zone2node['AC'][m.price_zone_num] = []
                 for n in m.nodes_AC:
                     price_zone2node['AC'][m.price_zone_num].append(n.nodeNumber)
                     node2price_zone['AC'][n.nodeNumber] = m.price_zone_num
-                    PL_price_zone[m.price_zone_num] += n.PLi
             
             if DCmode:
                 price_zone2node['DC'][m.price_zone_num] = []
                 for n in m.nodes_DC:
                     price_zone2node['DC'][m.price_zone_num].append(n.nodeNumber)
                     node2price_zone['DC'][n.nodeNumber] = m.price_zone_num
-                    PL_price_zone[m.price_zone_num] += n.PLi
-            PGL_min[m.price_zone_num] = max(m.PGL_min, -import_M * PL_price_zone[m.price_zone_num]*grid.S_base)
-            PGL_max[m.price_zone_num] = min(m.PGL_max, export_M)
+            PGL_min[m.price_zone_num] = m.PGL_min
+            PGL_max[m.price_zone_num] = m.PGL_max
         lista_M = list(range(0, nn_M))
     
     Price_Zone_Lists = pack_variables(lista_M, node2price_zone, price_zone2node)
@@ -1856,8 +1850,12 @@ def OPF_step_results(model,grid):
             name = element.name
             gamma=gamma_values[element.rsNumber]
             opt_res_curtailment [name] = 1-gamma
-            opt_res_P_extGrid[f'RenSource_{name}'] = Pren_values[element.rsNumber]*gamma
-            opt_res_Q_extGrid[f'RenSource_{name}'] = Qren_values[element.rsNumber]
+            # Renewable "multiplicity" is captured by model.np_rsgen in the OPF constraints.
+            # For time-series export we must include it as well, otherwise RenSource_* columns
+            # represent only one unit instead of the total installed multiplicity.
+            rs_multiplicity = np.float64(pyo.value(model.np_rsgen[element.rsNumber]))
+            opt_res_P_extGrid[f'RenSource_{name}'] = Pren_values[element.rsNumber] * gamma * rs_multiplicity
+            opt_res_Q_extGrid[f'RenSource_{name}'] = Qren_values[element.rsNumber] * rs_multiplicity
 
     # Combine Generators and Renewable Sources into one iterable
     elements = grid.Generators + grid.RenSources

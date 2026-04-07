@@ -128,6 +128,7 @@ def plot_folium_network(
     plot_load=True,
     show_all=False,
     add_marine_regions_wms=False,
+    line_size_factor=1.0,
 ):
     # "OpenStreetMap",     "CartoDB Positron"     "Cartodb dark_matter" 
     if name is None:
@@ -497,6 +498,10 @@ def plot_folium_network(
 
     
     # Function to add LineString geometries to the map
+    line_size_factor = float(line_size_factor)
+    if line_size_factor <= 0:
+        raise ValueError("line_size_factor must be > 0.")
+
     def add_lines(gdf, tech_name,ant):
         
         for _, row in gdf.iterrows():
@@ -507,22 +512,26 @@ def plot_folium_network(
             if ant and row["ant_viable"]:
                 if row["Direction"] == "to":
                     coords = coords[::-1]
+                base_weight = 3 * row["thck"] if row["type"] == "HVDC" else 2 * row["thck"]
+                weight = float(base_weight) / line_size_factor
                 # Add animated AntPath
                 AntPath(
                     locations=coords,
                     color=row["color"],
-                    weight=3*row["thck"] if row["type"] == "HVDC" else 2*row["thck"],  # HVDC lines slightly thicker
+                    weight=weight,  # HVDC lines slightly thicker
                     opacity=0.8,
                     delay=400,  # Adjust animation speed
                     popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
                 ).add_to(tech_name)
     
             else:
+                base_weight = 3 * row["thck"] if row["type"] == "HVDC" else 2 * row["thck"]
+                weight = float(base_weight) / line_size_factor
         
                 folium.PolyLine(
                     coords,
                     color=row["color"],
-                    weight=3*row["thck"] if row["type"] == "HVDC" else 2*row["thck"],  # HVDC lines slightly thicker
+                    weight=weight,  # HVDC lines slightly thicker
                     opacity=0.8,
                     popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
                 ).add_to(tech_name)
@@ -826,7 +835,12 @@ def plot_folium_ts_results(
     max_weight=8.0,
     add_legend=True,
     legend_position="topright",
+    line_size_factor=1.0,
 ):
+    line_size_factor = float(line_size_factor)
+    if line_size_factor <= 0:
+        raise ValueError("line_size_factor must be > 0.")
+
     if name is None:
         name = f"{grid.name}_ts_results"
 
@@ -886,7 +900,7 @@ def plot_folium_ts_results(
                 n_parallel = 1.0
             n_cap = max(1.0, min(6.0, n_parallel))
             width_scale = (n_cap - 1.0) / 5.0
-            weight = float(min_weight + (max_weight - min_weight) * width_scale)
+            weight = float(min_weight + (max_weight - min_weight) * width_scale) / line_size_factor
             color = _leaflet_color(colormap(min(load_pct, 100.0)))
 
             coords_lonlat = [[pt[0], pt[1]] for pt in geometry.coords if len(pt) >= 2]
@@ -1038,7 +1052,13 @@ def plot_folium_inv_results(
     max_weight=8.0,
     show_installed=True,
     show_decommissioned=True,
+    inv_dropdown_period=False,
+    line_size_factor=1.0,
 ):
+    line_size_factor = float(line_size_factor)
+    if line_size_factor <= 0:
+        raise ValueError("line_size_factor must be > 0.")
+
     if name is None:
         name = f"{grid.name}_inv_results"
 
@@ -1109,9 +1129,9 @@ def plot_folium_inv_results(
 
     def _weight_from_active(active_value, max_active):
         if max_active <= 0:
-            return float(min_weight)
+            return float(min_weight) / line_size_factor
         scale = max(0.0, min(1.0, float(active_value) / float(max_active)))
-        return float(min_weight + (max_weight - min_weight) * scale)
+        return float(min_weight + (max_weight - min_weight) * scale) / line_size_factor
 
     max_active = 0.0
     active_map = {}
@@ -1153,7 +1173,10 @@ def plot_folium_inv_results(
         decomm_map[line_obj] = {p: 0.0 for p in period_ids}
         max_active = max(max_active, base_count)
 
-    features = []
+    use_dropdown = bool(inv_dropdown_period)
+    features = [] if not use_dropdown else None
+    features_by_period = {p: [] for p in period_ids} if use_dropdown else None
+
     for line_obj in all_lines:
         geometry = getattr(line_obj, "geometry", None)
         if geometry is None or geometry.is_empty:
@@ -1166,47 +1189,73 @@ def plot_folium_inv_results(
             active_val = float(active_map[line_obj].get(p, 0.0))
             if active_val <= 1e-9:
                 continue
+
             style = {
                 "color": _line_color(line_obj),
                 "weight": _weight_from_active(active_val, max_active),
                 "opacity": 0.9,
             }
-            features.append({
-                "type": "Feature",
-                "geometry": {"type": "LineString", "coordinates": coords_lonlat},
-                "properties": {"times": [time_by_period[p]], "style": style},
-            })
 
-            if show_installed and installed_map[line_obj].get(p, 0.0) > 1e-9:
+            if use_dropdown:
+                features_by_period[p].append({
+                    "type": "Feature",
+                    "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                    "properties": {"style": style},
+                })
+            else:
                 features.append({
                     "type": "Feature",
                     "geometry": {"type": "LineString", "coordinates": coords_lonlat},
-                    "properties": {
-                        "times": [time_by_period[p]],
-                        "style": {
-                            "color": "limegreen",
-                            "weight": max(style["weight"] * 0.55, 1.5),
-                            "opacity": 0.95,
-                            "dashArray": "2, 6",
-                        },
-                    },
-                })
-            if show_decommissioned and decomm_map[line_obj].get(p, 0.0) > 1e-9:
-                features.append({
-                    "type": "Feature",
-                    "geometry": {"type": "LineString", "coordinates": coords_lonlat},
-                    "properties": {
-                        "times": [time_by_period[p]],
-                        "style": {
-                            "color": "crimson",
-                            "weight": max(style["weight"] * 0.45, 1.2),
-                            "opacity": 0.95,
-                            "dashArray": "8, 8",
-                        },
-                    },
+                    "properties": {"times": [time_by_period[p]], "style": style},
                 })
 
-    if not features:
+            if (not use_dropdown) and show_installed and installed_map[line_obj].get(p, 0.0) > 1e-9:
+                installed_style = {
+                    "color": "limegreen",
+                    "weight": max(style["weight"] * 0.55, 1.5),
+                    "opacity": 0.95,
+                    "dashArray": "2, 6",
+                }
+                if use_dropdown:
+                    features_by_period[p].append({
+                        "type": "Feature",
+                        "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                        "properties": {"style": installed_style},
+                    })
+                else:
+                    features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                        "properties": {
+                            "times": [time_by_period[p]],
+                            "style": installed_style,
+                        },
+                    })
+
+            if (not use_dropdown) and show_decommissioned and decomm_map[line_obj].get(p, 0.0) > 1e-9:
+                decomm_style = {
+                    "color": "crimson",
+                    "weight": max(style["weight"] * 0.45, 1.2),
+                    "opacity": 0.95,
+                    "dashArray": "8, 8",
+                }
+                if use_dropdown:
+                    features_by_period[p].append({
+                        "type": "Feature",
+                        "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                        "properties": {"style": decomm_style},
+                    })
+                else:
+                    features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                        "properties": {
+                            "times": [time_by_period[p]],
+                            "style": decomm_style,
+                        },
+                    })
+
+    if (not use_dropdown) and not features:
         raise ValueError("No investment features were built from the selected results source.")
 
     node_geometries = []
@@ -1251,18 +1300,141 @@ def plot_folium_inv_results(
             weight=1,
         ).add_to(m)
 
-    TimestampedGeoJson(
-        {"type": "FeatureCollection", "features": features},
-        period=f"P{max(years_per_period, 1)}Y",
-        duration=f"P{max(years_per_period, 1)}Y",
-        add_last_point=False,
-        auto_play=False,
-        loop=False,
-        max_speed=8,
-        loop_button=True,
-        date_options="YYYY",
-        time_slider_drag_update=True,
-    ).add_to(m)
+    if use_dropdown:
+        # One Leaflet layer per investment "mode" (base + each investment period).
+        # We toggle by setting per-line styles (opacity/weight), which is more robust than add/remove.
+        def _style_fn(feature):
+            props = feature.get("properties", {}) or {}
+            return props.get("style", {}) or {}
+
+        period_select_id = f"inv_period_select_{abs(hash(name))}"
+
+        # Build base features from nominal np_line (no direction coloring in dropdown mode).
+        base_features = []
+        max_base_active = 0.0
+        for line_obj in all_lines:
+            geometry = getattr(line_obj, "geometry", None)
+            if geometry is None or geometry.is_empty:
+                continue
+            base_count = float(getattr(line_obj, "np_line", 1.0) or 1.0)
+            max_base_active = max(max_base_active, base_count)
+
+        max_active_all = max(max_active, max_base_active) if max_active is not None else max_base_active
+        if max_active_all <= 0:
+            max_active_all = 1.0
+
+        for line_obj in all_lines:
+            geometry = getattr(line_obj, "geometry", None)
+            if geometry is None or geometry.is_empty:
+                continue
+            coords_lonlat = [[pt[0], pt[1]] for pt in geometry.coords if len(pt) >= 2]
+            if len(coords_lonlat) < 2:
+                continue
+            base_count = float(getattr(line_obj, "np_line", 1.0) or 1.0)
+            if base_count <= 1e-9:
+                continue
+            style = {
+                "color": _line_color(line_obj),
+                "weight": _weight_from_active(base_count, max_active_all),
+                "opacity": 0.9,
+            }
+            base_features.append({
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": coords_lonlat},
+                "properties": {"style": style},
+            })
+
+        all_keys = ["base"] + [str(p) for p in period_ids]
+        default_key = "base"
+
+        fg_by_key_var = {}
+        dropdown_options_html = []
+
+        # Base FG
+        fg_base = folium.FeatureGroup(name="Base (nominal np)", show=True)
+        fg_by_key_var["base"] = fg_base.get_name()
+        if base_features:
+            folium.GeoJson({"type": "FeatureCollection", "features": base_features}, style_function=_style_fn).add_to(fg_base)
+        fg_base.add_to(m)
+        dropdown_options_html.append(f'<option value="base" {"selected" if default_key=="base" else ""}>Base</option>')
+
+        # Period FGs
+        for p in period_ids:
+            key = str(p)
+            fg = folium.FeatureGroup(name=f"Inv period {p}", show=False)
+            fg_by_key_var[key] = fg.get_name()
+            fc = {"type": "FeatureCollection", "features": features_by_period.get(p, [])}
+            if fc["features"]:
+                folium.GeoJson(fc, style_function=_style_fn).add_to(fg)
+            fg.add_to(m)
+            dropdown_options_html.append(f'<option value="{key}" {"selected" if default_key==key else ""}>Period {p}</option>')
+
+        dropdown_html = f"""
+        <div style="
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 9999;
+            background: white;
+            border: 1px solid #777;
+            border-radius: 6px;
+            padding: 8px 10px;
+            font-size: 12px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+        ">
+          <div style="font-weight: 600; margin-bottom: 6px;">Investment selection</div>
+          <select id="{period_select_id}" style="padding: 3px; font-size: 12px;">
+            {''.join(dropdown_options_html)}
+          </select>
+        </div>
+        """
+        m.get_root().html.add_child(folium.Element(dropdown_html))
+
+        fg_map_js = ", ".join([f"'{k}': {fg_by_key_var[k]}" for k in all_keys if k in fg_by_key_var])
+        map_var = m.get_name()
+        js = f"""
+        <script>
+        (function() {{
+          var selectEl = document.getElementById("{period_select_id}");
+          var mapObj = {map_var};
+          var fgByKey = {{{fg_map_js}}};
+          // Toggle visibility by adding/removing the FeatureGroup layer itself.
+          // This is robust for GeoJson-in-FeatureGroup (where eachLayer() hits the GeoJson container, not its features).
+          function setKey(selKey) {{
+            Object.keys(fgByKey).forEach(function(key) {{
+              var fg = fgByKey[key];
+              if (!fg) return;
+              if (key === selKey) {{
+                if (!mapObj.hasLayer(fg)) mapObj.addLayer(fg);
+              }} else {{
+                if (mapObj.hasLayer(fg)) mapObj.removeLayer(fg);
+              }}
+            }});
+          }}
+
+          if (selectEl) {{
+            selectEl.addEventListener("change", function() {{
+              setKey(selectEl.value);
+            }});
+            setKey(selectEl.value);
+          }}
+        }})();
+        </script>
+        """
+        m.get_root().html.add_child(folium.Element(js))
+    else:
+        TimestampedGeoJson(
+            {"type": "FeatureCollection", "features": features},
+            period=f"P{max(years_per_period, 1)}Y",
+            duration=f"P{max(years_per_period, 1)}Y",
+            add_last_point=False,
+            auto_play=False,
+            loop=False,
+            max_speed=8,
+            loop_button=True,
+            date_options="YYYY",
+            time_slider_drag_update=True,
+        ).add_to(m)
 
     if node_geometries:
         m.fit_bounds([[miny, minx], [maxy, maxx]])

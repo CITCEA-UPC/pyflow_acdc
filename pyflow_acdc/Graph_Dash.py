@@ -25,8 +25,12 @@ _MP_PLOT_CHOICES = [
     'Power Generation by price zone area chart',
     'Power Generation by generator area chart',
     'Market Prices',
+    'PN',
     'PN_min',
     'PN_max',
+    'Grid loading',
+    'Real load',
+    'Known load by zone',
     'AC line loading',
     'DC line loading',
     'AC/DC Converters',
@@ -38,6 +42,24 @@ def _get_df_and_label_from_ts(time_series_results, S_base, plotting_choice):
     """Resolve (dataframe, y-axis label) from a time_series_results mapping (not grid)."""
     if plotting_choice == 'Curtailment':
         return time_series_results['curtailment'] * 100, 'Curtailment %'
+    if plotting_choice == 'PN':
+        df = time_series_results.get('net_price_zone_power')
+        if df is None:
+            return None, ''
+        # Keep behavior similar to "Market Prices": drop "o_*" helper columns if present.
+        if hasattr(df, "columns"):
+            df = df.loc[:, ~df.columns.str.startswith('o_')]
+        return df, 'PN (MW)'
+    if plotting_choice == 'Grid loading':
+        df = time_series_results.get('grid_loading')
+        return (df * 100.0) if df is not None else None, 'Grid loading %' if df is not None else ''
+    if plotting_choice == 'Real load':
+        # OPF step stores load with a sign convention (negative), so flip it to show positive load.
+        df = time_series_results.get('real_load_opf')
+        return (-df * S_base) if df is not None else None, 'Real load (MW)' if df is not None else ''
+    if plotting_choice == 'Known load by zone':
+        df = time_series_results.get('real_load_known_by_zone')
+        return (df * S_base) if df is not None else None, 'P_known_AC by zone (MW)' if df is not None else ''
     if plotting_choice == 'PN_min':
         df = time_series_results.get('PN_min')
         return df, 'PN_min (MW)' if df is not None else ''
@@ -587,6 +609,29 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
         ),
         html.Label('Series:', style={'fontWeight': 'bold'}),
         dcc.Checklist(id='mp-cols', options=[], value=[], inline=True, style={'marginBottom': '16px'}),
+        html.Div(style={'backgroundColor': 'white', 'padding': '12px', 'borderRadius': '10px', 'boxShadow': '0 2px 4px rgba(0,0,0,0.05)', 'marginBottom': '16px'}, children=[
+            html.Label('Show Second Plot:', style={'fontWeight': 'bold', 'marginRight': '10px'}),
+            dcc.RadioItems(
+                id='mp-show-plot-2',
+                options=[
+                    {'label': 'Yes', 'value': True},
+                    {'label': 'No', 'value': False},
+                ],
+                value=False,
+                inline=True,
+            ),
+        ]),
+        html.Div(id='mp-plot-2-controls', style={'display': 'none'}, children=[
+            html.Label('Plot type 2:', style={'fontWeight': 'bold'}),
+            dcc.Dropdown(
+                id='mp-plot-type-2',
+                options=plot_dd_options,
+                value='Market Prices',
+                style={'marginBottom': '12px'},
+            ),
+            html.Label('Series 2:', style={'fontWeight': 'bold'}),
+            dcc.Checklist(id='mp-cols-2', options=[], value=[], inline=True, style={'marginBottom': '16px'}),
+        ]),
         html.Div(style={'display': 'flex', 'gap': '10px', 'flexWrap': 'wrap', 'marginBottom': '12px'}, children=[
             html.Div(style={'display': 'flex', 'gap': '6px', 'alignItems': 'center'}, children=[
                 html.Span('X min:'), dcc.Input(id='mp-xmin', type='number', placeholder='auto', style={'width': '100px'}),
@@ -598,6 +643,9 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
             ]),
         ]),
         dcc.Graph(id='mp-graph', style={'height': '560px'}),
+        html.Div(id='mp-graph-2-container', style={'display': 'none'}, children=[
+            dcc.Graph(id='mp-graph-2', style={'height': '560px'}),
+        ]),
     ])
 
     @app.callback(
@@ -609,6 +657,16 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
         if mode == 'compare':
             return {'display': 'block'}, {'display': 'none'}
         return {'display': 'none'}, {'display': 'block'}
+
+    @app.callback(
+        [Output('mp-plot-2-controls', 'style'),
+         Output('mp-graph-2-container', 'style')],
+        [Input('mp-show-plot-2', 'value')],
+    )
+    def _toggle_plot_2(show_plot_2):
+        if show_plot_2:
+            return {'display': 'block'}, {'display': 'block'}
+        return {'display': 'none'}, {'display': 'none'}
 
     @app.callback(
         [Output('mp-cols', 'options'),
@@ -625,7 +683,22 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
         return opts, cols
 
     @app.callback(
-        Output('mp-graph', 'figure'),
+        [Output('mp-cols-2', 'options'),
+         Output('mp-cols-2', 'value')],
+        [Input('mp-plot-type-2', 'value'),
+         Input('mp-mode', 'value'),
+         Input('mp-period-single', 'value')],
+    )
+    def _update_cols_2(plot_type_2, mode, period_single):
+        ref = _ref_snapshot()
+        if mode == 'single' and period_single is not None and period_single in ts_inv:
+            ref = ts_inv[period_single]
+        opts, cols = _columns_for(plot_type_2, ref)
+        return opts, cols
+
+    @app.callback(
+        [Output('mp-graph', 'figure'),
+         Output('mp-graph-2', 'figure')],
         [Input('mp-mode', 'value'),
          Input('mp-period-single', 'value'),
          Input('mp-p1', 'value'),
@@ -633,13 +706,17 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
          Input('mp-p3', 'value'),
          Input('mp-plot-type', 'value'),
          Input('mp-cols', 'value'),
+         Input('mp-show-plot-2', 'value'),
+         Input('mp-plot-type-2', 'value'),
+         Input('mp-cols-2', 'value'),
          Input('mp-xmin', 'value'),
          Input('mp-xmax', 'value'),
          Input('mp-ymin', 'value'),
          Input('mp-ymax', 'value')],
     )
-    def _update_mp_fig(mode, ps, p1, p2, p3, plot_type, cols, xmin, xmax, ymin, ymax):
+    def _update_mp_fig(mode, ps, p1, p2, p3, plot_type, cols, show_plot_2, plot_type_2, cols_2, xmin, xmax, ymin, ymax):
         cols = cols or []
+        cols_2 = cols_2 or []
         x_limits = (xmin, xmax) if xmin is not None and xmax is not None else None
         y_limits = (ymin, ymax) if ymin is not None and ymax is not None else None
 
@@ -647,9 +724,9 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
             if ps is None or ps not in ts_inv:
                 fig = go.Figure()
                 fig.update_layout(title='Invalid period')
-                return fig
+                return fig, go.Figure()
             snap = ts_inv[ps]
-            return plot_TS_res_from_ts(
+            fig1 = plot_TS_res_from_ts(
                 snap['time_series_results'],
                 snap['S_base'],
                 plot_type,
@@ -659,6 +736,19 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
                 show_title=True,
                 legend_prefix='',
             )
+            if not show_plot_2:
+                return fig1, go.Figure()
+            fig2 = plot_TS_res_from_ts(
+                snap['time_series_results'],
+                snap['S_base'],
+                plot_type_2,
+                cols_2,
+                x_limits=x_limits,
+                y_limits=y_limits,
+                show_title=False,
+                legend_prefix='',
+            )
+            return fig1, fig2
 
         titles = []
         for p in (p1, p2, p3):
@@ -675,6 +765,7 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
             shared_yaxes=True,
         )
         any_trace = False
+        shown_legends = set()
         for ci, p in enumerate((p1, p2, p3)):
             if p == -1 or p not in ts_inv:
                 continue
@@ -690,6 +781,10 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
                 legend_prefix='',
             )
             for tr in sub.data:
+                # In compare mode, each selected series is repeated per period column.
+                # Show each legend entry only once to avoid mixed/repeated legends.
+                tr.showlegend = tr.name not in shown_legends
+                shown_legends.add(tr.name)
                 fig.add_trace(tr, row=1, col=ci + 1)
                 any_trace = True
         if not any_trace:
@@ -714,7 +809,63 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
                 fig.update_xaxes(range=x_limits, row=1, col=c)
         if y_limits is not None:
             fig.update_yaxes(range=y_limits, row=1, col=1)
-        return fig
+        if not show_plot_2:
+            return fig, go.Figure()
+
+        # Second-row plot with a different TS type (same period columns).
+        fig2_titles = titles
+        fig2 = make_subplots(
+            rows=1,
+            cols=3,
+            subplot_titles=fig2_titles,
+            shared_yaxes=True,
+        )
+        any_trace2 = False
+        shown_legends2 = set()
+        for ci, p in enumerate((p1, p2, p3)):
+            if p == -1 or p not in ts_inv:
+                continue
+            snap = ts_inv[p]
+            sub2 = plot_TS_res_from_ts(
+                snap['time_series_results'],
+                snap['S_base'],
+                plot_type_2,
+                cols_2,
+                x_limits=x_limits,
+                y_limits=y_limits,
+                show_title=False,
+                legend_prefix='',
+            )
+            for tr in sub2.data:
+                tr.showlegend = tr.name not in shown_legends2
+                shown_legends2.add(tr.name)
+                fig2.add_trace(tr, row=1, col=ci + 1)
+                any_trace2 = True
+
+        if not any_trace2:
+            fig2.add_annotation(
+                text='Select at least one period column',
+                xref='paper',
+                yref='paper',
+                x=0.5,
+                y=0.5,
+                showarrow=False,
+            )
+        fig2.update_layout(
+            height=520,
+            hovermode='x unified',
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            showlegend=True,
+            margin=dict(l=50, r=30, t=80, b=50),
+        )
+        if x_limits is not None:
+            for c in range(1, 4):
+                fig2.update_xaxes(range=x_limits, row=1, col=c)
+        if y_limits is not None:
+            fig2.update_yaxes(range=y_limits, row=1, col=1)
+
+        return fig, fig2
 
     return app
 

@@ -1269,6 +1269,18 @@ def _validate_period_scenario_updates(grid, period_idx, frame_idx, n_clusters, c
 
 
 def _add_period_ms_link_constraints(period_block, grid):
+    def NP_gen_link(m, gen, t):
+        element = grid.Generators[gen]
+        if element.np_gen_opf:
+            return m.np_gen[gen] == m.scenario_model[t].np_gen[gen]
+        return pyo.Constraint.Skip
+
+    def NP_rsgen_link(m, rs, t):
+        element = grid.RenSources[rs]
+        if element.np_rsgen_opf:
+            return m.np_rsgen[rs] == m.scenario_model[t].np_rsgen[rs]
+        return pyo.Constraint.Skip
+
     def NP_ACline_link(m, line, t):
         element = grid.lines_AC_exp[line]
         if element.np_line_opf:
@@ -1287,18 +1299,14 @@ def _add_period_ms_link_constraints(period_block, grid):
             return m.np_conv[conv] == m.scenario_model[t].np_conv[conv]
         return pyo.Constraint.Skip
 
-    def NP_ACline_rec_link(m, line, t):
-        element = grid.lines_AC_rec[line]
-        if element.rec_line_opf:
-            return m.rec_branch[line] == m.scenario_model[t].rec_branch[line]
-        return pyo.Constraint.Skip
-
-    def NP_ACline_ct_link(m, line, ct, t):
-        element = grid.lines_AC_ct[line]
-        if element.array_opf:
-            return m.ct_branch[line, ct] == m.scenario_model[t].ct_branch[line, ct]
-        return pyo.Constraint.Skip
-
+    if grid.GPR:
+        period_block.NP_gen_link_constraint = pyo.Constraint(
+            period_block.gen_AC, period_block.scenario_frames, rule=NP_gen_link
+        )
+    if grid.rs_GPR:
+        period_block.NP_rsgen_link_constraint = pyo.Constraint(
+            period_block.ren_sources, period_block.scenario_frames, rule=NP_rsgen_link
+        )
     if grid.TEP_AC:
         period_block.NP_ACline_link_constraint = pyo.Constraint(
             period_block.lines_AC_exp, period_block.scenario_frames, rule=NP_ACline_link
@@ -1310,14 +1318,6 @@ def _add_period_ms_link_constraints(period_block, grid):
     if grid.ACmode and grid.DCmode:
         period_block.NP_conv_link_constraint = pyo.Constraint(
             period_block.conv, period_block.scenario_frames, rule=NP_conv_link
-        )
-    if grid.REC_AC:
-        period_block.NP_ACline_rec_link_constraint = pyo.Constraint(
-            period_block.lines_AC_rec, period_block.scenario_frames, rule=NP_ACline_rec_link
-        )
-    if grid.CT_AC:
-        period_block.NP_ACline_ct_link_constraint = pyo.Constraint(
-            period_block.lines_AC_ct, period_block.ct_set, period_block.scenario_frames, rule=NP_ACline_ct_link
         )
 
 
