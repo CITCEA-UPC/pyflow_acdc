@@ -1406,6 +1406,7 @@ def multi_period_MS_TEP(
     save_period_svgs=True,
     period_svg_prefix='grid_MP_MS_TEP',
     period_svg_line_size_factor=1.0,
+    build_only=False,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -1493,6 +1494,21 @@ def multi_period_MS_TEP(
     model.obj = pyo.Objective(expr=net_cost, sense=pyo.minimize)
     model.obj_scaling = obj_scaling
 
+    if build_only:
+        timing_info = {
+            "create": time.time() - t1,
+            "solve": None,
+            "export": 0.0,
+        }
+        solver_stats = {
+            "solver": None,
+            "termination_condition": "build_only",
+            "solver_message": "build_only=True: model built and solve skipped.",
+            "solution_found": None,
+            "time": None,
+        }
+        return model, None, timing_info, solver_stats, {}
+
     t2 = time.time()
     model_results, solver_stats = pyomo_model_solve(
         model, grid, solver, tee=tee, time_limit=time_limit, callback=callback,
@@ -1503,16 +1519,10 @@ def multi_period_MS_TEP(
     if not (solver_stats and solver_stats.get('solution_found', False)):
         termination = solver_stats.get('termination_condition', 'unknown') if solver_stats else 'unknown'
         solver_message = solver_stats.get('solver_message', '') if solver_stats else ''
-        if tee:
-            print(f"MP-MS-TEP failed: no feasible solution found (termination: {termination}).")
-            if solver_message:
-                print(f"Solver message: {solver_message}")
-        timing_info = {
-            "create": t2 - t1,
-            "solve": solver_stats['time'] if solver_stats else None,
-            "export": 0.0,
-        }
-        return model, model_results, timing_info, solver_stats, {}
+        msg = f"MP-MS-TEP failed: no feasible solution found (termination: {termination})."
+        if solver_message:
+            msg = f"{msg} Solver message: {solver_message}"
+        raise RuntimeError(msg)
 
     MINLP = solver != 'ipopt'
     export_MP_TEP_results_toPyflowACDC(
@@ -1805,6 +1815,8 @@ def run_ts_opf_for_investment_period(
     """
     if nominal_base:
         period_tag = 'base'
+        if print_step:
+            print("[run_ts_opf_for_investment_period] applying state: nominal_base")
         _set_grid_to_nominal_base(grid)
     else:
         period_idx = int(investment_period)
@@ -1814,6 +1826,8 @@ def run_ts_opf_for_investment_period(
                 f"investment_period={period_idx} out of range [0, {n_periods - 1}]"
             )
         period_tag = period_idx
+        if print_step:
+            print(f"[run_ts_opf_for_investment_period] applying state: investment_period={period_idx}")
         _, PZ = obj_w_rule(grid, ObjRule, True)
         _set_grid_to_multiperiod_state(grid, period_idx, PZ)
 
@@ -1917,6 +1931,11 @@ def run_opf_for_all_investment_periods(
 
     if MS and ts_include_base_case:
         ts_prefix = f"{prefix}_TS"
+        if tee:
+            print(
+                f"[run_opf_for_all_investment_periods] TS-OPF base case "
+                f"(use_clusters={ts_use_clusters}, start={ts_start}, end={ts_end})"
+            )
         times = run_ts_opf_for_investment_period(
             grid,
             investment_period=0,
@@ -1972,6 +1991,11 @@ def run_opf_for_all_investment_periods(
             # MS=True: run a TS-OPF for each investment period instead of a single snapshot OPF.
             # PyFlow-ACDC takes this as a time-series post-analysis on the MP solution.
             ts_prefix = f"{prefix}_TS"
+            if tee:
+                print(
+                    f"[run_opf_for_all_investment_periods] TS-OPF investment_period={i} "
+                    f"(use_clusters={ts_use_clusters}, start={ts_start}, end={ts_end})"
+                )
             times = run_ts_opf_for_investment_period(
                 grid,
                 investment_period=i,
