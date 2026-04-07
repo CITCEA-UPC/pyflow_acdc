@@ -1405,6 +1405,7 @@ def multi_period_MS_TEP(
     capex_budget=None,
     save_period_svgs=True,
     period_svg_prefix='grid_MP_MS_TEP',
+    period_svg_line_size_factor=1.0,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -1569,6 +1570,7 @@ def multi_period_MS_TEP(
             journal=True,
             legend=True,
             Price_Zones=Price_Zones,
+            line_size_factor=period_svg_line_size_factor,
         )
     
     _set_grid_to_multiperiod_state(grid, last_period, Price_Zones)
@@ -1604,6 +1606,7 @@ def save_MP_TEP_period_svgs(
     poly=None,
     linestrings=None,
     Price_Zones=False,
+    line_size_factor=1.0,
 ):
     
     periods = grid.TEP_n_periods
@@ -1620,7 +1623,8 @@ def save_MP_TEP_period_svgs(
             legend=legend,
             square_ratio=square_ratio,
             poly=poly,
-            linestrings=linestrings
+            linestrings=linestrings,
+            line_size_factor=line_size_factor,
         )
 
     return
