@@ -888,6 +888,11 @@ def _initialize_MPTEP_sets_model(model,grid):
             initialize=[i for i, rs in enumerate(grid.RenSources) if getattr(rs, "np_rsgen_mp", False)]
         )
 
+
+
+def _period_base_cost(element, i):
+    return float(element._base_cost) * (1.0 + element.investment_decisions['lamda_capex'][i])
+
 def _inv_model_obj(model,grid,i):
     inv_gen= 0
     AC_Inv_lines=0
@@ -897,7 +902,7 @@ def _inv_model_obj(model,grid,i):
     if grid.rs_GPR:
         for rs in model.ren_sources:
             ren_source = grid.RenSources[rs]
-            inv_rs+=model.installed_rsgen[rs,i]*ren_source.base_cost
+            inv_rs += model.installed_rsgen[rs, i] * _period_base_cost(ren_source, i)
     else:
         inv_rs=0
 
@@ -905,7 +910,7 @@ def _inv_model_obj(model,grid,i):
         
         for g in model.gen_AC:
             gen = grid.Generators[g]
-            inv_gen+=model.installed_gen[g,i]*gen.base_cost
+            inv_gen += model.installed_gen[g, i] * _period_base_cost(gen, i)
     else:
         inv_gen=0
 
@@ -914,17 +919,17 @@ def _inv_model_obj(model,grid,i):
         if grid.TEP_AC:
             for l in model.lines_AC_exp:
                 line = grid.lines_AC_exp[l]
-                AC_Inv_lines+=model.installed_ACline[l,i]*line.base_cost
+                AC_Inv_lines += model.installed_ACline[l, i] * _period_base_cost(line, i)
             
     if grid.DCmode:
         for l in model.lines_DC:
             line = grid.lines_DC[l]
-            DC_Inv_lines+=model.installed_DCline[l,i]*line.base_cost
+            DC_Inv_lines += model.installed_DCline[l, i] * _period_base_cost(line, i)
         
     if grid.ACmode and grid.DCmode:
         for c in model.conv:
             conv = grid.Converters_ACDC[c]
-            Conv_Inv+=model.installed_Conv[c,i]*conv.base_cost
+            Conv_Inv += model.installed_Conv[c, i] * _period_base_cost(conv, i)
         
 
     inv_cost=inv_gen+AC_Inv_lines+DC_Inv_lines+Conv_Inv+inv_rs
@@ -1049,7 +1054,7 @@ def export_MP_TEP_results_toPyflowACDC(
             total_cost = 0
             for i in range(n_periods):
                 n_val = gen_mp_values[g, i]
-                cost = gen_installed_values[g, i] * gen.base_cost
+                cost = gen_installed_values[g, i] * _period_base_cost(gen, i)
                 row[f"Decommissioned_{i+1}"] = gen_decomision_values[g, i]
                 row[f"Installed_{i+1}"] = gen_installed_values[g, i]    
                 row[f"Active_{i+1}"] = n_val                
@@ -1076,7 +1081,7 @@ def export_MP_TEP_results_toPyflowACDC(
             total_cost = 0
             for i in range(n_periods):
                 n_val = rs_mp_values[rs, i]
-                cost = rs_installed_values[rs, i] * ren_source.base_cost
+                cost = rs_installed_values[rs, i] * _period_base_cost(ren_source, i)
                 row[f"Decommissioned_{i+1}"] = rs_decomision_values[rs, i]
                 row[f"Installed_{i+1}"] = rs_installed_values[rs, i]    
                 row[f"Active_{i+1}"] = n_val                
@@ -1104,7 +1109,7 @@ def export_MP_TEP_results_toPyflowACDC(
                 total_cost = 0
                 for i in range(n_periods):
                     n_val = ac_lines_mp_values[l, i]
-                    cost = ac_line_installed_values[l, i] * line.base_cost
+                    cost = ac_line_installed_values[l, i] * _period_base_cost(line, i)
                     row[f"Decommissioned_{i+1}"] = ac_line_decomision_values[l, i]
                     row[f"Installed_{i+1}"] = ac_line_installed_values[l, i]
                     row[f"Active_{i+1}"] = n_val
@@ -1136,7 +1141,7 @@ def export_MP_TEP_results_toPyflowACDC(
                 total_cost = 0
                 for i in range(n_periods):
                     n_val = dc_lines_mp_values[l, i]
-                    cost = dc_line_installed_values[l, i] * line.base_cost
+                    cost = dc_line_installed_values[l, i] * _period_base_cost(line, i)
                     row[f"Decommissioned_{i+1}"] = dc_line_decomision_values[l, i]
                     row[f"Installed_{i+1}"] = dc_line_installed_values[l, i]
                     row[f"Active_{i+1}"] = n_val
@@ -1163,7 +1168,7 @@ def export_MP_TEP_results_toPyflowACDC(
             total_cost = 0
             for i in range(n_periods):
                 n_val = acdc_conv_mp_values[c, i]   
-                cost = conv_installed_values[c, i] * conv.base_cost
+                cost = conv_installed_values[c, i] * _period_base_cost(conv, i)
                 row[f"Decommissioned_{i+1}"] = conv_decomision_values[c, i]
                 row[f"Installed_{i+1}"] = conv_installed_values[c, i]
                 row[f"Active_{i+1}"] = n_val

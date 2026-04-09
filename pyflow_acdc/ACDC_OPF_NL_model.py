@@ -1402,8 +1402,8 @@ def Converter_variables(model,grid,Conv_info):
     model.P_conv_c_AC  = pyo.Var(model.conv, initialize=0.0001)   
     model.Q_conv_c_AC = pyo.Var(model.conv, initialize=0.0001)
     
-    model.P_conv_c_AC_sq = pyo.Var(model.conv, bounds=(1e-100,None), initialize=0.1)   
-    model.Q_conv_c_AC_sq = pyo.Var(model.conv, bounds=(1e-100,None), initialize=0.1)
+    # model.P_conv_c_AC_sq = pyo.Var(model.conv, bounds=(1e-100,None), initialize=0.1)
+    # model.Q_conv_c_AC_sq = pyo.Var(model.conv, bounds=(1e-100,None), initialize=0.1)
     
 def Converter_constraints(model,grid,Conv_info):
     Conv_Lists, Conv_Volt = Conv_info
