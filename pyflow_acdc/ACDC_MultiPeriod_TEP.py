@@ -704,6 +704,7 @@ def multi_period_transmission_expansion(
     alpha=None,
     capex_budget=None,
     nlp_warmstart=False,
+    build_only=False,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -787,6 +788,20 @@ def multi_period_transmission_expansion(
     model.obj_scaling = obj_scaling
     
     t2 = time.time()
+
+    if build_only:
+        timing_info = {
+            "create": t2 - t1,
+            "solve": None,
+            "export": 0.0,
+        }
+        solver_stats = {
+            "solution_found": False,
+            "termination_condition": "build_only",
+            "solver_message": "build_only=True: model built and solve skipped.",
+            "time": None,
+        }
+        return model, None, timing_info, solver_stats
 
     model_results,solver_stats = pyomo_model_solve(
         model, grid, solver, time_limit=time_limit, tee=tee,

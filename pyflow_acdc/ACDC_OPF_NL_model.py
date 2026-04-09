@@ -1176,7 +1176,9 @@ def DC_variables(model,grid,DC_info,TEP=False,limit_flow_rate=1):
     "Model Sets"
     model.nodes_DC   = pyo.Set(initialize=lista_nodos_DC)
     model.lines_DC   = pyo.Set(initialize=lista_lineas_DC)
+    
     model.DC_slacks  = pyo.Set(initialize=DC_slack)
+
 
     "DC variables"
     #DC nodes variables
@@ -1215,9 +1217,8 @@ def DC_variables(model,grid,DC_info,TEP=False,limit_flow_rate=1):
   
     
     model.PGi_opt_DC = pyo.Var(model.nodes_DC, bounds=PGi_opt_bounds_DC, initialize=0)
-
-    #if not TEP:
-    model.DC_V_slack_constraint = pyo.Constraint(model.DC_slacks, rule=DC_V_slack_rule)
+    if len(DC_slack) != 0:
+         model.DC_V_slack_constraint = pyo.Constraint(model.DC_slacks, rule=DC_V_slack_rule)
     
     #DC Lines variables
     
@@ -1884,61 +1885,50 @@ def price_zone_constraints(model,grid,Price_Zone_info):
     model.price_zone_price_constraint = pyo.Constraint(model.M,rule=price_zone_price_formula)
     model.price_zone_price_link_ = pyo.Constraint(model.M,rule=Price_link)
     
-    model.price_zone_MTDC_link = pyo.ConstraintList()
-    
     from .Classes import MTDCPrice_Zone
-    # Step 1: Define sets for the MTDC price_zones and linked price_zones
-    model.MTDCPrice_Zones = pyo.Set(initialize=[m for m in model.M if isinstance(grid.Price_Zones[m], MTDCPrice_Zone)])
-    
-    for mtdc_price_zone in model.MTDCPrice_Zones:
-        linked_price_zones = [mkt.price_zone_num for mkt in grid.Price_Zones[mtdc_price_zone].linked_price_zones]
+    mtdc_price_zone_ids = [m for m in model.M if isinstance(grid.Price_Zones[m], MTDCPrice_Zone)]
+    if mtdc_price_zone_ids:
+        model.price_zone_MTDC_link = pyo.ConstraintList()
+        model.MTDCPrice_Zones = pyo.Set(initialize=mtdc_price_zone_ids)
         
-        if not linked_price_zones:
-            break
-        # Define a set of linked price_zones for each MTDC price_zone
-        # model.LinkedPrice_Zones = pyo.Set(initialize=linked_price_zones)
-    
-        pricing_strategy = grid.Price_Zones[mtdc_price_zone].pricing_strategy
-    
-        if pricing_strategy == 'min':
-            grid.MixedBinCont=True
-            # Step 1: Create distinct binary variables for each MTDC price_zone and its linked price_zones
-            model.y_min = pyo.Var(linked_price_zones, model.MTDCPrice_Zones, domain=pyo.Binary, initialize=1)
+        for mtdc_price_zone in model.MTDCPrice_Zones:
+            linked_price_zones = [mkt.price_zone_num for mkt in grid.Price_Zones[mtdc_price_zone].linked_price_zones]
+            
+            if not linked_price_zones:
+                break
+        
+            pricing_strategy = grid.Price_Zones[mtdc_price_zone].pricing_strategy
+        
+            if pricing_strategy == 'min':
+                grid.MixedBinCont=True
+                model.y_min = pyo.Var(linked_price_zones, model.MTDCPrice_Zones, domain=pyo.Binary, initialize=1)
 
-            # Step 2: Ensure MTDC price_zone price is less than or equal to all linked price_zone prices
-            for mkt in linked_price_zones:
-                model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] <= model.price_zone_price[mkt])
+                for mkt in linked_price_zones:
+                    model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] <= model.price_zone_price[mkt])
 
-            # Step 3: Ensure that the MTDC price_zone price is equal to one of the linked price_zone prices
-            model.price_zone_MTDC_link.add(sum(model.y_min[mkt, mtdc_price_zone] for mkt in linked_price_zones) == 1)
+                model.price_zone_MTDC_link.add(sum(model.y_min[mkt, mtdc_price_zone] for mkt in linked_price_zones) == 1)
 
-            # Step 4: Link the binary variable to the actual price_zone prices
-            for mkt in linked_price_zones:
-                model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] == model.price_zone_price[mkt] * model.y_min[mkt, mtdc_price_zone])
+                for mkt in linked_price_zones:
+                    model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] == model.price_zone_price[mkt] * model.y_min[mkt, mtdc_price_zone])
 
-        elif pricing_strategy == 'max':
-            grid.MixedBinCont=True
-            # Step 2: Create binary variables indexed by both the linked price_zones and the MTDC price_zone
-            model.y_max = pyo.Var(linked_price_zones, model.MTDCPrice_Zones, domain=pyo.Binary, initialize=0)
-    
-            # Step 3: Ensure MTDC price_zone price is greater than or equal to all linked price_zone prices
-            for mkt in linked_price_zones:
-                model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] >= model.price_zone_price[mkt])
-    
-            # Step 4: Ensure that the MTDC price_zone price is equal to one of the linked price_zone prices
-            model.price_zone_MTDC_link.add(sum(model.y_max[mkt, mtdc_price_zone] for mkt in linked_price_zones) == 1)
-    
-            # Step 5: Link the binary variable to the actual price_zone prices
-            for mkt in linked_price_zones:
-                model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] == model.price_zone_price[mkt] * model.y_max[mkt, mtdc_price_zone]/sum(model.y_max[mkt, mtdc_price_zone] for mkt in linked_price_zones))
-    
-        elif pricing_strategy == 'avg':
-            # MTDC price_zone price equals the average of linked price_zone prices
-            avg_expr = sum(model.price_zone_price[mkt] for mkt in linked_price_zones) / len(linked_price_zones)
-            model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] == avg_expr)
-    
-        else:
-            raise ValueError(f"Unsupported pricing strategy: {pricing_strategy}")
+            elif pricing_strategy == 'max':
+                grid.MixedBinCont=True
+                model.y_max = pyo.Var(linked_price_zones, model.MTDCPrice_Zones, domain=pyo.Binary, initialize=0)
+        
+                for mkt in linked_price_zones:
+                    model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] >= model.price_zone_price[mkt])
+        
+                model.price_zone_MTDC_link.add(sum(model.y_max[mkt, mtdc_price_zone] for mkt in linked_price_zones) == 1)
+        
+                for mkt in linked_price_zones:
+                    model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] == model.price_zone_price[mkt] * model.y_max[mkt, mtdc_price_zone]/sum(model.y_max[mkt, mtdc_price_zone] for mkt in linked_price_zones))
+        
+            elif pricing_strategy == 'avg':
+                avg_expr = sum(model.price_zone_price[mkt] for mkt in linked_price_zones) / len(linked_price_zones)
+                model.price_zone_MTDC_link.add(model.price_zone_price[mtdc_price_zone] == avg_expr)
+        
+            else:
+                raise ValueError(f"Unsupported pricing strategy: {pricing_strategy}")
                 
                 
     
