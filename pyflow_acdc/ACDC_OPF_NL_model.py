@@ -1946,7 +1946,7 @@ def price_zone_constraints(model,grid,Price_Zone_info):
     def export_rule(model,price_zone):
         return model.PN[price_zone] <= model.PGL_max[price_zone]
     
-    # model.import_constraint = pyo.Constraint(model.M,rule=import_rule)
+    model.import_constraint = pyo.Constraint(model.M,rule=import_rule)
     model.export_constraint = pyo.Constraint(model.M,rule=export_rule)    
 
 def price_zone_parameters(model,grid,AC_info,DC_info,gen_info):

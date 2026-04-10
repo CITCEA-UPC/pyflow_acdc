@@ -130,13 +130,13 @@ def update_grid_data(grid,ts, idx,price_zone_restrictions=False,use_clusters=Fal
         price_zone = grid.Price_Zones_dict.get(ts.element_name, None)
         if price_zone:
             if typ == 'a_CG':
-                price_zone.a_base = ts_data[idx]
+                price_zone._a_base = ts_data[idx]
             elif typ == 'b_CG':
-                price_zone.b = ts_data[idx]
+                price_zone._b = ts_data[idx]
             elif typ == 'c_CG':
                 price_zone.c = ts_data[idx]
             elif typ == 'PGL_min':
-                price_zone.PGL_min_base = ts_data[idx]
+                price_zone._PGL_min_base = ts_data[idx]
             elif typ == 'PGL_max':
                 price_zone.PGL_max = ts_data[idx]
     
