@@ -3417,17 +3417,25 @@ class Price_Zone:
        
     def calc_curvature_effect(self):
         self.a = self._a_base*self._curvature_factor
-        if self.b >0 and self.a != 0 and self._curvature_factor != 1:
+        # TEMP: always derive PGL_min from curve state.
+        # User-provided PGL_min base handling will be restored shortly.
+        if self.a == 0:
+            self.PGL_min = self._PGL_min_base
+        elif self.b > 0:
             self.PGL_min = -self.b/(self.a*2)
         else:
-            self.PGL_min = self._PGL_min_base
+            self.PGL_min = 0
         self._update_pgl_max_from_positive_price_delta()
             
     def calc_import_expand(self):
         if self.b > 0 and self.expand_import:
             self.PGL_min = self.PGL_min_base - self._import_expand
+            if self.PGL_min == 0:
+                raise ValueError(f"Price zone '{self.name}' has PGL_min=0 in import-expand mode; cannot derive 'a'.")
             a = -self.b / (2 * self.PGL_min * self.S_base) 
             self.a = a*self._curvature_factor
+        else:
+            self.PGL_min = 0
         self._update_pgl_max_from_positive_price_delta()
 
     def _update_pgl_max_from_positive_price_delta(self):

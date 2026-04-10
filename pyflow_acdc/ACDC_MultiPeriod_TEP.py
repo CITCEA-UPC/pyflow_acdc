@@ -1368,8 +1368,6 @@ def _build_period_scenario_block(
     for t in period_block.scenario_frames:
         for ts in grid.Time_series:
             update_grid_scenario_frame(grid, ts, t, n_clusters, clustering)
-        for price_zone in grid.Price_Zones:
-            price_zone.update_a()
 
         _validate_period_scenario_updates(grid, period_idx, t, n_clusters, clustering)
 

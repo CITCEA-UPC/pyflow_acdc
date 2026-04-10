@@ -54,12 +54,12 @@ def update_grid_scenario_frame(grid,ts,t,n_clusters,clustering):
     if typ == 'a_CG':
         for price_zone in grid.Price_Zones:
             if ts.element_name == price_zone.name:
-                price_zone._a_base = ts_data[idx]
+                price_zone.a_base = ts_data[idx]
                 break
     elif typ == 'b_CG':
         for price_zone in grid.Price_Zones:
             if ts.element_name == price_zone.name:
-                price_zone._b = ts_data[idx]
+                price_zone.b = ts_data[idx]
                 break
     elif typ == 'c_CG':
         for price_zone in grid.Price_Zones:
@@ -69,7 +69,7 @@ def update_grid_scenario_frame(grid,ts,t,n_clusters,clustering):
     elif typ == 'PGL_min':
         for price_zone in grid.Price_Zones:
             if ts.element_name == price_zone.name:
-                price_zone._PGL_min_base = ts_data[idx]
+                price_zone.PGL_min_base= ts_data[idx]
                 break
     elif typ == 'PGL_max':
         for price_zone in grid.Price_Zones:
@@ -1443,12 +1443,6 @@ def create_scenarios(
         for ts in grid.Time_series:
             update_grid_scenario_frame(grid,ts,t,n_clusters,clustering)
         
-        # After all time series are updated, ensure a and PGL_min are recalculated
-        # This is critical because a_base and PGL_min_base setters trigger calculations
-        # that may use stale values if called in the wrong order
-        for price_zone in grid.Price_Zones:
-            price_zone.update_a()
-
         _modify_parameters(grid,model.scenario_model[t],Price_Zones)
         
         TEP_subObj(model.scenario_model[t],grid,weights_def)
