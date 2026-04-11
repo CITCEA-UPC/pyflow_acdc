@@ -2039,10 +2039,9 @@ class Results:
             return self.Grid.MP_TEP_results
     import pandas as pd
 
-    def add_period_results_to_tables(self, data, prefix="MP_MS_res"):
+    def add_period_results_to_tables(self, period_results, prefix="MP_MS_res"):
         """
         Reads:
-            period_results = data.get("period_results")
 
         Expected structure:
             period_results = {
@@ -2056,9 +2055,6 @@ class Results:
             self.tables["MP_MS_res_price"] = combined_df
             ...
         """
-        period_results = data.get("period_results")
-        if not period_results:
-            return
 
         # collect all categories present in any investment period
         categories = set()
@@ -2134,12 +2130,13 @@ class Results:
             self.tables["MP_MS_TEP_results_investment_summary"] = investment_summary
 
         meta_df = pd.DataFrame([{
-            "n_clusters": data.get("n_clusters"),
-            "n_period_results": len(period_results) if isinstance(period_results, list) else np.nan,
-            "has_period_scenario_grid_res": isinstance(data.get("period_scenario_grid_res"), dict),
+            "n_clusters": data['n_clusters'],
+            "n_period_results": len(period_results),
+            "has_period_scenario_grid_res": isinstance(data['period_scenario_grid_res'], dict),
         }])
         self.tables["MP_MS_TEP_results_meta"] = meta_df
         self.add_period_results_to_tables(period_results)
+        
         if print_table:
             print('--------------')
             print('Dynamic Transmission Expansion Problem (MP+MS)')
@@ -2148,9 +2145,9 @@ class Results:
             print('')
             table = pt()
             table.field_names = ["Item", "Value"]
-            table.add_row(["n_clusters", data.get("n_clusters")])
-            table.add_row(["period_results", len(period_results) if isinstance(period_results, list) else "n/a"])
-            table.add_row(["period_scenario_grid_res", "yes" if isinstance(data.get("period_scenario_grid_res"), dict) else "no"])
+            table.add_row(["n_clusters", data['n_clusters']])
+            table.add_row(["period_results", len(period_results)])
+            table.add_row(["period_scenario_grid_res", "yes" if isinstance(data['period_scenario_grid_res'], dict) else "no"])
             table.add_row(["objective_summary_df", "yes" if isinstance(objective_summary, pd.DataFrame) else "no"])
             table.add_row(["investment_summary_df", "yes" if isinstance(investment_summary, pd.DataFrame) else "no"])
             print(table)

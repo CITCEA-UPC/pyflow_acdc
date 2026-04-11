@@ -1626,8 +1626,7 @@ def multi_period_MS_TEP(
         )
         period_result['Investment_Period'] = int(i)
         mp_ms_period_results[int(i)] = period_result
-        #DEBUG
-        print(period_result)
+        
         period_scenario_grid_res[int(i)] = {}
         for t in period_block.scenario_frames:
             period_scenario_grid_res[int(i)][int(t)] = {
