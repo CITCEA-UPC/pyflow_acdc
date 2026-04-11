@@ -368,19 +368,24 @@ def calculate_pn_min_max_from_model(grid, model, idx):
     """
     pn_min = {'time': idx + 1}
     pn_max = {'time': idx + 1}
-
+    a = {'time': idx + 1}
+    b = {'time': idx + 1}
     if hasattr(model, 'PGL_min') and hasattr(model, 'PGL_max'):
         pgl_min_values = {k: np.float64(pyo.value(v)) for k, v in model.PGL_min.items()}
         pgl_max_values = {k: np.float64(pyo.value(v)) for k, v in model.PGL_max.items()}
-
+        a_values = {k: np.float64(pyo.value(v)) for k, v in model.price_zone_a.items()}
+        b_values = {k: np.float64(pyo.value(v)) for k, v in model.price_zone_b.items()}
         for m in grid.Price_Zones:
             # model.PGL_min/max are indexed by price_zone_num
             if m.price_zone_num in pgl_min_values:
                 pn_min[m.name] = pgl_min_values[m.price_zone_num] * grid.S_base
             if m.price_zone_num in pgl_max_values:
                 pn_max[m.name] = pgl_max_values[m.price_zone_num] * grid.S_base
-
-    return pn_min, pn_max
+            if m.price_zone_num in a_values:
+                a[m.name] = a_values[m.price_zone_num]
+            if m.price_zone_num in b_values:
+                b[m.name] = b_values[m.price_zone_num]
+    return pn_min, pn_max, a, b
 
 def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=100):
     idx = start-1
@@ -606,6 +611,8 @@ def TS_ACDC_OPF(
     Time_series_net_price_zone_power = []
     Time_series_PN_min = []
     Time_series_PN_max = []
+    Time_series_a = []
+    Time_series_b = []
     
     weights_def = {
        'Ext_Gen': {'w': 0},
@@ -769,7 +776,7 @@ def TS_ACDC_OPF(
             price_zone_price = calculate_price_zone_price(grid,idx)
             net_price_zone_power = {'time': idx + 1}
 
-        pn_min, pn_max = calculate_pn_min_max_from_model(grid, model, idx)
+        pn_min, pn_max, a, b = calculate_pn_min_max_from_model(grid, model, idx)
         
         
         
@@ -777,7 +784,8 @@ def TS_ACDC_OPF(
         Time_series_net_price_zone_power.append(net_price_zone_power)
         Time_series_PN_min.append(pn_min)
         Time_series_PN_max.append(pn_max)
-            
+        Time_series_a.append(a)
+        Time_series_b.append(b)
        
         Time_series_conv_res.append(opt_res_Loading_conv)
         Time_series_line_res.append(line_data)
@@ -815,7 +823,7 @@ def TS_ACDC_OPF(
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
                             Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power,
-                            Time_series_PN_min,Time_series_PN_max)
+                            Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b)
     
     av_t_modelsolve = total_solve_time / count if count else 0.0
     av_t_modelupdate=total_update_time / count if count else 0.0
@@ -846,7 +854,7 @@ def save_TS_to_grid (grid,touple,infeasible):
     Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
     Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
     Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power,
-    Time_series_PN_min,Time_series_PN_max)= touple
+    Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b)= touple
 
     def to_dataframe(data):
         df = pd.DataFrame(data)
@@ -872,9 +880,10 @@ def save_TS_to_grid (grid,touple,infeasible):
     
     grid.time_series_results['prices_by_zone'] = to_dataframe(Time_series_price)
     grid.time_series_results['net_price_zone_power'] = to_dataframe(Time_series_net_price_zone_power)
-    grid.time_series_results['PN_min'] = to_dataframe(Time_series_PN_min)
-    grid.time_series_results['PN_max'] = to_dataframe(Time_series_PN_max)
-    
+    grid.time_series_results['PZ_lb'] = to_dataframe(Time_series_PN_min)
+    grid.time_series_results['PZ_ub'] = to_dataframe(Time_series_PN_max)
+    grid.time_series_results['a'] = to_dataframe(Time_series_a)
+    grid.time_series_results['b'] = to_dataframe(Time_series_b)
     
     # Split into AC and DC line results first, keeping the original index
     ac_line_res = grid.time_series_results['line_loading'].filter(like='AC_Load_', axis=1)
@@ -1001,7 +1010,9 @@ def Time_series_statistics(grid, curtail=0.99,over_loading=0.9):
             'converter_loading': grid.time_series_results['converter_loading'].add_suffix('_convloading'),
             'real_power_by_zone': grid.time_series_results['real_power_by_zone'].add_suffix('_zoneP'),
             'prices_by_zone': grid.time_series_results['prices_by_zone'].add_suffix('_price'),
-            'net_price_zone_power': grid.time_series_results['net_price_zone_power'].add_suffix('_netPZ')
+            'net_price_zone_power': grid.time_series_results['net_price_zone_power'].add_suffix('_netPZ'),
+            'a': grid.time_series_results['a'].add_suffix('_a'),
+            'b': grid.time_series_results['b'].add_suffix('_b'),
         }
         
         # Merge non-empty DataFrames
@@ -1087,7 +1098,10 @@ def results_TS_OPF(grid,excel_file_path,grid_names=None,stats=None,times=None):
         (grid.time_series_results['real_power_by_zone']*grid.S_base).to_excel(writer, sheet_name='Real power by zone', index=True)
         grid.time_series_results['net_price_zone_power'].to_excel(writer, sheet_name='Net price zone power', index=True)
         grid.time_series_results['prices_by_zone'].to_excel(writer, sheet_name='Prices by zone', index=True)
-        
+        grid.time_series_results['a'].to_excel(writer, sheet_name='a', index=True)
+        grid.time_series_results['b'].to_excel(writer, sheet_name='b', index=True)
+        grid.time_series_results['PZ_lb'].to_excel(writer, sheet_name='PZ_lb', index=True)
+        grid.time_series_results['PZ_ub'].to_excel(writer, sheet_name='PZ_ub', index=True)
  
         if stats is not None:
             stats.to_excel(writer, sheet_name='stats', index=True)
