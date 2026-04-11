@@ -1803,9 +1803,9 @@ def get_curtailment_data(t, model, grid,n_clusters,clustering):
             else:
                 factor = grid.Time_series[z.TS_dict['PRGi_available']].data[t-1]
   
-            PGi_ren=rs.PGi_ren_base*factor
+            PGi_ren=rs.PGi_ren_base*factor*pyo.value(model.np_rsgen[rs.rsNumber])
         except KeyError:
-            PGi_ren=rs.PGi_ren_base*rs.PRGi_available
+            PGi_ren=rs.PGi_ren_base*rs.PRGi_available*pyo.value(model.np_rsgen[rs.rsNumber])
             print(f'Key {z} not found in Time series')    
          
         curt_value = np.round((1 - pyo.value(model.scenario_model[t].gamma[rs.rsNumber])) *PGi_ren* grid.S_base, decimals=2)
@@ -1938,7 +1938,7 @@ def get_gen_data(t, model, grid):
 
 
 
-def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,mutate_grid=True):
+def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,mutate_grid=True,not_transposed=False):
     if mutate_grid:
         grid.V_AC =np.zeros(grid.nn_AC)
         grid.Theta_V_AC=np.zeros(grid.nn_AC)
@@ -2249,6 +2249,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     else:
         pz_lb_df = pd.DataFrame()
         pz_ub_df = pd.DataFrame()
+    
 
     # Pack all variables into the final result
     TEP_multiScenario_res =     {
@@ -2272,6 +2273,19 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     'qgen': flipped_data_qgen,
     }
     
+    if not_transposed:
+        TEP_multiScenario_res =     {
+
+        'PN': data_PN.set_index('Time_Frame') if data_PN is not None else None,
+        'PZ_GEN': data_PZGEN.set_index('Time_Frame') if data_PZGEN is not None else None,
+        'PZ_cost_of_generation': data_SC.set_index('Time_Frame') if data_SC is not None else None,
+
+        'curtailment': data_curt.set_index('Time_Frame'),
+        'curtailment_per': data_curt_per.set_index('Time_Frame'),
+        'lines': data_lines.set_index('Time_Frame'),
+        'converters': data_conv.set_index('Time_Frame'),
+        'price': data_price.set_index('Time_Frame'),
+        }
     
       
     if mutate_grid:

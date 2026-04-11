@@ -1622,7 +1622,7 @@ def multi_period_MS_TEP(
         period_block = model.inv_model[i]
         _set_grid_to_multiperiod_state(grid, i, Price_Zones)
         period_result = ExportACDC_TEP_MS_toPyflowACDC(
-            period_block, grid, n_clusters, clustering, Price_Zones, mutate_grid=False
+            period_block, grid, n_clusters, clustering, Price_Zones, mutate_grid=False, not_transposed=True
         )
         period_result['Investment_Period'] = int(i)
         mp_ms_period_results[int(i)] = period_result
