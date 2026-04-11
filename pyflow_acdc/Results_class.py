@@ -2122,15 +2122,11 @@ class Results:
                 )
 
     def MP_MS_TEP_results(self, print_table=True):
-        data = getattr(self.Grid, "MP_MS_TEP_results", None)
-        if not isinstance(data, dict):
-            if print_table:
-                print("No MP_MS_TEP_results found")
-            return data
+        data = self.Grid.MP_MS_TEP_results
 
-        period_results = data.get("period_results")
-        objective_summary = data.get("objective_summary")
-        investment_summary = data.get("investment_summary")
+        period_results = data['period_results']
+        objective_summary = data['objective_summary']
+        investment_summary = data['investment_summary']
 
         if isinstance(objective_summary, pd.DataFrame):
             self.tables["MP_MS_TEP_results_objective_summary"] = objective_summary
