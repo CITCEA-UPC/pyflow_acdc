@@ -455,8 +455,20 @@ def _MP_TEP_variables(model, grid):
         model.installed_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_rsgen_init,bounds=np_rsgen_bounds_install)
         model.planned_installation_rsgen = pyo.Param(model.ren_sources,model.inv_periods,initialize=planned_installation_rsgen_init)
         model.opt_installation_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.Integers,initialize=0,bounds=np_rsgen_bounds_install_opt)
-        
-        model.decomision_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
+        def decom_rs_bounds(model,rs,i):
+            ren_source = grid.RenSources[rs]
+            if ren_source.np_rsgen_opf:
+                planned_decomision = _inv_decision(ren_source, 'planned_decomision')[i]
+                decomision_period = ren_source.decomision_period
+                if i < decomision_period: 
+                    return (0,planned_decomision)
+                else:
+                    planned_install = planned_installation_rsgen_init(model, rs, i-decomision_period)
+                    max_install = np_rsgen_max_install[(rs, i-decomision_period)]
+                    return (0,planned_install+max_install+planned_decomision)  
+            else:
+                return (0,0)  
+        model.decomision_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_rs_bounds)
     
     if grid.GPR:
         np_gen = tep_vars['generators']['np_gen']
@@ -485,8 +497,18 @@ def _MP_TEP_variables(model, grid):
         model.installed_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_gen_init,bounds=np_gen_bounds_install)
         model.planned_installation_gen = pyo.Param(model.gen_AC,model.inv_periods,initialize=planned_installation_gen_init)
         model.opt_installation_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.Integers,initialize=0,bounds=np_gen_bounds_install_opt)
-        
-        model.decomision_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
+        def decom_gen_bounds(model,g,i):
+            gen = grid.Generators[g]
+            if gen.np_gen_opf:
+                planned_decomision = _inv_decision(gen, 'planned_decomision')[i]
+                decomision_period = gen.decomision_period
+                if i < decomision_period: 
+                    return (0,planned_decomision)   
+                else:
+                    planned_install = planned_installation_gen_init(model, g, i-decomision_period)
+                    max_install = np_gen_max_install[(g, i-decomision_period)]
+                    return (0,planned_install+max_install+planned_decomision)  
+        model.decomision_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_gen_bounds)
 
     if grid.ACmode:
         NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
@@ -513,7 +535,19 @@ def _MP_TEP_variables(model, grid):
             model.installed_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_ACline_init,bounds=MP_AC_line_bounds_install)
             model.planned_installation_ACline = pyo.Param(model.lines_AC_exp,model.inv_periods,initialize=planned_installation_ACline_init)
             model.opt_installation_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_AC_line_bounds_install_opt)
-            model.decomision_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
+            def decom_ACline_bounds(model,l,i):
+                line = grid.lines_AC_exp[l]
+                if line.np_line_opf:
+                    planned_decomision = _inv_decision(line, 'planned_decomision')[i]
+                    decomision_period = line.decomision_period
+                    if i < decomision_period: 
+                        return (0,planned_decomision)   
+                    else:
+                        planned_install = planned_installation_ACline_init(model, l, i-decomision_period)
+                        max_install = np_acline_max_install[(l, i-decomision_period)]
+                        return (0,planned_install+max_install+planned_decomision)  
+            
+            model.decomision_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_ACline_bounds)
     if grid.DCmode:
         NP_lineDC = tep_vars['dc_lines']['NP_lineDC']
         NP_lineDC_max = tep_vars['dc_lines']['NP_lineDC_max']
@@ -539,7 +573,20 @@ def _MP_TEP_variables(model, grid):
         model.installed_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_DCline_init,bounds=MP_DC_line_bounds_install)
         model.planned_installation_DCline = pyo.Param(model.lines_DC,model.inv_periods,initialize=planned_installation_DCline_init)
         model.opt_installation_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_DC_line_bounds_install_opt)
-        model.decomision_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
+        def decom_DCline_bounds(model,l,i):
+            line = grid.lines_DC[l]
+            if line.np_line_opf:
+                planned_decomision = _inv_decision(line, 'planned_decomision')[i]
+                decomision_period = line.decomision_period
+                if i < decomision_period: 
+                    return (0,planned_decomision)   
+                else:
+                    planned_install = planned_installation_DCline_init(model, l, i-decomision_period)
+                    max_install = np_dcline_max_install[(l, i-decomision_period)]
+                    return (0,planned_install+max_install+planned_decomision)  
+            else:
+                return (0,0)  
+        model.decomision_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_DCline_bounds)
 
     if grid.ACmode and grid.DCmode:
         np_conv = tep_vars['converters']['np_conv']
@@ -565,7 +612,20 @@ def _MP_TEP_variables(model, grid):
         model.installed_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_Conv_init,bounds=MP_Conv_bounds_install)
         model.planned_installation_Conv = pyo.Param(model.conv,model.inv_periods,initialize=planned_installation_Conv_init)
         model.opt_installation_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.Integers,initialize=0,bounds=MP_Conv_bounds_install_opt)
-        model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0)
+        def decom_Conv_bounds(model,c,i):
+            conv = grid.Converters_ACDC[c]
+            if conv.np_conv_opf:
+                planned_decomision = _inv_decision(conv, 'planned_decomision')[i]
+                decomision_period = conv.decomision_period
+                if i < decomision_period: 
+                    return (0,planned_decomision)   
+                else:
+                    planned_install = planned_installation_Conv_init(model, c, i-decomision_period)
+                    max_install = np_conv_max_install[(c, i-decomision_period)]
+                    return (0,planned_install+max_install+planned_decomision)  
+            else:
+                return (0,0)  
+        model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_Conv_bounds)
 def _validate_grid_for_MP_TEP(grid):
     """
     Fast pre-solve validation for MP TEP inputs.
@@ -1566,6 +1626,8 @@ def multi_period_MS_TEP(
         )
         period_result['Investment_Period'] = int(i)
         mp_ms_period_results[int(i)] = period_result
+        #DEBUG
+        print(period_result)
         period_scenario_grid_res[int(i)] = {}
         for t in period_block.scenario_frames:
             period_scenario_grid_res[int(i)][int(t)] = {

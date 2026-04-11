@@ -2037,6 +2037,89 @@ class Results:
             if print_table:
                 print(self.Grid.MP_TEP_results)
             return self.Grid.MP_TEP_results
+    import pandas as pd
+
+    def add_period_results_to_tables(self, data, prefix="MP_MS_res"):
+        """
+        Reads:
+            period_results = data.get("period_results")
+
+        Expected structure:
+            period_results = {
+                0: {"PN": df, "price": df, ...},
+                1: {"PN": df, "price": df, ...},
+                ...
+            }
+
+        Writes:
+            self.tables["MP_MS_res_PN"] = combined_df
+            self.tables["MP_MS_res_price"] = combined_df
+            ...
+        """
+        period_results = data.get("period_results")
+        if not period_results:
+            return
+
+        # collect all categories present in any investment period
+        categories = set()
+        for inv, res_dict in period_results.items():
+            if isinstance(res_dict, dict):
+                categories.update(res_dict.keys())
+
+        for category in sorted(categories):
+            sheet_blocks = []
+
+            for inv in sorted(period_results.keys()):
+                res_dict = period_results[inv]
+                if not isinstance(res_dict, dict):
+                    continue
+
+                df = res_dict.get(category)
+                if df is None:
+                    continue
+
+                # normalize to DataFrame
+                if isinstance(df, pd.Series):
+                    df = df.to_frame()
+                elif not isinstance(df, pd.DataFrame):
+                    try:
+                        df = pd.DataFrame(df)
+                    except Exception:
+                        df = pd.DataFrame([[df]], columns=[category])
+
+                df = df.copy().reset_index(drop=True)
+
+                # use dataframe columns as the sheet columns
+                cols = list(df.columns)
+                if not cols:
+                    cols = [category]
+                    df = pd.DataFrame(columns=cols)
+
+                # section title row
+                title_row = pd.DataFrame(
+                    [[f"INV {inv} {category}"] + [""] * (len(cols) - 1)],
+                    columns=cols
+                )
+
+                # repeated header row as normal data row
+                header_row = pd.DataFrame([cols], columns=cols)
+
+                # blank separator row
+                blank_row = pd.DataFrame(
+                    [[""] * len(cols)],
+                    columns=cols
+                )
+
+                # convert data to object so strings and numbers can coexist cleanly
+                df_as_obj = df.astype(object)
+
+                sheet_blocks.extend([title_row, header_row, df_as_obj, blank_row])
+
+            if sheet_blocks:
+                self.tables[f"{prefix}_{category}"] = pd.concat(
+                    sheet_blocks,
+                    ignore_index=True
+                )
 
     def MP_MS_TEP_results(self, print_table=True):
         data = getattr(self.Grid, "MP_MS_TEP_results", None)
@@ -2060,7 +2143,7 @@ class Results:
             "has_period_scenario_grid_res": isinstance(data.get("period_scenario_grid_res"), dict),
         }])
         self.tables["MP_MS_TEP_results_meta"] = meta_df
-
+        self.add_period_results_to_tables(period_results)
         if print_table:
             print('--------------')
             print('Dynamic Transmission Expansion Problem (MP+MS)')
