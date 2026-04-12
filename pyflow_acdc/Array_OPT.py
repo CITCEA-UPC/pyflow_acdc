@@ -87,8 +87,6 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
     weights_def, PZ = obj_w_rule(grid,ObjRule,True)
     t0 = time.perf_counter()
     t_MW = grid.RenSources[0].PGi_ren_base*grid.S_base
-    #print(f'DEBUG: t_MW {t_MW}')
-    #print(f'DEBUG: starting max flow {max_flow}')
 
     if max_iter is None:
         max_iter = len(grid.Cable_options[0].cable_types)
@@ -177,10 +175,9 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
             grid.max_turbines_per_string = high_flow
         iter_cab_available= grid.Cable_options[0].cable_types.copy()
         if tee:
-            print(f'DEBUG: Iteration {i} iter_cab_available: {iter_cab_available}')
+            print(f'Iteration {i} iter_cab_available: {iter_cab_available}')
         
         t3 = time.perf_counter()
-        #print(f'DEBUG: Iteration {i}')
         if NL == 'OPF':
             from .Graph_and_plot import save_network_svg
             intermediate_dir = os.path.join(save_dir, 'intermediate_networks')
@@ -218,10 +215,6 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
                 print(f'Iteration {i} CSS solver status not ok and no feasible solution found, skipping to next cable combo')
             obj_value = None
 
-        
-        
-        #print('DEBUG: Iteration',i)
-
         used_cable_types = []
         used_cable_names = []
         
@@ -233,7 +226,6 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
                 if pyo.value(model.ct_types[ct]) > 0.5:  # Binary variable > 0.5 means it was selected
                     used_cable_types.append(ct)
                     used_cable_names.append(grid.Cable_options[0].cable_types[ct])
-            #print(f'DEBUG: Used cable types: {used_cable_types}')
             
             if used_cable_types:
                 # Find the largest cable type that was used

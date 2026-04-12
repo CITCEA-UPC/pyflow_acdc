@@ -1143,7 +1143,7 @@ def export_MP_TEP_results_toPyflowACDC(
             rs_installed_values = {(rs, i): int(round(pyo.value(model.installed_rsgen[rs, i]))) for (rs, i) in model.installed_rsgen}
             rs_decomision_values = {(rs, i): int(round(pyo.value(model.decomision_rsgen[rs, i]))) for (rs, i) in model.decomision_rsgen}
         else:
-            rs_mp_values = {(rs, i): round(pyo.value(model.np_rsgen[rs, i]),2) for (rs, i) in model.np_rsgen}
+            rs_mp_values = {(rs, i): float(pyo.value(model.np_rsgen[rs, i])) for (rs, i) in model.np_rsgen}
             rs_installed_values = {(rs, i): round(pyo.value(model.installed_rsgen[rs, i]),2) for (rs, i) in model.installed_rsgen}
             rs_decomision_values = {(rs, i): round(pyo.value(model.decomision_rsgen[rs, i]),2) for (rs, i) in model.decomision_rsgen}
             
@@ -1202,7 +1202,7 @@ def export_MP_TEP_results_toPyflowACDC(
             dc_line_installed_values = {(l, i): int(round(pyo.value(model.installed_DCline[l, i]))) for (l, i) in model.installed_DCline}
             dc_line_decomision_values = {(l, i): int(round(pyo.value(model.decomision_DCline[l, i]))) for (l, i) in model.decomision_DCline}
         else:
-            dc_lines_mp_values = {(l, i): round(pyo.value(model.DCLinesMP[l, i]),2) for (l, i) in model.DCLinesMP}
+            dc_lines_mp_values = {(l, i): float(pyo.value(model.DCLinesMP[l, i])) for (l, i) in model.DCLinesMP}
             dc_line_installed_values = {(l, i): round(pyo.value(model.installed_DCline[l, i]),2) for (l, i) in model.installed_DCline}
             dc_line_decomision_values = {(l, i): round(pyo.value(model.decomision_DCline[l, i]),2) for (l, i) in model.decomision_DCline}
 
@@ -1231,7 +1231,7 @@ def export_MP_TEP_results_toPyflowACDC(
             conv_installed_values = {(c, i): int(round(pyo.value(model.installed_Conv[c, i]))) for (c, i) in model.installed_Conv}
             conv_decomision_values = {(c, i): int(round(pyo.value(model.decomision_Conv[c, i]))) for (c, i) in model.decomision_Conv}
         else:
-            acdc_conv_mp_values = {(c, i): round(pyo.value(model.ConvMP[c, i]),2) for (c, i) in model.ConvMP}
+            acdc_conv_mp_values = {(c, i): float(pyo.value(model.ConvMP[c, i])) for (c, i) in model.ConvMP}
             conv_installed_values = {(c, i): round(pyo.value(model.installed_Conv[c, i]),2) for (c, i) in model.installed_Conv}
             conv_decomision_values = {(c, i): round(pyo.value(model.decomision_Conv[c, i]),2) for (c, i) in model.decomision_Conv}
         for conv in grid.Converters_ACDC:
@@ -1984,6 +1984,7 @@ def run_opf_for_all_investment_periods(
     ts_end: int = 99999,
     ts_use_clusters: bool = True,
     ts_include_base_case: bool = True,
+    ts_warm_start_mode: str = 'roll',
 ):
     """
     Run OPF for every dynamic investment period and export one Excel per period.
@@ -2000,6 +2001,10 @@ def run_opf_for_all_investment_periods(
     If ``ts_include_base_case`` is True (default), run a **nominal-base** TS first
     (see ``_set_grid_to_nominal_base``). Results go under ``period_results['base']``
     and ``ts_inv['base']`` for Dash comparison.
+
+    ``ts_warm_start_mode`` is passed to ``TS_ACDC_OPF`` (``'roll'`` = continue from
+    the previous timestep solution; ``'hard'`` = reset decision variables to the
+    snapshot taken when the TS model was first built, before each timestep solve).
     """
     n_periods = grid.TEP_n_periods
 
@@ -2025,6 +2030,7 @@ def run_opf_for_all_investment_periods(
             use_clusters=ts_use_clusters,
             solver=solver,
             obj_scaling=obj_scaling,
+            warm_start_mode=ts_warm_start_mode,
             export_excel=export_excel,
             export_location=ts_export_location,
             file_name=f"{ts_prefix}_base",
@@ -2085,6 +2091,7 @@ def run_opf_for_all_investment_periods(
                 use_clusters=ts_use_clusters,
                 solver=solver,
                 obj_scaling=obj_scaling,
+                warm_start_mode=ts_warm_start_mode,
                 export_excel=export_excel,
                 export_location=ts_export_location,
                 file_name=f"{ts_prefix}_{i}",
