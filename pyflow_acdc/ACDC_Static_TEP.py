@@ -1793,11 +1793,32 @@ def get_price_zone_data(t, model, grid,n_clusters,clustering):
 
             PN = np.float64(pyo.value(model.scenario_model[t].PN[nM]))
             row_data_PN[m.name] = np.round(PN * grid.S_base, decimals=2)
-            
-            
-            
-            
-    return row_data_price, row_data_SC, row_data_PN,row_data_GEN, row_data_pz_lb, row_data_pz_ub, row_data_a, row_data_b
+
+    # PZ_load: per zone, sum of scenario model P_known on zone nodes (pu) × S_base → MW (model sign).
+    row_data_load = {'Time_Frame': t}
+    scen = model.scenario_model[t]
+    for m in grid.Price_Zones:
+        load_pu = 0.0
+        for node in m.nodes_AC:
+            n_ac = node.nodeNumber
+            load_pu += pyo.value(scen.P_known_AC[n_ac])
+        if grid.DCmode and hasattr(scen, 'P_known_DC'):
+            for node in m.nodes_DC:
+                n_dc = node.nodeNumber
+                load_pu += pyo.value(scen.P_known_DC[n_dc])
+        row_data_load[m.name] = np.round(load_pu * grid.S_base, decimals=2)
+
+    return (
+        row_data_price,
+        row_data_SC,
+        row_data_PN,
+        row_data_GEN,
+        row_data_pz_lb,
+        row_data_pz_ub,
+        row_data_a,
+        row_data_b,
+        row_data_load,
+    )
 
 def get_curtailment_data(t, model, grid,n_clusters,clustering):
     row_data_curt = {'Time_Frame': t}
@@ -2142,6 +2163,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     data_rows_pz_ub = []
     data_rows_a = []
     data_rows_b = []
+    data_rows_load = []
     weights_row = []
     
     with ThreadPoolExecutor() as executor:
@@ -2168,7 +2190,17 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
             pgen_data, qgen_data = futures[i+4].result()
             
             if Price_Zones:
-                price_data, SC_data, PN_data, PZ_GEN_data, pz_lb_data, pz_ub_data, a_data, b_data = futures[i+5].result()
+                (
+                    price_data,
+                    SC_data,
+                    PN_data,
+                    PZ_GEN_data,
+                    pz_lb_data,
+                    pz_ub_data,
+                    a_data,
+                    b_data,
+                    load_data,
+                ) = futures[i + 5].result()
                 data_rows_price.append(price_data)
                 data_rows_SC.append(SC_data)
                 data_rows_PN.append(PN_data)
@@ -2177,6 +2209,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
                 data_rows_pz_ub.append(pz_ub_data)
                 data_rows_a.append(a_data)
                 data_rows_b.append(b_data)
+                data_rows_load.append(load_data)
 
             data_rows_curt.append(curt_data)
             data_rows_curt_per.append(curt_data_per)
@@ -2196,6 +2229,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
         data_pz_ub = pd.DataFrame(data_rows_pz_ub)
         data_a = pd.DataFrame(data_rows_a)
         data_b = pd.DataFrame(data_rows_b)
+        data_load = pd.DataFrame(data_rows_load)
         # Transpose the DataFrame to flip rows and columns
         flipped_data_PN = data_PN.set_index('Time_Frame').T 
         flipped_data_PZGEN = data_PZGEN.set_index('Time_Frame').T 
@@ -2205,6 +2239,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
         flipped_data_pz_ub = data_pz_ub.set_index('Time_Frame').T 
         flipped_data_a = data_a.set_index('Time_Frame').T 
         flipped_data_b = data_b.set_index('Time_Frame').T 
+        flipped_data_load = data_load.set_index('Time_Frame').T
     
     else:
         # Create empty DataFrames with the same structure
@@ -2212,6 +2247,8 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
         flipped_data_PZGEN = pd.DataFrame()
         flipped_data_SC = pd.DataFrame()
         flipped_data_price = pd.DataFrame()
+        flipped_data_load = pd.DataFrame()
+        data_load = pd.DataFrame()
 
     # These are always created regardless of Price_Zones
     data_curt = pd.DataFrame(data_rows_curt)
@@ -2278,6 +2315,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
     'PZ_cost_of_generation': flipped_data_SC if flipped_data_SC is not None else None,
     'PZ_lb': flipped_data_pz_lb if flipped_data_pz_lb is not None else None,
     'PZ_ub': flipped_data_pz_ub if flipped_data_pz_ub is not None else None,
+    'PZ_load': flipped_data_load if Price_Zones else None,
 
     'curtailment': flipped_data_curt,
     'curtailment_per': flipped_data_curt_per,
@@ -2297,6 +2335,7 @@ def ExportACDC_TEP_MS_toPyflowACDC(model,grid,n_clusters,clustering,Price_Zones,
         'PZ_cost_of_generation': data_SC.set_index('Time_Frame') if data_SC is not None else None,
         'PZ_lb': data_pz_lb.set_index('Time_Frame') if data_pz_lb is not None else None,
         'PZ_ub': data_pz_ub.set_index('Time_Frame') if data_pz_ub is not None else None,
+        'PZ_load': data_load.set_index('Time_Frame') if Price_Zones and data_load is not None else None,
         'a': data_a.set_index('Time_Frame') if data_a is not None else None,
         'b': data_b.set_index('Time_Frame') if data_b is not None else None,
 

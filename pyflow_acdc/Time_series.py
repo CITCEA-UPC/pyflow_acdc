@@ -349,6 +349,37 @@ def calculate_price_zone_price_from_model(grid,model,idx):
     return price_zone_price
 
 
+def calculate_pz_social_cost_kEUR_from_model(grid, model, idx):
+    """Per price zone social cost of generation in k€ (model SocialCost / 1000), aligned with MS export."""
+    row = {'time': idx + 1}
+    if not getattr(grid, 'Price_Zones', None) or not hasattr(model, 'SocialCost'):
+        return row
+    for m in grid.Price_Zones:
+        n_m = m.price_zone_num
+        sc = np.float64(pyo.value(model.SocialCost[n_m]))
+        row[m.name] = np.round(sc / 1000.0, decimals=4)
+    return row
+
+
+def calculate_pz_p_known_mw_from_model(grid, model, idx):
+    """
+    Per price zone: sum of model P_known (pu) on zone nodes × S_base → MW.
+    Same definition as MS export ``PZ_load`` / ``get_price_zone_data`` row_data_load.
+    """
+    row = {'time': idx + 1}
+    if not getattr(grid, 'Price_Zones', None) or not hasattr(model, 'P_known_AC'):
+        return row
+    for m in grid.Price_Zones:
+        load_pu = 0.0
+        for node in m.nodes_AC:
+            load_pu += pyo.value(model.P_known_AC[node.nodeNumber])
+        if grid.DCmode and hasattr(model, 'P_known_DC'):
+            for node in m.nodes_DC:
+                load_pu += pyo.value(model.P_known_DC[node.nodeNumber])
+        row[m.name] = np.round(load_pu * grid.S_base, decimals=2)
+    return row
+
+
 def calculate_net_price_zone_power_from_model(grid, model, idx):
     net_price_zone_power = {'time': idx + 1}
     if hasattr(model, 'PN'):
@@ -357,7 +388,13 @@ def calculate_net_price_zone_power_from_model(grid, model, idx):
             if m.price_zone_num in pn_values:
                 net_price_zone_power[m.name] = pn_values[m.price_zone_num] * grid.S_base
     return net_price_zone_power
-
+def calculate_res_available_from_model(grid, model, idx):
+    res_available = {'time': idx + 1}
+    if hasattr(model, 'ren_sources'):
+        res_available_values = {k: np.float64(pyo.value(v)) for k, v in model.P_renSource.items()}
+        for rs in grid.RenSources:
+            res_available[rs.name] = res_available_values[rs.rsNumber] * grid.S_base
+    return res_available
 
 def calculate_pn_min_max_from_model(grid, model, idx):
     """
@@ -608,11 +645,14 @@ def TS_ACDC_OPF(
     Time_series_Opt_curtailment   =[]
     
     Time_series_price = []
+    Time_series_PZ_cost_kEUR = []
+    Time_series_PZ_load = []
     Time_series_net_price_zone_power = []
     Time_series_PN_min = []
     Time_series_PN_max = []
     Time_series_a = []
     Time_series_b = []
+    Time_series_res_available = []
     
     weights_def = {
        'Ext_Gen': {'w': 0},
@@ -764,6 +804,7 @@ def TS_ACDC_OPF(
         opt_res_Q_extGrid['time'] = idx+1
         opt_res_Loading_conv['time'] = idx+1
         
+
         line_data, loadS_AC, loadP_DC = calculate_line_loading_from_model( grid, model,idx)
         
         
@@ -776,17 +817,22 @@ def TS_ACDC_OPF(
             price_zone_price = calculate_price_zone_price(grid,idx)
             net_price_zone_power = {'time': idx + 1}
 
+        pz_cost_kEUR = calculate_pz_social_cost_kEUR_from_model(grid, model, idx)
+        pz_load_mw = calculate_pz_p_known_mw_from_model(grid, model, idx)
+
         pn_min, pn_max, a, b = calculate_pn_min_max_from_model(grid, model, idx)
         
-        
+        res_available = calculate_res_available_from_model(grid, model, idx)
         
         Time_series_price.append(price_zone_price)
+        Time_series_PZ_cost_kEUR.append(pz_cost_kEUR)
+        Time_series_PZ_load.append(pz_load_mw)
         Time_series_net_price_zone_power.append(net_price_zone_power)
         Time_series_PN_min.append(pn_min)
         Time_series_PN_max.append(pn_max)
         Time_series_a.append(a)
         Time_series_b.append(b)
-       
+        Time_series_res_available.append(res_available)
         Time_series_conv_res.append(opt_res_Loading_conv)
         Time_series_line_res.append(line_data)
         Time_series_grid_loading.append(grid_data_loading)
@@ -822,8 +868,8 @@ def TS_ACDC_OPF(
     touple = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-                            Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power,
-                            Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b)
+                            Time_series_Opt_res_P_Load,Time_series_price,Time_series_PZ_cost_kEUR,Time_series_PZ_load,Time_series_net_price_zone_power,
+                            Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b,Time_series_res_available)
     
     av_t_modelsolve = total_solve_time / count if count else 0.0
     av_t_modelupdate=total_update_time / count if count else 0.0
@@ -853,8 +899,8 @@ def save_TS_to_grid (grid,touple,infeasible):
     (Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
     Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
     Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
-    Time_series_Opt_res_P_Load,Time_series_price,Time_series_net_price_zone_power,
-    Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b)= touple
+    Time_series_Opt_res_P_Load,Time_series_price,Time_series_PZ_cost_kEUR,Time_series_PZ_load,Time_series_net_price_zone_power,
+    Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b,Time_series_res_available)= touple
 
     def to_dataframe(data):
         df = pd.DataFrame(data)
@@ -879,12 +925,14 @@ def save_TS_to_grid (grid,touple,infeasible):
     grid.time_series_results['grid_loading'] = to_dataframe(Time_series_grid_loading)
     
     grid.time_series_results['prices_by_zone'] = to_dataframe(Time_series_price)
+    grid.time_series_results['PZ_cost_of_generation'] = to_dataframe(Time_series_PZ_cost_kEUR)
+    grid.time_series_results['PZ_load'] = to_dataframe(Time_series_PZ_load)
     grid.time_series_results['net_price_zone_power'] = to_dataframe(Time_series_net_price_zone_power)
     grid.time_series_results['PZ_lb'] = to_dataframe(Time_series_PN_min)
     grid.time_series_results['PZ_ub'] = to_dataframe(Time_series_PN_max)
     grid.time_series_results['a'] = to_dataframe(Time_series_a)
     grid.time_series_results['b'] = to_dataframe(Time_series_b)
-    
+    grid.time_series_results['res_available'] = to_dataframe(Time_series_res_available)
     # Split into AC and DC line results first, keeping the original index
     ac_line_res = grid.time_series_results['line_loading'].filter(like='AC_Load_', axis=1)
     dc_line_res = grid.time_series_results['line_loading'].filter(like='DC_Load_', axis=1)
@@ -1010,6 +1058,8 @@ def Time_series_statistics(grid, curtail=0.99,over_loading=0.9):
             'converter_loading': grid.time_series_results['converter_loading'].add_suffix('_convloading'),
             'real_power_by_zone': grid.time_series_results['real_power_by_zone'].add_suffix('_zoneP'),
             'prices_by_zone': grid.time_series_results['prices_by_zone'].add_suffix('_price'),
+            'PZ_cost_of_generation': grid.time_series_results.get('PZ_cost_of_generation', pd.DataFrame()).add_suffix('_PZcost'),
+            'PZ_load': grid.time_series_results.get('PZ_load', pd.DataFrame()).add_suffix('_PZload'),
             'net_price_zone_power': grid.time_series_results['net_price_zone_power'].add_suffix('_netPZ'),
             'a': grid.time_series_results['a'].add_suffix('_a'),
             'b': grid.time_series_results['b'].add_suffix('_b'),
@@ -1098,6 +1148,10 @@ def results_TS_OPF(grid,excel_file_path,grid_names=None,stats=None,times=None):
         (grid.time_series_results['real_power_by_zone']*grid.S_base).to_excel(writer, sheet_name='Real power by zone', index=True)
         grid.time_series_results['net_price_zone_power'].to_excel(writer, sheet_name='Net price zone power', index=True)
         grid.time_series_results['prices_by_zone'].to_excel(writer, sheet_name='Prices by zone', index=True)
+        grid.time_series_results['PZ_cost_of_generation'].to_excel(
+            writer, sheet_name='PZ cost of generation', index=True
+        )
+        grid.time_series_results['PZ_load'].to_excel(writer, sheet_name='PZ_load', index=True)
         grid.time_series_results['a'].to_excel(writer, sheet_name='a', index=True)
         grid.time_series_results['b'].to_excel(writer, sheet_name='b', index=True)
         grid.time_series_results['PZ_lb'].to_excel(writer, sheet_name='PZ_lb', index=True)
