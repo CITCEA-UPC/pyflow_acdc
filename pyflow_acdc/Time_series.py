@@ -425,25 +425,6 @@ def calculate_pn_min_max_from_model(grid, model, idx):
     return pn_min, pn_max, a, b
 
 
-def calculate_pn_var_bounds_mw_from_grid(grid, idx):
-    """
-    MW bounds assigned to Pyomo ``Var PN`` (``ACDC_OPF_NL_model.Price_Zone_P_bounds``):
-    ``min_PGL_min * S_base``, ``max_PGL_max * S_base`` per ``Price_Zone``.
-    Distinct from ``PZ_lb``/``PZ_ub`` (mutable ``PGL_min``/``PGL_max`` params in constraints).
-    """
-    from .Classes import Price_Zone
-
-    row_lb = {'time': idx + 1}
-    row_ub = {'time': idx + 1}
-    if not getattr(grid, 'Price_Zones', None):
-        return row_lb, row_ub
-    for m in grid.Price_Zones:
-        if isinstance(m, Price_Zone):
-            row_lb[m.name] = np.round(float(m.min_PGL_min) * grid.S_base, decimals=4)
-            row_ub[m.name] = np.round(float(m.max_PGL_max) * grid.S_base, decimals=4)
-    return row_lb, row_ub
-
-
 def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=100):
     idx = start-1
     TS_len = len(grid.Time_series[0].data)
@@ -668,8 +649,6 @@ def TS_ACDC_OPF(
     Time_series_net_price_zone_power = []
     Time_series_PN_min = []
     Time_series_PN_max = []
-    Time_series_PN_var_lb = []
-    Time_series_PN_var_ub = []
     Time_series_a = []
     Time_series_b = []
     Time_series_res_available = []
@@ -841,7 +820,6 @@ def TS_ACDC_OPF(
         pz_load_mw = calculate_pz_p_known_mw_from_model(grid, model, idx)
 
         pn_min, pn_max, a, b = calculate_pn_min_max_from_model(grid, model, idx)
-        pn_var_lb, pn_var_ub = calculate_pn_var_bounds_mw_from_grid(grid, idx + 1)
 
         res_available = calculate_res_available_from_model(grid, model, idx)
         
@@ -851,8 +829,6 @@ def TS_ACDC_OPF(
         Time_series_net_price_zone_power.append(net_price_zone_power)
         Time_series_PN_min.append(pn_min)
         Time_series_PN_max.append(pn_max)
-        Time_series_PN_var_lb.append(pn_var_lb)
-        Time_series_PN_var_ub.append(pn_var_ub)
         Time_series_a.append(a)
         Time_series_b.append(b)
         Time_series_res_available.append(res_available)
@@ -892,7 +868,7 @@ def TS_ACDC_OPF(
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
                             Time_series_Opt_res_P_Load,Time_series_price,Time_series_PZ_cost_kEUR,Time_series_PZ_load,Time_series_net_price_zone_power,
-                            Time_series_PN_min,Time_series_PN_max,Time_series_PN_var_lb,Time_series_PN_var_ub,Time_series_a,Time_series_b,Time_series_res_available)
+                            Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b,Time_series_res_available)
     
     av_t_modelsolve = total_solve_time / count if count else 0.0
     av_t_modelupdate=total_update_time / count if count else 0.0
@@ -923,7 +899,7 @@ def save_TS_to_grid (grid,touple,infeasible):
     Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
     Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
     Time_series_Opt_res_P_Load,Time_series_price,Time_series_PZ_cost_kEUR,Time_series_PZ_load,Time_series_net_price_zone_power,
-    Time_series_PN_min,Time_series_PN_max,Time_series_PN_var_lb,Time_series_PN_var_ub,Time_series_a,Time_series_b,Time_series_res_available)= touple
+    Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b,Time_series_res_available)= touple
 
     def to_dataframe(data):
         df = pd.DataFrame(data)
@@ -953,8 +929,6 @@ def save_TS_to_grid (grid,touple,infeasible):
     grid.time_series_results['net_price_zone_power'] = to_dataframe(Time_series_net_price_zone_power)
     grid.time_series_results['PZ_lb'] = to_dataframe(Time_series_PN_min)
     grid.time_series_results['PZ_ub'] = to_dataframe(Time_series_PN_max)
-    grid.time_series_results['var_PN_actual_lb'] = to_dataframe(Time_series_PN_var_lb)
-    grid.time_series_results['var_PN_actual_ub'] = to_dataframe(Time_series_PN_var_ub)
     grid.time_series_results['a'] = to_dataframe(Time_series_a)
     grid.time_series_results['b'] = to_dataframe(Time_series_b)
     grid.time_series_results['res_available'] = to_dataframe(Time_series_res_available)
@@ -1181,12 +1155,6 @@ def results_TS_OPF(grid,excel_file_path,grid_names=None,stats=None,times=None):
         grid.time_series_results['b'].to_excel(writer, sheet_name='b', index=True)
         grid.time_series_results['PZ_lb'].to_excel(writer, sheet_name='PZ_lb', index=True)
         grid.time_series_results['PZ_ub'].to_excel(writer, sheet_name='PZ_ub', index=True)
-        grid.time_series_results['var_PN_actual_lb'].to_excel(
-            writer, sheet_name='var PN actual lb', index=True
-        )
-        grid.time_series_results['var_PN_actual_ub'].to_excel(
-            writer, sheet_name='var PN actual ub', index=True
-        )
         grid.time_series_results['res_available'].to_excel(writer, sheet_name='res_available', index=True)
         if stats is not None:
             stats.to_excel(writer, sheet_name='stats', index=True)
