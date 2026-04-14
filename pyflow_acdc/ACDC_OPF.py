@@ -1200,9 +1200,21 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                 events = []
             if events:
                 last_iter, last_obj, last_feas, last_inf_pr, last_inf_du = events[-1]
-                # PyFlow-ACDC "acceptable" tolerances (stricter than Ipopt defaults).
-                acceptable_pr_tol = 1e-4
-                acceptable_du_tol = 1e-6
+                # Align max-iteration acceptance with IPOPT acceptable tolerances when provided.
+                acceptable_pr_raw = (solver_options or {}).get('acceptable_constr_viol_tol', 1e-4)
+                acceptable_du_raw = (solver_options or {}).get('acceptable_dual_inf_tol', 1e-6)
+                try:
+                    acceptable_pr_tol = float(acceptable_pr_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Invalid IPOPT acceptable_constr_viol_tol: {acceptable_pr_raw!r}"
+                    ) from exc
+                try:
+                    acceptable_du_tol = float(acceptable_du_raw)
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(
+                        f"Invalid IPOPT acceptable_dual_inf_tol: {acceptable_du_raw!r}"
+                    ) from exc
                 within_acc_pr = bool(last_inf_pr <= acceptable_pr_tol)
                 within_acc_du = bool(last_inf_du <= acceptable_du_tol)
                 # If both primal and dual are within these strict tolerances,
@@ -1214,7 +1226,8 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
                     print(
                         "[pyomo_model_solve] Ipopt maxIterations: "
                         f"last_iter={last_iter}, inf_pr={last_inf_pr:.3e}, inf_du={last_inf_du:.3e}, "
-                        f"within_acc_pr(1e-4)={within_acc_pr}, within_acc_du(1e-6)={within_acc_du}"
+                        f"within_acc_pr({acceptable_pr_tol:.3e})={within_acc_pr}, "
+                        f"within_acc_du({acceptable_du_tol:.3e})={within_acc_du}"
                     )
 
     checker_reason = "not_used"

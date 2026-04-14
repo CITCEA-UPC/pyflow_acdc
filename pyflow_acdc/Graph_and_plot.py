@@ -13,7 +13,7 @@ import os
 import utm
 from shapely.geometry import Point, LineString,Polygon,MultiPolygon
 
-from .Classes import Node_AC
+from .Classes import Node_AC, Node_DC
 
 
 def _loading_colormap(value, vmin=0, vmax=100):
@@ -1191,7 +1191,26 @@ def create_geometries(grid):
                     x, y = pos[node_obj]
                     gen.geometry = Point(x, y)
 
-def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=True, legend=True, square_ratio=False,poly=None,linestrings=None,coloring=None, poly_size=None, tee=False, line_size_factor=1.0):
+def save_network_svg(
+    grid,
+    name='grid_network',
+    width=1000,
+    height=800,
+    journal=True,
+    legend=True,
+    square_ratio=False,
+    poly=None,
+    linestrings=None,
+    coloring=None,
+    poly_size=None,
+    tee=False,
+    line_size_factor=1.0,
+    draw_converters=True,
+    scale_ac_nodes_with_rs=False,
+    node_size_factor=1.0,
+    scale_dc_nodes_with_conv=False,
+    dc_node_size_factor=1.0,
+):
     """Save the network as SVG file
     
     Parameters:
@@ -1204,12 +1223,32 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
         If provided and poly is not None, specifies the target size (width, height) in pixels
         for the polygon. Everything else will be scaled to fit this polygon size.
         Format: (target_width, target_height) in pixels.
+    draw_converters : bool
+        If False, converter line segments are not drawn.
+    scale_ac_nodes_with_rs : bool
+        If True, AC node marker radius is increased when connected renewable sources exist.
+        The increase scales with total connected `np_rsgen` and `node_size_factor`.
+    node_size_factor : float
+        Multiplier used for AC node marker scaling with renewable source multiplicity.
+        Must be >= 0.
+    scale_dc_nodes_with_conv : bool
+        If True, DC node marker radius is increased based on total connected converter `np_conv`
+        and `dc_node_size_factor`.
+    dc_node_size_factor : float
+        Multiplier used for DC node marker scaling with connected converter multiplicity.
+        Must be >= 0.
     """
     try:
         import svgwrite
         line_size_factor = float(line_size_factor)
         if line_size_factor <= 0:
             raise ValueError("line_size_factor must be > 0.")
+        node_size_factor = float(node_size_factor)
+        if node_size_factor < 0:
+            raise ValueError("node_size_factor must be >= 0.")
+        dc_node_size_factor = float(dc_node_size_factor)
+        if dc_node_size_factor < 0:
+            raise ValueError("dc_node_size_factor must be >= 0.")
         
         # Check if all elements have geometries, if not create them
         elements_without_geometry = []
@@ -1505,7 +1544,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     else:
                         color = "red" if getattr(line, 'isTf', False) else "black"
                 
-                stroke_width = float(2.0 / line_size_factor)
+                stroke_width = float(2.0 * line_size_factor)
                 dwg.add(dwg.path(d=path_data, stroke=color, stroke_width=stroke_width, fill='none'))
         
 
@@ -1530,7 +1569,7 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
 
                 # Ensure stroke width is a plain Python float (svgwrite validator
                 # does not accept NumPy scalar types).
-                stroke_width = float((2 * float(line.np_line)) / line_size_factor)
+                stroke_width = float((2 * float(line.np_line)) * line_size_factor)
                 dwg.add(dwg.path(d=path_data, stroke=color, stroke_width=stroke_width, fill='none'))
 
 
@@ -1543,20 +1582,52 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                     svg_x, svg_y = transform_coords(c[0], c[1])
                     path_data += f"{svg_x},{svg_y} L "
                 path_data = path_data[:-2]
-                stroke_width = float((2 * float(line.np_line)) / line_size_factor)
+                stroke_width = float((2 * float(line.np_line)) * line_size_factor)
                 dwg.add(dwg.path(d=path_data, stroke='blue', stroke_width=stroke_width, fill='none'))
         
+        ac_node_rsgen_total = {}
+        ac_nodes_with_rs_connection = set()
+        if scale_ac_nodes_with_rs:
+            for ren_source in grid.RenSources:
+                node_ref = None
+                if hasattr(ren_source, 'Node_AC'):
+                    node_ref = ren_source.Node_AC
+                elif hasattr(ren_source, 'Node'):
+                    node_ref = ren_source.Node
+                if node_ref is None:
+                    continue
+                ac_nodes_with_rs_connection.add(node_ref)
+                ac_nodes_with_rs_connection.add(str(node_ref))
+                rsgen_count = float(getattr(ren_source, 'np_rsgen', 0.0))
+                ac_node_rsgen_total[node_ref] = ac_node_rsgen_total.get(node_ref, 0.0) + rsgen_count
+                ac_node_rsgen_total[str(node_ref)] = ac_node_rsgen_total.get(str(node_ref), 0.0) + rsgen_count
+
+        dc_node_conv_total = {}
+        if scale_dc_nodes_with_conv:
+            for conv in grid.Converters_ACDC:
+                node_ref = getattr(conv, 'Node_DC', None)
+                if node_ref is None:
+                    continue
+                conv_count = float(getattr(conv, 'np_conv', 0.0))
+                if conv_count <= 0:
+                    continue
+                dc_node_conv_total[node_ref] = dc_node_conv_total.get(node_ref, 0.0) + conv_count
+                dc_node_conv_total[str(node_ref)] = dc_node_conv_total.get(str(node_ref), 0.0) + conv_count
+
         # Draw converters
-        for conv in grid.Converters_ACDC:
-            if hasattr(conv, 'geometry') and conv.geometry:
-                coords = list(conv.geometry.coords)
-                path_data = "M "
-                for c in coords:
-                    svg_x, svg_y = transform_coords(c[0], c[1])
-                    path_data += f"{svg_x},{svg_y} L "
-                path_data = path_data[:-2]
-                stroke_width = float((2 * float(conv.np_conv)) / line_size_factor)
-                dwg.add(dwg.path(d=path_data, stroke='purple', stroke_width=stroke_width, fill='none'))
+        if draw_converters:
+            for conv in grid.Converters_ACDC:
+                if hasattr(conv, 'geometry') and conv.geometry:
+                    if float(getattr(conv, 'np_conv', 0.0)) <= 0:
+                        continue
+                    coords = list(conv.geometry.coords)
+                    path_data = "M "
+                    for c in coords:
+                        svg_x, svg_y = transform_coords(c[0], c[1])
+                        path_data += f"{svg_x},{svg_y} L "
+                    path_data = path_data[:-2]
+                    stroke_width = float((2 * float(conv.np_conv)) * line_size_factor)
+                    dwg.add(dwg.path(d=path_data, stroke='purple', stroke_width=stroke_width, fill='none'))
         
         # Draw nodes
         for node in grid.nodes_AC + grid.nodes_DC:
@@ -1564,7 +1635,21 @@ def save_network_svg(grid, name='grid_network', width=1000, height=800, journal=
                 x, y = node.geometry.x, node.geometry.y
                 svg_x, svg_y = transform_coords(x, y)
                 color = "black" if isinstance(node, Node_AC) else "purple"
-                dwg.add(dwg.circle(center=(svg_x, svg_y), r=1, 
+                node_radius = 1.0
+                if scale_ac_nodes_with_rs and isinstance(node, Node_AC):
+                    node_connected_to_rs = (node in ac_nodes_with_rs_connection) or (str(node.name) in ac_nodes_with_rs_connection)
+                    total_rsgen = ac_node_rsgen_total.get(node, ac_node_rsgen_total.get(str(node.name), 0.0))
+                    if node_connected_to_rs and total_rsgen <= 0:
+                        continue
+                    if node_connected_to_rs and total_rsgen > 0:
+                        node_radius = 1.0 + float(total_rsgen) * node_size_factor
+                if scale_dc_nodes_with_conv and isinstance(node, Node_DC):
+                    total_conv = dc_node_conv_total.get(node, dc_node_conv_total.get(str(node.name), 0.0))
+                    if total_conv <= 0:
+                        continue
+                    if total_conv > 0:
+                        node_radius = 1.0 + float(total_conv) * dc_node_size_factor
+                dwg.add(dwg.circle(center=(svg_x, svg_y), r=float(node_radius), 
                                  fill=color, stroke=color))
                 
         if grid.nct_AC != 0 and hasattr(grid.lines_AC_ct[0], 'cable_types'):
