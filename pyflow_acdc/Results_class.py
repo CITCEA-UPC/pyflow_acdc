@@ -3119,3 +3119,53 @@ class Results:
             print(table)
 
         return df
+
+    def pyomo_model_results_sequential(self, run_results, print_table=True):
+        """
+        Build and store Pyomo model results for sequential runs.
+
+        Parameters
+        ----------
+        run_results : dict
+            Output dictionary from sequential_STEP keyed by run index.
+        print_table : bool
+            Whether to print the combined table.
+
+        Returns
+        -------
+        pd.DataFrame
+            Multi-row DataFrame with one row per sequential run.
+        """
+        rows = []
+        for k in sorted(run_results.keys()):
+            run_data = run_results[k]
+            model = run_data.get("model")
+            if model is None:
+                continue
+            model_res = run_data.get("model_res")
+            solver_stats = run_data.get("solver_stats")
+            df_run, _ = self._build_pyomo_model_results_df(
+                model=model,
+                solver_stats=solver_stats,
+                model_results=model_res,
+                decimals=self.dec,
+            )
+            if df_run.empty:
+                continue
+            df_run.insert(0, "Run", int(k) + 1)
+            rows.append(df_run)
+
+        if rows:
+            df = pd.concat(rows, ignore_index=True, sort=False)
+        else:
+            df = pd.DataFrame()
+
+        self.tables["Pyomo_Model_Results"] = df.copy()
+
+        if print_table and not df.empty:
+            print('--------------')
+            print('Pyomo Model Results (Sequential)')
+            print('')
+            print(df.to_string(index=False))
+
+        return df

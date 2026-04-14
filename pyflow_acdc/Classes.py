@@ -156,9 +156,10 @@ class Grid:
         self.MP_TEP_res=None
         self.time_series_results = {
             'PF_results': pd.DataFrame(),  # Time_series_res
-            'line_loading': pd.DataFrame(),  # Time_series_line_res
-            'ac_line_loading': pd.DataFrame(),  # TS_AC_line_res
-            'dc_line_loading': pd.DataFrame(),  # TS_DC_line_res
+            'ac_loading': pd.DataFrame(),  # TS_AC_line_res
+            'dc_loading': pd.DataFrame(),  # TS_DC_line_res
+            'ac_MW_to': pd.DataFrame(),  # TS_AC_line_to_MW
+            'dc_MW_to': pd.DataFrame(),  # TS_DC_line_to_MW
             'grid_loading': pd.DataFrame(),  # Time_series_grid_loading
             'converter_p_dc': pd.DataFrame(),  # Time_series_Opt_res_P_conv_DC
             'converter_q_ac': pd.DataFrame(),  # Time_series_Opt_res_Q_conv_AC

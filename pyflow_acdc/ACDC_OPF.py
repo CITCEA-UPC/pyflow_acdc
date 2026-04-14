@@ -1869,7 +1869,10 @@ def OPF_step_results(model,grid):
         elif hasattr(element, 'rsNumber'):  # Renewable Source
             name = element.name
             gamma=gamma_values[element.rsNumber]
-            opt_res_curtailment [name] = 1-gamma
+            if element.np_rsgen >0 :
+                opt_res_curtailment [name] = 1-gamma
+            else:
+                opt_res_curtailment [name] = 0
             # Renewable "multiplicity" is captured by model.np_rsgen in the OPF constraints.
             # For time-series export we must include it as well, otherwise RenSource_* columns
             # represent only one unit instead of the total installed multiplicity.

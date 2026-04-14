@@ -1854,14 +1854,18 @@ def get_line_data(t, model, grid):
         for l in grid.lines_AC_exp:
             if l.np_line_opf:
                 ln = l.lineNumber
-                P_to = np.float64(pyo.value(model.scenario_model[t].exp_PAC_to[ln])) * grid.S_base
-                P_from = np.float64(pyo.value(model.scenario_model[t].exp_PAC_from[ln])) * grid.S_base
-                Q_to = np.float64(pyo.value(model.scenario_model[t].exp_QAC_to[ln])) * grid.S_base
-                Q_from = np.float64(pyo.value(model.scenario_model[t].exp_QAC_from[ln])) * grid.S_base
-                S_to = np.sqrt(P_to**2 + Q_to**2)
-                S_from = np.sqrt(P_from**2 + Q_from**2)
-                load = max(S_to, S_from) / l.MVA_rating * 100
-                row_data_lines[l.name] = np.round(load, decimals=0).astype(int)
+                n_lines_ac = np.float64(pyo.value(model.scenario_model[t].NumLinesACP[ln]))
+                if n_lines_ac <= 0.01:
+                    row_data_lines[l.name] = 0
+                else:
+                    P_to = np.float64(pyo.value(model.scenario_model[t].exp_PAC_to[ln])) * grid.S_base
+                    P_from = np.float64(pyo.value(model.scenario_model[t].exp_PAC_from[ln])) * grid.S_base
+                    Q_to = np.float64(pyo.value(model.scenario_model[t].exp_QAC_to[ln])) * grid.S_base
+                    Q_from = np.float64(pyo.value(model.scenario_model[t].exp_QAC_from[ln])) * grid.S_base
+                    S_to = np.sqrt(P_to**2 + Q_to**2)
+                    S_from = np.sqrt(P_from**2 + Q_from**2)
+                    load = max(S_to, S_from) / l.MVA_rating * 100
+                    row_data_lines[l.name] = np.round(load, decimals=0).astype(int)
     if grid.REC_AC:
         for l in grid.lines_AC_rec:
             if l.rec_line_opf:
@@ -1908,11 +1912,11 @@ def get_line_data(t, model, grid):
                 ln = l.lineNumber
                 n_lines_dc = np.float64(pyo.value(model.scenario_model[t].NumLinesDCP[ln]))
                 if n_lines_dc <= 0.01:
-                    row_data_lines[l.name] = np.nan
+                    row_data_lines[l.name] = 0
                 else:
                     p_to = np.float64(pyo.value(model.scenario_model[t].PDC_to[ln])) * grid.S_base
                     p_from = np.float64(pyo.value(model.scenario_model[t].PDC_from[ln])) * grid.S_base
-                    load = max(p_to, p_from) / l.MW_rating * 100
+                    load = max(abs(p_to), abs(p_from)) / l.MW_rating * 100
                     row_data_lines[l.name] = np.round(load, decimals=0).astype(int)
 
     return row_data_lines
@@ -1925,7 +1929,7 @@ def get_converter_data(t, model, grid):
             cn = conv.ConvNumber
             nconv = np.float64(pyo.value(model.scenario_model[t].np_conv[cn]))
             if nconv <= 0.01:
-                row_data_conv[conv.name] = np.nan
+                row_data_conv[conv.name] = 0
             else:
                 p_s = np.float64(pyo.value(model.scenario_model[t].P_conv_s_AC[cn])) * grid.S_base * nconv
                 q_s = np.float64(pyo.value(model.scenario_model[t].Q_conv_s_AC[cn])) * grid.S_base * nconv

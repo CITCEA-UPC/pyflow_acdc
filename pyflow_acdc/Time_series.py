@@ -215,7 +215,6 @@ def calculate_line_loading(grid,idx):
         load = line.apparent_MVA
         loadS_AC[G] += load
         line_data[f'AC_Load_{line.name}'] = line.loading/100
-        line_data[f'AC_from_{line.name}'] = np.real(line.fromS) * grid.S_base
         line_data[f'AC_to_{line.name}']   = np.real(line.toS) * grid.S_base 
 
     for line in grid.lines_DC:
@@ -223,12 +222,11 @@ def calculate_line_loading(grid,idx):
         load = line.apparent_MVA
         loadP_DC[G] += load
         line_data[f'DC_Load_{line.name}'] = line.loading/100
-        line_data[f'DC_from_{line.name}'] = line.fromP * grid.S_base
         line_data[f'DC_to_{line.name}']   = line.toP * grid.S_base 
 
     return line_data, loadS_AC, loadP_DC
 
-def calculate_line_loading_from_model(grid,model,idx):
+def _calculate_line_loading_from_model(grid,model,idx):
     loadS_AC = np.zeros(grid.Num_Grids_AC)
     loadP_DC = np.zeros(grid.Num_Grids_DC)
     line_data = {'time': idx+1}
@@ -250,8 +248,7 @@ def calculate_line_loading_from_model(grid,model,idx):
             G = grid.Graph_line_to_Grid_index_AC[line]
             load = max(abs(S_from[line.lineNumber]), abs(S_to[line.lineNumber]))
             loadS_AC[G] += load
-            line_data[f'AC_Load_{line.name}'] = load * grid.S_base / line.MVA_rating
-            line_data[f'AC_from_{line.name}'] = PAC_from[line.lineNumber] * grid.S_base
+            line_data[f'AC_Load_{line.name}'] = load * grid.S_base / line.capacity_MVA
             line_data[f'AC_to_{line.name}']   = PAC_to[line.lineNumber]   * grid.S_base 
 
         if grid.TEP_AC:    
@@ -264,11 +261,12 @@ def calculate_line_loading_from_model(grid,model,idx):
             for line in grid.lines_AC_exp:
                 G = grid.Graph_line_to_Grid_index_AC[line]
                 l = line.lineNumber
-                line.np_line = lines_AC_TEP[l]
-                line.P_loss = lines_AC_TEP_P_loss[l]*lines_AC_TEP[l]
-                line_data[f'AC_from_{line.name}'] =  (lines_AC_TEP_fromP[l] + 1j*lines_AC_TEP_fromQ[l])*lines_AC_TEP[l]
-                line_data[f'AC_to_{line.name}'] = (lines_AC_TEP_toP[l] + 1j*lines_AC_TEP_toQ[l])*lines_AC_TEP[l]
-                load = max(abs(line_data[f'AC_from_{line.name}']), abs(line_data[f'AC_to_{line.name}']))
+                n_lines_ac = lines_AC_TEP[l]
+                line.P_loss = lines_AC_TEP_P_loss[l] * n_lines_ac
+                ac_from = (lines_AC_TEP_fromP[l] + 1j*lines_AC_TEP_fromQ[l]) * n_lines_ac
+                ac_to = (lines_AC_TEP_toP[l] + 1j*lines_AC_TEP_toQ[l]) * n_lines_ac
+                line_data[f'AC_to_{line.name}'] = ac_to
+                load = max(abs(ac_from), abs(ac_to))
                 loadS_AC[G] += load
                 line_data[f'AC_Load_{line.name}'] = load * grid.S_base / line.capacity_MVA if line.capacity_MVA > 0 else 0
         if grid.REC_AC:
@@ -285,9 +283,10 @@ def calculate_line_loading_from_model(grid,model,idx):
                 line.rec_branch = True if lines_AC_REP[l] >= 0.99999 else False
                 line.P_loss = lines_AC_REC_P_loss[l]
                 state = 1 if line.rec_branch else 0
-                line_data[f'AC_from_{line.name}'] = (lines_AC_REC_fromP[l][state] + 1j*lines_AC_REC_fromQ[l][state])
-                line_data[f'AC_to_{line.name}'] = (lines_AC_REC_toP[l][state] + 1j*lines_AC_REC_toQ[l][state])
-                load = max(abs(line_data[f'AC_from_{line.name}']), abs(line_data[f'AC_to_{line.name}']))
+                ac_from = (lines_AC_REC_fromP[l][state] + 1j*lines_AC_REC_fromQ[l][state])
+                ac_to = (lines_AC_REC_toP[l][state] + 1j*lines_AC_REC_toQ[l][state])
+                line_data[f'AC_to_{line.name}'] = ac_to
+                load = max(abs(ac_from), abs(ac_to))
                 loadS_AC[G] += load
                 if state == 1:
                     line_data[f'AC_Load_{line.name}'] = load * grid.S_base / line.MVA_rating_new 
@@ -299,12 +298,12 @@ def calculate_line_loading_from_model(grid,model,idx):
         
         PDC_from = {k: np.float64(pyo.value(v)) for k, v in model.PDC_from.items()}
         PDC_to   = {k: np.float64(pyo.value(v)) for k, v in model.PDC_to.items()}
+        n_lines_dc = {k: np.float64(pyo.value(v)) for k, v in model.NumLinesDCP.items()}
         for line in grid.lines_DC:
             G = grid.Graph_line_to_Grid_index_DC[line]
-            load = max(abs(PDC_from[line.lineNumber]), abs(PDC_to[line.lineNumber]))
+            load = max(abs(PDC_from[line.lineNumber]), abs(PDC_to[line.lineNumber])) * n_lines_dc[line.lineNumber]
             loadP_DC[G] += load
             line_data[f'DC_Load_{line.name}'] = load * grid.S_base / line.capacity_MW if line.capacity_MW > 0 else 0
-            line_data[f'DC_from_{line.name}'] = PDC_from[line.lineNumber] * grid.S_base
             line_data[f'DC_to_{line.name}']   = PDC_to[line.lineNumber]   * grid.S_base 
 
     return line_data, loadS_AC, loadP_DC
@@ -492,17 +491,23 @@ def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=
     def to_dataframe(data):
         return pd.DataFrame(data).set_index('time')
     grid.time_series_results['PF_results']   = to_dataframe(Time_series_res)
-    grid.time_series_results['line_loading'] =to_dataframe(Time_series_line_res)
-    # Split into AC and DC line results first, keeping the original index
-    ac_line_res = grid.time_series_results['line_loading'].filter(like='AC_Load_', axis=1)
-    dc_line_res = grid.time_series_results['line_loading'].filter(like='DC_Load_', axis=1)
+    line_data_df = to_dataframe(Time_series_line_res)
+    # Split line time-series into explicit loading and MW-to datasets
+    ac_loading = line_data_df.filter(like='AC_Load_', axis=1)
+    dc_loading = line_data_df.filter(like='DC_Load_', axis=1)
+    ac_mw_to = line_data_df.filter(like='AC_to_', axis=1)
+    dc_mw_to = line_data_df.filter(like='DC_to_', axis=1)
     
     # Remove prefixes from column names for both DataFrames
-    ac_line_res.columns = ac_line_res.columns.str.replace('AC_Load_', '', regex=False)
-    dc_line_res.columns = dc_line_res.columns.str.replace('DC_Load_', '', regex=False)
+    ac_loading.columns = ac_loading.columns.str.replace('AC_Load_', '', regex=False)
+    dc_loading.columns = dc_loading.columns.str.replace('DC_Load_', '', regex=False)
+    ac_mw_to.columns = ac_mw_to.columns.str.replace('AC_to_', '', regex=False)
+    dc_mw_to.columns = dc_mw_to.columns.str.replace('DC_to_', '', regex=False)
 
-    grid.time_series_results['ac_line_loading'] = ac_line_res
-    grid.time_series_results['dc_line_loading'] = dc_line_res
+    grid.time_series_results['ac_loading'] = ac_loading
+    grid.time_series_results['dc_loading'] = dc_loading
+    grid.time_series_results['ac_MW_to'] = ac_mw_to
+    grid.time_series_results['dc_MW_to'] = dc_mw_to
     
     if grid.ACmode and grid.DCmode:
         grid.time_series_results['converter_loading'] = to_dataframe(Time_series_conv_res)
@@ -804,7 +809,7 @@ def TS_ACDC_OPF(
         opt_res_Loading_conv['time'] = idx+1
         
 
-        line_data, loadS_AC, loadP_DC = calculate_line_loading_from_model( grid, model,idx)
+        line_data, loadS_AC, loadP_DC = _calculate_line_loading_from_model( grid, model,idx)
         
         
         grid_data_loading = calculate_grid_loading(grid, loadS_AC, loadP_DC,idx)
@@ -920,7 +925,7 @@ def save_TS_to_grid (grid,touple,infeasible):
    
     grid.time_series_results['curtailment'] = to_dataframe(Time_series_Opt_curtailment)
    
-    grid.time_series_results['line_loading'] = to_dataframe(Time_series_line_res)
+    line_data_df = to_dataframe(Time_series_line_res)
     grid.time_series_results['grid_loading'] = to_dataframe(Time_series_grid_loading)
     
     grid.time_series_results['prices_by_zone'] = to_dataframe(Time_series_price)
@@ -932,23 +937,29 @@ def save_TS_to_grid (grid,touple,infeasible):
     grid.time_series_results['a'] = to_dataframe(Time_series_a)
     grid.time_series_results['b'] = to_dataframe(Time_series_b)
     grid.time_series_results['res_available'] = to_dataframe(Time_series_res_available)
-    # Split into AC and DC line results first, keeping the original index
-    ac_line_res = grid.time_series_results['line_loading'].filter(like='AC_Load_', axis=1)
-    dc_line_res = grid.time_series_results['line_loading'].filter(like='DC_Load_', axis=1)
+    # Split line time-series into explicit loading and MW-to datasets
+    ac_loading = line_data_df.filter(like='AC_Load_', axis=1)
+    dc_loading = line_data_df.filter(like='DC_Load_', axis=1)
+    ac_mw_to = line_data_df.filter(like='AC_to_', axis=1)
+    dc_mw_to = line_data_df.filter(like='DC_to_', axis=1)
     
     # Remove prefixes from column names for both DataFrames
-    ac_line_res.columns = ac_line_res.columns.str.replace('AC_Load_', '', regex=False)
-    dc_line_res.columns = dc_line_res.columns.str.replace('DC_Load_', '', regex=False)
+    ac_loading.columns = ac_loading.columns.str.replace('AC_Load_', '', regex=False)
+    dc_loading.columns = dc_loading.columns.str.replace('DC_Load_', '', regex=False)
+    ac_mw_to.columns = ac_mw_to.columns.str.replace('AC_to_', '', regex=False)
+    dc_mw_to.columns = dc_mw_to.columns.str.replace('DC_to_', '', regex=False)
 
-    grid.time_series_results['ac_line_loading'] = ac_line_res
-    grid.time_series_results['dc_line_loading'] = dc_line_res
+    grid.time_series_results['ac_loading'] = ac_loading
+    grid.time_series_results['dc_loading'] = dc_loading
+    grid.time_series_results['ac_MW_to'] = ac_mw_to
+    grid.time_series_results['dc_MW_to'] = dc_mw_to
     
 
     for line in (grid.lines_AC + grid.lines_AC_tf + grid.lines_AC_rec + grid.lines_AC_exp):
         col = line.name
-        if col in ac_line_res:
-            max_frac = float(ac_line_res[col].max())
-            avg_frac = float(ac_line_res[col].mean())
+        if col in ac_loading:
+            max_frac = float(ac_loading[col].max())
+            avg_frac = float(ac_loading[col].mean())
             setattr(line, 'ts_max_loading', max_frac*100)   
             setattr(line, 'ts_avg_loading', avg_frac*100)    # fraction of rating (0..)
             
@@ -956,9 +967,9 @@ def save_TS_to_grid (grid,touple,infeasible):
     # DC lines
     for line in grid.lines_DC:
         col = line.name
-        if col in dc_line_res:
-            max_frac = float(dc_line_res[col].max())
-            avg_frac = float(dc_line_res[col].mean())
+        if col in dc_loading:
+            max_frac = float(dc_loading[col].max())
+            avg_frac = float(dc_loading[col].mean())
             setattr(line, 'ts_max_loading', max_frac*100)
             setattr(line, 'ts_avg_loading', avg_frac*100)
 
@@ -1043,9 +1054,11 @@ def Time_series_statistics(grid, curtail=0.99,over_loading=0.9):
         # Create a new dictionary with marked DataFrames
         marked_time_series_results = {
             'PF_results': grid.time_series_results['PF_results'].add_suffix('_PF'),
-            'ac_line_loading': grid.time_series_results['ac_line_loading'].add_suffix('_ACloading'),
-            'dc_line_loading': grid.time_series_results['dc_line_loading'].add_suffix('_DCloading'),
+            'ac_loading': grid.time_series_results['ac_loading'].add_suffix('_ACloading'),
+            'dc_loading': grid.time_series_results['dc_loading'].add_suffix('_DCloading'),
             'grid_loading': grid.time_series_results['grid_loading'].add_suffix('_gridloading'),
+            'ac_MW_to': grid.time_series_results['ac_MW_to'].add_suffix('_ACMWto'),
+            'dc_MW_to': grid.time_series_results['dc_MW_to'].add_suffix('_DCMWto'),
             'converter_p_dc': grid.time_series_results['converter_p_dc'].add_suffix('_convP_DC'),
             'converter_q_ac': grid.time_series_results['converter_q_ac'].add_suffix('_convQ_AC'),
             'converter_p_ac': grid.time_series_results['converter_p_ac'].add_suffix('_convP_AC'),
@@ -1129,9 +1142,10 @@ def results_TS_OPF(grid,excel_file_path,grid_names=None,stats=None,times=None):
             times_df = pd.concat([times_df, row_space, row_infeasible], ignore_index=True)
             times_df.to_excel(writer, sheet_name='Time', index=False)
         
-        (grid.time_series_results['line_loading'] * 100).to_excel(writer, sheet_name='All line loading', index=True)
-        (grid.time_series_results['ac_line_loading']* 100).to_excel(writer, sheet_name='AC line loading', index=True)
-        (grid.time_series_results['dc_line_loading']* 100).to_excel(writer, sheet_name='DC line loading', index=True)
+        (grid.time_series_results['ac_loading']* 100).to_excel(writer, sheet_name='AC line loading', index=True)
+        (grid.time_series_results['dc_loading']* 100).to_excel(writer, sheet_name='DC line loading', index=True)
+        grid.time_series_results['ac_MW_to'].to_excel(writer, sheet_name='AC MW to', index=True)
+        grid.time_series_results['dc_MW_to'].to_excel(writer, sheet_name='DC MW to', index=True)
         (grid.time_series_results['grid_loading']* 100).to_excel(writer, sheet_name='Grid loading', index=True)
     
         (grid.time_series_results['converter_p_dc']*grid.S_base).to_excel(writer, sheet_name='Converter P DC', index=True)

@@ -847,11 +847,11 @@ def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_f
             df = df.loc[:, ~df.columns.str.startswith('o_')]
             y_label = 'Net price zone power (MW)'
         elif plotting_choice == 'AC line loading':
-            df = grid.time_series_results['ac_line_loading'].loc[start:end]*100
+            df = grid.time_series_results['ac_loading'].loc[start:end]*100
             y_label = 'AC Line Loading (%)'
             ylim = [0,110]
         elif plotting_choice == 'DC line loading':
-            df = grid.time_series_results['dc_line_loading'].loc[start:end]*100
+            df = grid.time_series_results['dc_loading'].loc[start:end]*100
             y_label = 'DC Line Loading (%)'
             ylim = [0,110]
         elif plotting_choice == 'ACDC Converters':
@@ -998,8 +998,8 @@ def Time_series_prob(grid, element_name, save_format=None, path=None):
         
         df_gen = grid.time_series_results['real_power_opf']
         df_prices = grid.time_series_results['prices_by_zone']
-        df_AC_line_res = grid.time_series_results['ac_line_loading']
-        df_DC_line_res = grid.time_series_results['dc_line_loading']
+        df_AC_line_res = grid.time_series_results['ac_loading']
+        df_DC_line_res = grid.time_series_results['dc_loading']
         df_conv_res = grid.time_series_results['converter_loading']
   
         merged_df = pd.concat([df_gen, df_prices, df_AC_line_res, df_DC_line_res, df_conv_res], axis=1)

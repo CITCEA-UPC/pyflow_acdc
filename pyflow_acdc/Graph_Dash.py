@@ -75,9 +75,9 @@ def _get_df_and_label_from_ts(time_series_results, S_base, plotting_choice):
         df = df.loc[:, ~df.columns.str.startswith('o_')]
         return df, 'Market Prices (€/MWh)'
     if plotting_choice == 'AC line loading':
-        return time_series_results['ac_line_loading'] * 100, 'AC Line Loading %'
+        return time_series_results['ac_loading'] * 100, 'AC Line Loading %'
     if plotting_choice == 'DC line loading':
-        return time_series_results['dc_line_loading'] * 100, 'DC Line Loading %'
+        return time_series_results['dc_loading'] * 100, 'DC Line Loading %'
     if plotting_choice == 'AC/DC Converters':
         return time_series_results['converter_loading'] * 100, 'AC/DC Converters loading %'
     return None, ''

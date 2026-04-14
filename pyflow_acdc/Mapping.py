@@ -845,9 +845,13 @@ def plot_folium_ts_results(
         name = f"{grid.name}_ts_results"
 
     create_geometries(grid)
-    line_loading_df = grid.time_series_results.get("line_loading", None)
-    if line_loading_df is None or line_loading_df.empty:
-        raise ValueError("grid.time_series_results['line_loading'] is required and cannot be empty.")
+    ac_loading = grid.time_series_results.get("ac_loading", None)
+    dc_loading = grid.time_series_results.get("dc_loading", None)
+    ac_pref = ac_loading.add_prefix("AC_Load_") if ac_loading is not None else pd.DataFrame()
+    dc_pref = dc_loading.add_prefix("DC_Load_") if dc_loading is not None else pd.DataFrame()
+    line_loading_df = pd.concat([ac_pref, dc_pref], axis=1)
+    if line_loading_df.empty:
+        raise ValueError("grid.time_series_results['ac_loading'/'dc_loading'] are required and cannot be empty.")
 
     if start is not None or end is not None:
         try:
@@ -926,8 +930,8 @@ def plot_folium_ts_results(
 
     if not features:
         raise ValueError(
-            "No line TS features were built. Ensure time_series_results['line_loading'] has "
-            "AC_Load_/DC_Load_ columns matching line names."
+            "No line TS features were built. Ensure time_series_results['ac_loading'/'dc_loading'] "
+            "have columns matching line names."
         )
 
     node_geometries = []
