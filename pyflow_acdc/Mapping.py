@@ -1051,6 +1051,7 @@ def plot_folium_inv_results(
     name=None,
     source="auto",
     tiles="CartoDB Positron",
+    planar=False,
     show=True,
     min_weight=1.5,
     max_weight=8.0,
@@ -1277,7 +1278,11 @@ def plot_folium_inv_results(
     else:
         map_center = [56, 10]
 
-    m = folium.Map(location=map_center, tiles=tiles, zoom_start=5)
+    if planar:
+        # Planar x/y mode: do not interpret coordinates as geographic lon/lat.
+        m = folium.Map(location=map_center, tiles=None, zoom_start=5, crs="Simple")
+    else:
+        m = folium.Map(location=map_center, tiles=tiles, zoom_start=5)
 
     for node in getattr(grid, "nodes_AC", []) or []:
         geom = getattr(node, "geometry", None)
