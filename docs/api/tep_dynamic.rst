@@ -95,15 +95,15 @@ Export Dynamic Investment Period Plots
 Run OPF on One Investment Period
 --------------------------------
 
-.. py:function:: run_opf_for_investment_period(grid, investment_period, ObjRule=None, solver='ipopt', tee=False, limit_flow_rate=True, obj_scaling=1.0, export_excel=True, export_location='MP_investment_periods', file_name=None, print_table=False, decimals=3, plot_folium={})
+.. py:function:: run_opf_for_investment_period(grid, investment_period, ObjRule=None, solver='ipopt', tee=False, limit_flow_rate=True, obj_scaling=1.0, export_excel=True, export_location='MP_investment_periods', file_name=None, print_table=False, decimals=3, save_grid_pkl=False)
 
    Applies one dynamic investment-period state to the grid, runs OPF, and
-   optionally exports period results to Excel and Folium map.
+   optionally exports period results to Excel.
 
 Run OPF on All Investment Periods
 ---------------------------------
 
-.. py:function:: run_opf_for_all_investment_periods(grid, ObjRule=None, solver='ipopt', tee=False, limit_flow_rate=True, obj_scaling=1.0, export_excel=True, export_location=None, file_name_prefix=None, print_table=False, decimals=3, plot_folium=None)
+.. py:function:: run_opf_for_all_investment_periods(grid, ObjRule=None, solver='ipopt', tee=False, limit_flow_rate=True, obj_scaling=1.0, export_excel=True, export_location=None, file_name_prefix=None, print_table=False, decimals=3, plot=False, save_grid_pkl=False, MS=False, ts_start=1, ts_end=99999, ts_use_clusters=True, ts_include_base_case=True, ts_warm_start_mode='roll')
 
    Runs OPF for every dynamic investment period and exports one result file per
    period.

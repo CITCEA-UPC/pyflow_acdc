@@ -1746,7 +1746,6 @@ def run_opf_for_investment_period(
     file_name=None,
     print_table=False,
     decimals=3,
-    plot_folium={},
     save_grid_pkl: bool = False,
 ):
     """
@@ -1795,41 +1794,6 @@ def run_opf_for_investment_period(
         pkl_path = os.path.join(export_location, f"{base_name}_results.pkl")
         save_pickle(grid, pkl_path, compress=True)
 
-    if plot_folium:
-        try:
-            from .Mapping import plot_folium_network as plot_folium_fn
-            default_map_name = f"{grid.name}_period_{period_idx}"
-            default_map_name = os.path.join(export_location, default_map_name)
-
-            folium_kwargs = {
-                'planar': False,
-                'scale_gen': False,
-                'plot_load': True,
-                'name': default_map_name,
-            }
-            if isinstance(plot_folium, dict):
-                folium_kwargs.update(plot_folium)
-
-            map_name = str(folium_kwargs.get('name', default_map_name))
-            export_norm = os.path.normpath(export_location)
-            map_norm = os.path.normpath(map_name)
-            # If relative and not already rooted under export_location, place it there.
-            already_under_export = (
-                map_norm == export_norm or
-                map_norm.startswith(export_norm + os.sep)
-            )
-            if not os.path.isabs(map_name) and not already_under_export:
-                map_name = os.path.join(export_location, map_name)
-            folium_kwargs['name'] = map_name
-
-            # Ensure output directory exists for custom map name paths.
-            map_parent = os.path.dirname(str(folium_kwargs.get('name', "")))
-            if map_parent:
-                os.makedirs(map_parent, exist_ok=True)
-
-            plot_folium_fn(grid, **folium_kwargs)
-        except Exception as exc:
-            print(f"Warning: folium plotting skipped ({exc})")
     return model, model_res, timing_info, solver_stats, res
 
 
@@ -2076,7 +2040,6 @@ def run_opf_for_all_investment_periods(
                 file_name=f"{prefix}_{i}",
                 print_table=print_table,
                 decimals=decimals,
-                plot_folium=plot,
                 save_grid_pkl=save_grid_pkl,
             )
             period_results[i] = {
