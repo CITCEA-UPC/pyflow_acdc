@@ -129,7 +129,7 @@ affecting the production PyPI package.
 You can install pyflow_acdc with optional dependencies using pip:
 
 ```bash
-# Install with all optional dependencies
+# Install with all optional dependencies (excludes gurobipy, which requires a license)
 pip install pyflow-acdc[All]
 
 # Or install specific optional dependency groups:
@@ -158,7 +158,7 @@ conda install -c conda-forge ipopt
 **For Array Optimization:**
 ```bash
 pip install ortools pyomo
-pip install highs  # Optional: for HiGHS solver
+pip install highspy  # Optional: for HiGHS solver
 ```
 
 **For TEP with pymoo:** (still in development)
@@ -180,7 +180,7 @@ ipopt
 conda install -c conda-forge ipopt
 
 highs
-pip install highs
+pip install highspy
 
 gurobi (requires external licensing)
 pip install gurobipy
@@ -227,6 +227,7 @@ pyflow-acdc-test
 ```bash
 --quick         # Quick tests only
 --tep           # TEP tests only
+--opf           # OPF tests only
 --show-output    # All tests with output
 ```
 ## Documentation

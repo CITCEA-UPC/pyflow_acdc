@@ -11,7 +11,7 @@ from gurobipy import GRB
 import numpy as np
 import time
 from .Graph_and_plot import save_network_svg
-from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
 
 __all__ = ['Optimal_L_CSS_gurobi']
 
@@ -231,7 +231,7 @@ def Optimal_L_CSS_gurobi(grid, OPEX=True, NPV=True, n_years=25, Hy=HOURS_PER_YEA
 
     weights_def, _ = obj_w_rule(grid, obj, True)
     # Calculate objective values
-    present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     for obj in weights_def:
         weights_def[obj]['v']=calculate_objective(grid,obj,True)
         weights_def[obj]['NPV']=weights_def[obj]['v']*present_value
@@ -843,7 +843,7 @@ def set_objective(model, grid, gen_vars, ac_vars, OPEX=True, NPV=True, n_years=2
             operational_cost += gen.lf * gen_vars['PGi_gen'][g]
     
     if NPV:
-        present_value = Hy * (1 - (1 + discount_rate) ** -n_years) / discount_rate
+        present_value = present_value_factor(Hy, discount_rate, n_years)
         operational_cost *= present_value
     
     # Total objective

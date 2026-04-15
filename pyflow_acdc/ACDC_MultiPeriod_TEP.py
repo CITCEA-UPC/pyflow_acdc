@@ -19,7 +19,7 @@ from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters, TS_ACDC_OPF, results_TS_OPF
 from .Graph_and_plot import save_network_svg, create_geometries_from_layout
 from .Results_class import Results
-from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, PF_INNER_TOLERANCE
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, PF_INNER_TOLERANCE, present_value_factor
 
 
 
@@ -825,7 +825,7 @@ def multi_period_transmission_expansion(
     for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC+grid.RenSources: 
         _calculate_decomision_period(element,n_years)
         
-    present_value_opf =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value_opf = present_value_factor(Hy, discount_rate, n_years)
     for i in model.inv_periods:
         base_model_copy = base_model.clone()
         model.inv_model[i].transfer_attributes_from(base_model_copy)
@@ -1459,9 +1459,7 @@ def _build_period_scenario_block(
     for t in period_block.scenario_frames:
         period_block.scenario_model[t].obj.deactivate()
 
-    scaling_factor = Hy
-    if NPV:
-        scaling_factor *= (1 - (1 + discount_rate) ** -n_years) / discount_rate
+    scaling_factor = present_value_factor(Hy, discount_rate, n_years) if NPV else Hy
     expected_opf *= scaling_factor
     period_block.expected_opf = pyo.Expression(expr=expected_opf)
     period_block.obj = pyo.Objective(expr=period_block.expected_opf, sense=pyo.minimize)

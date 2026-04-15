@@ -14,7 +14,7 @@ import time
 
 from .grid_analysis import analyse_grid, grid_state
 from .ACDC_PF import AC_PowerFlow, DC_PowerFlow, ACDC_sequential
-from .constants import DEFAULT_TOLERANCE, DEFAULT_PF_MAX_ITER, BINARY_THRESHOLD, HOURS_PER_YEAR
+from .constants import DEFAULT_TOLERANCE, DEFAULT_PF_MAX_ITER, BINARY_THRESHOLD, HOURS_PER_YEAR, NodeType
 
 
 # Base __all__ with functions that don't require OPF
@@ -176,7 +176,7 @@ def update_grid_data(grid,ts, idx,price_zone_restrictions=False,use_clusters=Fal
 def update_ac_nodes(grid, idx):
     row_data = {'time': idx+1}
     for node in grid.nodes_AC:
-        if node.type == 'Slack':
+        if node.type == NodeType.SLACK:
             PGi = (node.P_INJ - node.P_s - node.PGi_ren * node.curtailment + node.PLi).item()
             QGi = node.Q_INJ - node.Q_s - node.Q_s_fx + node.QLi
             if node.S_rating !=0:

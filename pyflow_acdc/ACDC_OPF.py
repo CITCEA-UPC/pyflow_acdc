@@ -17,9 +17,10 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 import re
 
-from  .ACDC_OPF_NL_model import *
-from  .AC_OPF_L_model import *
+from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC, ExportACDC_NLmodel_toPyflowACDC
+from .AC_OPF_L_model import OPF_create_LModel_AC, ExportACDC_Lmodel_toPyflowACDC
 from .grid_analysis import analyse_grid
+from .constants import NodeType, ConverterDCType, ConverterOpfFxType
 
 try:
     import gurobipy
@@ -209,17 +210,17 @@ def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,lim
 
 def fx_conv(model,grid):
     def fx_PDC(model,conv):
-        if grid.Converters_ACDC[conv].OPF_fx==True and grid.Converters_ACDC[conv].OPF_fx_type=='PDC':
+        if grid.Converters_ACDC[conv].OPF_fx==True and grid.Converters_ACDC[conv].OPF_fx_type==ConverterOpfFxType.PDC:
             return model.P_conv_DC[conv.Node_DC.nodeNumber]==grid.Converters_ACDC[conv].P_DC
         else:
             return pyo.Constraint.Skip
     def fx_PAC(model,conv):   
-        if grid.Converters_ACDC[conv].OPF_fx==True and (grid.Converters_ACDC[conv].OPF_fx_type=='PQ' or grid.Converters_ACDC[conv].OPF_fx_type=='PV'):
+        if grid.Converters_ACDC[conv].OPF_fx==True and (grid.Converters_ACDC[conv].OPF_fx_type==ConverterOpfFxType.PQ or grid.Converters_ACDC[conv].OPF_fx_type==ConverterOpfFxType.PV):
             return model.P_conv_s_AC[conv]==grid.Converters_ACDC[conv].P_AC
         else:
             return pyo.Constraint.Skip
     def fx_QAC(model,conv):    
-        if grid.Converters_ACDC[conv].OPF_fx==True and grid.Converters_ACDC[conv].OPF_fx_type=='PQ':
+        if grid.Converters_ACDC[conv].OPF_fx==True and grid.Converters_ACDC[conv].OPF_fx_type==ConverterOpfFxType.PQ:
             return model.Q_conv_s_AC[conv]==grid.Converters_ACDC[conv].Q_AC
         else:
             return pyo.Constraint.Skip
@@ -293,7 +294,7 @@ def log_infeasible_constraints_limited(model, max_per_type=5):
                             f"{constraint_name}[{index}]: Unable to evaluate"
                         )
                         
-            except Exception as e:
+            except (AttributeError, KeyError, TypeError) as e:
                 constraint_groups[constraint_name].append(
                     f"{constraint_name}[{index}]: Error evaluating - {str(e)}"
                 )
@@ -1159,7 +1160,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     #    with the explicit feasibility checker and try alternative solution records.
     try:
         tc = str(getattr(results.solver, 'termination_condition', '') or '').lower() if results is not None else ''
-    except Exception:
+    except AttributeError:
         tc = ''
     solver_message_lc = solver_message.lower()
     solver_name_lc = str(solver).lower() if solver is not None else ''
@@ -1231,7 +1232,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     has_loaded_solution = False
     try:
         has_loaded_solution = bool(results is not None and getattr(results, "solution", None) is not None and len(results.solution) > 0)
-    except Exception:
+    except (AttributeError, TypeError):
         has_loaded_solution = False
 
     # Empty results.solution can be normal with IPOPT in some setups.
@@ -1584,9 +1585,9 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
             
             price[n.nodeNumber] = n.price
             
-            if n.type == 'Slack':
+            if n.type == NodeType.SLACK:
                 AC_slack.append(n.nodeNumber)
-            elif n.type == 'PV':
+            elif n.type == NodeType.PV:
                 AC_PV.append(n.nodeNumber)
             
         
@@ -1657,7 +1658,7 @@ def Translate_pyf_OPF(grid,Price_Zones=False):
             u_min_dc[n.nodeNumber] = n.Umin
             u_max_dc[n.nodeNumber] = n.Umax
             price_dc[n.nodeNumber] = n.price
-            if n.type == 'Slack':
+            if n.type == ConverterDCType.SLACK:
                 DC_slack.append(n.nodeNumber)
 
         for l in grid.lines_DC:
@@ -1966,7 +1967,6 @@ def calculate_objective_from_model(model, grid, weights_def, OnlyGen=True):
     return obj_value
 
 def export_solver_progress_to_excel(solver_stats, save_path):
-    import pandas as pd
     """Export solver progress to a 13-column Excel regardless of length differences.
 
     Columns:
@@ -1976,6 +1976,7 @@ def export_solver_progress_to_excel(solver_stats, save_path):
     - is_feasible_all, inf_pr_all, inf_du_all (from all_solutions when available, e.g. IPOPT)
     - kkt_inf_du_feasible (inf_du only where is_feasible_all is True)
     """
+    import pandas as pd
     # all_solutions base format: [time_sec, objective, cumulative_iterations, nlp_call_num, is_feasible]
     # optional extra fields by solver:
     # - IPOPT: [time, objective, iter, iter, is_feasible, inf_pr, inf_du]

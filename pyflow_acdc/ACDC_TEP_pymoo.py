@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from .ACDC_OPF_NL_model import ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective
 from .grid_analysis import analyse_grid
-from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
 
 __all__ = [
     'transmission_expansion_pymoo'
@@ -37,7 +37,7 @@ class TEPOuterProblem(ElementwiseProblem):
         super().__init__(n_var=n_var, n_obj=n_obj, xl=xl, xu=xu, vtype=vtype)  # mix with bools if needed
         
         self.weights_def = weights_def
-        self.present_value = Hy * (1 - (1 + r) ** -n_years) / r
+        self.present_value = present_value_factor(Hy, r, n_years)
         self.pv_set = pv_set
         self.pz = pz
         self.time_limit = time_limit

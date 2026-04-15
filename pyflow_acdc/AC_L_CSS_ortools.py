@@ -14,7 +14,7 @@ __all__ = ['Optimal_L_CSS_ortools']
 
 from .ACDC_OPF import obj_w_rule, calculate_objective
 from .grid_analysis import analyse_grid
-from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
 
 try:
     from ortools.linear_solver import pywraplp
@@ -75,7 +75,7 @@ def Optimal_L_CSS_ortools(grid, OPEX=True, NPV=True, n_years=25, Hy=HOURS_PER_YE
         obj = None
 
     weights_def, _ = obj_w_rule(grid, obj, True)
-    present_value = Hy * (1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     for obj_key in weights_def:
         weights_def[obj_key]['v'] = calculate_objective(grid, obj_key, True)
         weights_def[obj_key]['NPV'] = weights_def[obj_key]['v'] * present_value
@@ -574,7 +574,7 @@ def set_objective_ortools(solver, grid, gen_vars, ac_vars, OPEX=True,
     if OPEX:
         present_value = 1.0
         if NPV:
-            present_value = Hy * (1 - (1 + discount_rate) ** -n_years) / discount_rate
+            present_value = present_value_factor(Hy, discount_rate, n_years)
 
         for g in range(grid.n_gen):
             gen = grid.Generators[g]

@@ -13,9 +13,24 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 from shapely.wkt import loads
 
-from .Classes import*
-from .Results_class import*
-from .constants import SQRT_3, MAX_RATING_PLACEHOLDER, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC
+from .Classes import (
+    AC_DC_converter, Cable_options, DCDC_converter, Exp_Line_AC, Gen_AC,
+    Gen_DC, Line_AC, Line_DC, MTDCPrice_Zone, Node_AC, Node_DC,
+    OffshorePrice_Zone, Price_Zone, Ren_Source, Ren_source_zone,
+    rec_Line_AC, Size_selection, TF_Line_AC, TimeSeries,
+)
+from .constants import (
+    SQRT_3,
+    MAX_RATING_PLACEHOLDER,
+    DEFAULT_V_MIN_DC,
+    DEFAULT_V_MAX_DC,
+    NodeType,
+    DEFAULT_GEN_TYPE,
+    CableType,
+    DataInput,
+    Polarity,
+    AcDcSide,
+)
 from .grid_analysis import (
     pol2cart,
     cart2pol,
@@ -120,22 +135,22 @@ def add_DC_node(grid,kV_base,node_type='P', Voltage_0=1.01, Power_Gained=0, Powe
        
     return node
     
-def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm_km=None,L_mH_km=None, C_uF_km=0, G_uS_km=0, A_rating=None ,m=1, shift=0, name=None,tap_changer=False,Expandable=False,N_cables=1,Length_km=1,geometry=None,data_in='pu',Cable_type:str ='Custom',update_grid=True):
+def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm_km=None,L_mH_km=None, C_uF_km=0, G_uS_km=0, A_rating=None ,m=1, shift=0, name=None,tap_changer=False,Expandable=False,N_cables=1,Length_km=1,geometry=None,data_in=DataInput.PU,Cable_type:str =CableType.CUSTOM,update_grid=True):
     
     fromNode = _look_up_node(grid, fromNode, ac_or_dc="AC")
     toNode = _look_up_node(grid, toNode, ac_or_dc="AC")
     
     kV_base=toNode.kV_base
     if L_mH_km is not None:
-        data_in = 'Real'
-    if data_in == 'Ohm':
+        data_in = DataInput.REAL
+    if data_in == DataInput.OHM:
         Z_base = kV_base**2/grid.S_base
         
         Resistance_pu = r / Z_base if r!=0 else 0.00001
         Reactance_pu  = x  / Z_base if x!=0  else 0.00001
         Conductance_pu = g*Z_base
         Susceptance_pu = b*Z_base
-    elif data_in== 'Real' and Cable_type == 'Custom': 
+    elif data_in== DataInput.REAL and Cable_type == CableType.CUSTOM: 
        [Resistance_pu, Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating] = Cable_parameters(grid.S_base, R_Ohm_km, L_mH_km, C_uF_km, G_uS_km, A_rating, kV_base, Length_km,N_cables=N_cables)
     else:
         Resistance_pu = r if r!=0 else 0.00001
@@ -315,18 +330,18 @@ def add_line_sizing(grid, fromNode, toNode,cable_types=None, active_config: int 
        line.geometry = geometry
     return line
 
-def add_line_DC(grid, fromNode, toNode, r=0.001, MW_rating=9999,Length_km=1,R_Ohm_km=None,A_rating=None,polarity='m', name=None,geometry=None,Cable_type:str ='Custom',data_in='pu',update_grid=True):
+def add_line_DC(grid, fromNode, toNode, r=0.001, MW_rating=9999,Length_km=1,R_Ohm_km=None,A_rating=None,polarity=Polarity.MONOPOLAR, name=None,geometry=None,Cable_type:str =CableType.CUSTOM,data_in=DataInput.PU,update_grid=True):
     
     fromNode = _look_up_node(grid, fromNode, ac_or_dc="DC")
     toNode = _look_up_node(grid, toNode, ac_or_dc="DC")
     
     kV_base=toNode.kV_base
-    if data_in == 'Ohm':
+    if data_in == DataInput.OHM:
         Z_base = kV_base**2/grid.S_base
         
         Resistance_pu = r / Z_base if r!=0 else 0.00001
 
-    elif data_in== 'Real' or R_Ohm_km is not None: 
+    elif data_in== DataInput.REAL or R_Ohm_km is not None: 
         if A_rating is None:
             A_rating = MW_rating*1000/kV_base     
         [Resistance_pu, _, _, _, MW_rating] = Cable_parameters(grid.S_base, R_Ohm_km, 0, 0, 0, A_rating, kV_base, Length_km,N_cables=1)
@@ -335,9 +350,9 @@ def add_line_DC(grid, fromNode, toNode, r=0.001, MW_rating=9999,Length_km=1,R_Oh
       
     if isinstance(polarity, int):
         if polarity == 1:
-            polarity = 'm'
+            polarity = Polarity.MONOPOLAR
         elif polarity == 2:
-            polarity = 'b'
+            polarity = Polarity.BIPOLAR
         else:
             raise ValueError(f"Invalid polarity value: {polarity}. Must be 1 ('m'), 2 ('b'), 'm', or 'b'.")
     line = Line_DC(fromNode, toNode, Resistance_pu, MW_rating,Length_km, polarity, name,Cable_type=Cable_type)
@@ -600,7 +615,7 @@ def _look_up_converter(grid, conv):
         raise ValueError(f"Converter {conv_name} not found.")
     return conv_obj
 
-def add_gen(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=MAX_RATING_PLACEHOLDER,MWmin=0,MVArmin=None,MVArmax=None,PsetMW=0,QsetMVA=0,Smax=None,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
+def add_gen(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=MAX_RATING_PLACEHOLDER,MWmin=0,MVArmin=None,MVArmax=None,PsetMW=0,QsetMVA=0,Smax=None,fuel_type=DEFAULT_GEN_TYPE,geometry= None,installation_cost:float=0,np_gen:int=1):
     
     if MVArmax is None:
         MVArmax=MWmax
@@ -646,7 +661,7 @@ def add_gen(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax
     
     return gen
             
-def add_gen_DC(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=MAX_RATING_PLACEHOLDER,MWmin=0,PsetMW=0,fuel_type='Other',geometry= None,installation_cost:float=0,np_gen:int=1):
+def add_gen_DC(grid, node,gen_name=None, price_zone_link=False,lf=0,qf=0,fc=0,MWmax=MAX_RATING_PLACEHOLDER,MWmin=0,PsetMW=0,fuel_type=DEFAULT_GEN_TYPE,geometry= None,installation_cost:float=0,np_gen:int=1):
     
     Max_pow_gen=MWmax/grid.S_base
     Min_pow_gen=MWmin/grid.S_base
@@ -720,7 +735,7 @@ def add_extgrid(grid, node, gen_name=None,price_zone_link=False,lf=0,qf=0,MVAmax
         gen.lf= node.price
 
     # Iterate over all AC nodes to see if any is already 'Slack'
-    has_slack = any(n.type == 'Slack' for n in grid.nodes_AC)
+    has_slack = any(n.type == NodeType.SLACK for n in grid.nodes_AC)
     if not has_slack:
         node.type = 'Slack'
     grid.Generators.append(gen)
@@ -743,8 +758,8 @@ def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=N
     
     # Determine connection type and set appropriate attributes
     if node in grid.nodes_AC:
-        rensource.connected = 'AC'
-        ACDC = 'AC'
+        rensource.connected = AcDcSide.AC
+        ACDC = AcDcSide.AC.value
         if Qmax is not None:
             rensource.Qmax = Qmax/grid.S_base
         else:
@@ -755,8 +770,8 @@ def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=N
             rensource.Qmin = -base_MW*Qrel/grid.S_base
         grid.rs2node['AC'][rensource.rsNumber] = node.nodeNumber
     elif node in grid.nodes_DC:
-        rensource.connected = 'DC'
-        ACDC = 'DC'
+        rensource.connected = AcDcSide.DC
+        ACDC = AcDcSide.DC.value
         grid.rs2node['DC'][rensource.rsNumber] = node.nodeNumber
     else:
         raise ValueError(f'Node {node.name} is not in AC or DC nodes')

@@ -6,11 +6,15 @@ import networkx as nx
 from shapely.geometry import Polygon, Point
 from shapely.wkt import loads
 
-from .Results_class import*
-from .Classes import*
+from .Results_class import Results
+from .Classes import (
+    AC_DC_converter, Cable_options, DCDC_converter, Exp_Line_AC, Gen_AC,
+    Grid, Line_AC, Line_DC, Node_AC, Node_DC, Price_Zone, Ren_Source,
+    Ren_source_zone, Size_selection, TF_Line_AC, TimeSeries,
+)
 from .grid_analysis import Cable_parameters, Converter_parameters
 from .grid_modifications import add_gen
-from .constants import SQRT_3, MAX_RATING_PLACEHOLDER, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC
+from .constants import SQRT_3, MAX_RATING_PLACEHOLDER, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC, DataInput
 
 import pickle
 import gzip
@@ -52,7 +56,7 @@ def initialize_pyflowacdc():
     Ren_Source.reset_class()
     
     
-def Create_grid_from_data(S_base, AC_node_data=None, AC_line_data=None, DC_node_data=None, DC_line_data=None, Converter_data=None, data_in='Real'):
+def Create_grid_from_data(S_base, AC_node_data=None, AC_line_data=None, DC_node_data=None, DC_line_data=None, Converter_data=None, data_in=DataInput.REAL):
     
     if isinstance(AC_node_data, str):
         AC_node_data = pd.read_csv(AC_node_data, delimiter=",", quotechar="'", encoding="utf-8")
@@ -89,7 +93,7 @@ def Create_grid_from_data(S_base, AC_node_data=None, AC_line_data=None, DC_node_
 
     return [G, res]
 
-def Extend_grid_from_data(grid, AC_node_data=None, AC_line_data=None, DC_node_data=None, DC_line_data=None, Converter_data=None, data_in='Real'):
+def Extend_grid_from_data(grid, AC_node_data=None, AC_line_data=None, DC_node_data=None, DC_line_data=None, Converter_data=None, data_in=DataInput.REAL):
     
 
     if isinstance(AC_node_data, str):
@@ -143,7 +147,7 @@ def Extend_grid_from_data(grid, AC_node_data=None, AC_line_data=None, DC_node_da
 
     
 def process_AC_node(S_base,data_in,AC_node_data):
-    if data_in == 'pu':
+    if data_in == DataInput.PU:
         "AC nodes data sorting in pu"
         AC_node_data = AC_node_data.set_index('Node_id')
         AC_nodes = {}
@@ -225,7 +229,7 @@ def process_AC_line(S_base,data_in,AC_line_data,AC_nodes=None,grid=None):
      
     AC_lines = {}
     
-    if data_in == 'pu':
+    if data_in == DataInput.PU:
       
         for index, row in AC_line_data.iterrows():
             var_name = index
@@ -262,7 +266,7 @@ def process_AC_line(S_base,data_in,AC_line_data,AC_nodes=None,grid=None):
             if isTF:
                 AC_lines[var_name].isTF= True
     
-    elif data_in == 'Ohm':
+    elif data_in == DataInput.OHM:
       
         for index, row in AC_line_data.iterrows():
             var_name = index
@@ -364,7 +368,7 @@ def process_AC_line(S_base,data_in,AC_line_data,AC_nodes=None,grid=None):
     return AC_lines
 
 def process_DC_node(S_base,data_in,DC_node_data):
-    if data_in == 'pu':
+    if data_in == DataInput.PU:
         DC_node_data = DC_node_data.set_index('Node_id')
 
         "DC nodes data sorting"
@@ -424,7 +428,7 @@ def process_DC_node(S_base,data_in,DC_node_data):
     return DC_nodes
 
 def process_DC_line(S_base,data_in,DC_line_data,DC_nodes=None,grid=None):
-    if data_in == 'pu':
+    if data_in == DataInput.PU:
         DC_nodes_list = list(DC_nodes.values())
 
         DC_line_data = DC_line_data.set_index('Line_id')
@@ -455,7 +459,7 @@ def process_DC_line(S_base,data_in,DC_line_data,DC_nodes=None,grid=None):
                      geometry = loads(geometry)  
                 DC_lines[var_name].geometry = geometry
     
-    elif data_in == 'Ohm':
+    elif data_in == DataInput.OHM:
         DC_nodes_list = list(DC_nodes.values())
 
         DC_line_data = DC_line_data.set_index('Line_id')
@@ -535,7 +539,7 @@ def process_DC_line(S_base,data_in,DC_line_data,DC_nodes=None,grid=None):
     return DC_lines
 
 def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes=None,grid=None):
-    if data_in == 'pu':
+    if data_in == DataInput.PU:
         Converter_data = Converter_data.set_index('Conv_id')
         "Converter data sorting"
         Converters = {}
@@ -579,7 +583,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
                 if isinstance(geometry, str): 
                      geometry = loads(geometry)  
                 Converters[var_name].geometry = geometry    
-    elif data_in == 'Ohm':
+    elif data_in == DataInput.OHM:
         Converter_data = Converter_data.set_index('Conv_id')
         "Converter data sorting"
         Converters = {}

@@ -12,7 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from .grid_analysis import analyse_grid
-from .constants import HOURS_PER_YEAR, CT_SELECTION_THRESHOLD, BINARY_THRESHOLD, MAX_RATING_PLACEHOLDER, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
+from .constants import HOURS_PER_YEAR, CT_SELECTION_THRESHOLD, BINARY_THRESHOLD, MAX_RATING_PLACEHOLDER, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
 
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC, TEP_variables
 from .AC_OPF_L_model import OPF_create_LModel_AC,ExportACDC_Lmodel_toPyflowACDC
@@ -961,7 +961,7 @@ def transmission_expansion(
         PV_set,
     )
     
-    present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     if NPV:
         obj_OPF *=present_value
 
@@ -1035,7 +1035,7 @@ def linear_transmission_expansion(grid,NPV=True,n_years=25,Hy=HOURS_PER_YEAR,dis
     obj_TEP = TEP_obj(model,grid,NPV)
     obj_OPF = OPF_obj_L(model,grid,weights_def)
     
-    present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     if NPV:
         obj_OPF *=present_value
     
@@ -1100,7 +1100,7 @@ def _initialize_MS_STEP_sets_model(model,grid):
 
 def alpha_pareto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,solver='bonmin',time_limit=None,tee=False,save_name=None,obj_scaling=1.0):
     model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule)
-    present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     if NPV:
         obj_OPF *=present_value
     results = []
@@ -1459,12 +1459,13 @@ def create_scenarios(
     
     model.weights = pyo.Param(model.scenario_frames, initialize=w)
     obj_TEP = TEP_obj(model,grid,NPV)
-    obj_weighted = weighted_subobj(model,NPV,n_years,discount_rate)
+    pv = present_value_factor(Hy, discount_rate, n_years) if NPV else Hy
+    obj_weighted = weighted_subobj(model, pv)
     
     if alpha is None:
-        total_cost = obj_TEP + Hy*obj_weighted
+        total_cost = obj_TEP + obj_weighted
     else:    
-        total_cost = obj_TEP*alpha + Hy*obj_weighted*(1-alpha)
+        total_cost = obj_TEP*alpha + obj_weighted*(1-alpha)
     if obj_scaling != 1.0:
         total_cost = total_cost / obj_scaling
     model.obj = pyo.Objective(rule=total_cost, sense=pyo.minimize)
@@ -1707,22 +1708,12 @@ def TEP_obj(model,grid,NPV):
 
     return inv_gen+inv_line_AC+inv_line_AC_rec+inv_cable + inv_conv + inv_array + inv_rs
 
-def weighted_subobj(model,NPV,n_years,discount_rate):
-    # Calculate the weighted social cost for each scenario_model (subblock)
-    weighted_subobj = 0
-    present_value = (1 - (1 + discount_rate) ** -n_years) / discount_rate
-        
+def weighted_subobj(model, scaling_factor):
+    weighted_cost = 0
     for t in model.scenario_frames:
-        # Get the objective expression directly
-        scenario_model_obj = model.scenario_model[t].obj.expr
-        weighted_subobj += model.weights[t] * scenario_model_obj
-            
+        weighted_cost += model.weights[t] * model.scenario_model[t].obj.expr
         model.scenario_model[t].obj.deactivate()
-    
-    if NPV:
-        weighted_subobj *= present_value
-    
-    return weighted_subobj
+    return weighted_cost * scaling_factor
 
 
 def get_price_zone_data(t, model, grid,n_clusters,clustering):

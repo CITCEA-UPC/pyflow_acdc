@@ -746,7 +746,7 @@ def _process_clusters(grid, data, cluster_centers, representative_indices=None):
     
     Parameters:
     -----------
-    grid : pandapower.Grid
+    grid : pyflow_acdc.Grid
         The power system grid object to be updated with cluster information
     data : pandas.DataFrame
         Time series data used for clustering
@@ -854,7 +854,7 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -939,7 +939,7 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -1011,7 +1011,7 @@ def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False,
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -1094,7 +1094,7 @@ def cluster_PAM_Hierarchical(grid, n_clusters, data, scaling_data=None, print_de
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -1560,7 +1560,7 @@ def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -1576,9 +1576,7 @@ def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
     return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
 
 def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, initial_eps=0.5, print_details=False, scaler_type='robust'):
-    """
-    [Previous docstring remains the same]
-    """
+    """Cluster scaled time series with DBSCAN, adapting epsilon until the cluster count is at most n_clusters."""
     data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
     eps = initial_eps
@@ -1648,7 +1646,7 @@ def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAUL
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -1775,7 +1773,7 @@ def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assig
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")
@@ -1870,7 +1868,7 @@ def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=
         specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
         specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
         specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except Exception as e:
+    except ValueError as e:
         # If evaluation fails, continue without DB metrics
         if print_details:
             print(f"Warning: Could not evaluate clustering quality: {e}")

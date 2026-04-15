@@ -13,34 +13,29 @@ import numpy as np
 import yaml
 from pathlib import Path
 
-from .constants import SQRT_3, HOURS_PER_YEAR, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC, DEFAULT_DISCOUNT_RATE, DEFAULT_N_YEARS
+from .constants import (
+    SQRT_3,
+    HOURS_PER_YEAR,
+    DEFAULT_V_MIN_DC,
+    DEFAULT_V_MAX_DC,
+    DEFAULT_DISCOUNT_RATE,
+    DEFAULT_N_YEARS,
+    NodeType,
+    ConverterDCType,
+    Polarity,
+    PowerLossModel,
+    CableType,
+    ConverterOpfFxType,
+    DEFAULT_GENERATION_TYPES,
+    DEFAULT_RENEWABLE_TYPES,
+    DEFAULT_GEN_TYPE,
+)
 from .grid_analysis import pol2cart, cart2pol, pol2cartz, cartz2pol
 
 
 class Grid:
-    DEFAULT_GENERATION_TYPES = [
-        "nuclear",
-        "hard coal",
-        "hydro",
-        "oil",
-        "lignite",
-        "natural gas",
-        "solid biomass",
-        "other",
-        "waste",
-        "biogas",
-        "geothermal",
-        "ccgt",
-        "diesel",
-        "shunt reactor",
-        ]
-
-    DEFAULT_RENEWABLE_TYPES = [
-        "wind",
-        "solar",
-        "offshore wind",
-        "onshore wind",
-    ]
+    DEFAULT_GENERATION_TYPES = list(DEFAULT_GENERATION_TYPES)
+    DEFAULT_RENEWABLE_TYPES = list(DEFAULT_RENEWABLE_TYPES)
 
     def __init__(self, S_base: float, nodes_AC: list = None, lines_AC: list = None, Converters: list = None, nodes_DC: list = None, lines_DC: list = None):
         
@@ -339,19 +334,19 @@ class Grid:
     @property
     def pq_nodes(self):
         if self._pq_nodes is None:
-            self._pq_nodes = [node for node in self._nodes_AC if node.type == 'PQ']
+            self._pq_nodes = [node for node in self._nodes_AC if node.type == NodeType.PQ]
         return self._pq_nodes
 
     @property
     def pv_nodes(self):
         if self._pv_nodes is None:
-            self._pv_nodes = [node for node in self._nodes_AC if node.type == 'PV']
+            self._pv_nodes = [node for node in self._nodes_AC if node.type == NodeType.PV]
         return self._pv_nodes
 
     @property
     def slack_nodes(self):
         if self._slack_nodes is None:
-            self._slack_nodes = [node for node in self._nodes_AC if node.type == 'Slack']
+            self._slack_nodes = [node for node in self._nodes_AC if node.type == NodeType.SLACK]
         return self._slack_nodes
     
     @property
@@ -394,25 +389,25 @@ class Grid:
     @property
     def PAC_nodes(self):
         if self._PAC_nodes is None:
-            self._PAC_nodes = [node for node in self._nodes_DC if node.type == 'PAC']
+            self._PAC_nodes = [node for node in self._nodes_DC if node.type == ConverterDCType.PAC]
         return self._PAC_nodes
 
     @property
     def P_nodes(self):
         if self._P_nodes is None:
-            self._P_nodes = [node for node in self._nodes_DC if node.type == 'P']
+            self._P_nodes = [node for node in self._nodes_DC if node.type == ConverterDCType.P]
         return self._P_nodes
 
     @property
     def droop_nodes(self):
         if self._droop_nodes is None:
-            self._droop_nodes = [node for node in self._nodes_DC if node.type == 'Droop']
+            self._droop_nodes = [node for node in self._nodes_DC if node.type == ConverterDCType.DROOP]
         return self._droop_nodes
 
     @property
     def slackDC_nodes(self):
         if self._slackDC_nodes is None:
-            self._slackDC_nodes = [node for node in self._nodes_DC if node.type == 'Slack']
+            self._slackDC_nodes = [node for node in self._nodes_DC if node.type == ConverterDCType.SLACK]
         return self._slackDC_nodes  
 
     @property
@@ -448,26 +443,26 @@ class Grid:
 
     @property
     def P_Conv(self):
-        P_Conv = [conv for conv in self.Converters_ACDC if conv.type == 'P']
+        P_Conv = [conv for conv in self.Converters_ACDC if conv.type == ConverterDCType.P]
         return P_Conv
 
     @property
     def Slack_Conv(self):
         Slack_Conv = [
-            conv for conv in self.Converters_ACDC if conv.type == 'Slack']
+            conv for conv in self.Converters_ACDC if conv.type == ConverterDCType.SLACK]
         return Slack_Conv
 
     @property
     def Droop_Conv(self):
         Droop_Conv = [
-            conv for conv in self.Converters_ACDC if conv.type == 'Droop']
+            conv for conv in self.Converters_ACDC if conv.type == ConverterDCType.DROOP]
         return Droop_Conv
     
     
     def check_stand_alone_is_slack(self):
         for node in self.nodes_AC:
             if node.stand_alone:
-                node.type = 'Slack'
+                node.type = NodeType.SLACK
         
     
     def Update_Graph_DC(self):
@@ -542,7 +537,7 @@ class Grid:
                 self.Graph_grid_to_MTDC[i]=self.num_MTDC
                 self.num_MTDC+=1
             for node in self.Grids_DC[i]:
-                if node.type == 'Slack':
+                if node.type == ConverterDCType.SLACK:
                     self.num_slackDC[i] += 1
 
             s = 1
@@ -630,7 +625,7 @@ class Grid:
         for i in range(self.Num_Grids_AC):
 
             for node in self.Grids_AC[i]:
-                if node.type == 'Slack':
+                if node.type == NodeType.SLACK:
                     self.num_slackAC[i] += 1
             if self.num_slackAC[i] == 0 and self.lines_AC != []:
                 print(f'For Grid AC {i+1} no slack bus found.')
@@ -672,8 +667,8 @@ class Grid:
         s=1
     def Update_PQ_AC(self):
         for node in self.nodes_AC:
-            node.Q_s_fx=sum(self.Converters_ACDC[conv].Q_AC for conv  in node.connected_conv if self.Converters_ACDC[conv].AC_type=='PQ')
-            node.Q_s   = sum(self.Converters_ACDC[conv].Q_AC for conv  in node.connected_conv if self.Converters_ACDC[conv].AC_type!='PQ')
+            node.Q_s_fx=sum(self.Converters_ACDC[conv].Q_AC for conv  in node.connected_conv if self.Converters_ACDC[conv].AC_type==NodeType.PQ)
+            node.Q_s   = sum(self.Converters_ACDC[conv].Q_AC for conv  in node.connected_conv if self.Converters_ACDC[conv].AC_type!=NodeType.PQ)
         # # Negative means power leaving the system, positive means injected into the system at a node  
        
         self.P_AC = np.vstack([node.PGi
@@ -808,7 +803,7 @@ class Grid:
 
     def Check_SlacknDroop(self, change_slack2Droop):
         for conv in self.Converters_ACDC:
-            if conv.type == 'Slack':
+            if conv.type == ConverterDCType.SLACK:
 
                 DC_node = conv.Node_DC
 
@@ -828,14 +823,14 @@ class Grid:
                 if change_slack2Droop == True:
                     if self.nn_DC-node_count != 2:
 
-                        conv.type = 'Droop'
-                        DC_node.type = 'Droop'
+                        conv.type = ConverterDCType.DROOP
+                        DC_node.type = ConverterDCType.DROOP
                 conv.P_DC = P_syst
                 DC_node.Pconv = P_syst
 
                 self.Update_P_DC()
 
-            elif conv.type == 'Droop':
+            elif conv.type == ConverterDCType.DROOP:
 
                 DC_node = conv.Node_DC
 
@@ -850,11 +845,11 @@ class Grid:
                 if self.nn_DC-node_count == 2:
                     g=self.Graph_node_to_Grid_index_DC[DC_node.nodeNumber]
                     
-                    if any(node.type == 'Slack' for node in self.Grids_DC[g]):
+                    if any(node.type == ConverterDCType.SLACK for node in self.Grids_DC[g]):
                         s=1
                     else:
-                        conv.type = 'Slack'
-                        DC_node.type = 'Slack'
+                        conv.type = ConverterDCType.SLACK
+                        DC_node.type = ConverterDCType.SLACK
                         print(f"Changing converter {conv.name} to Slack")
                 self.Update_P_DC()
 
@@ -1078,7 +1073,7 @@ class Gen_AC:
         return max(abs(self.PGen), abs(self.QGen)) * self.S_base
 
 
-    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,Max_pow_genR: float,Min_pow_genR: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,Qset:float=0,S_rated:float=None,gen_type='Other',installation_cost:float=0,S_base:float=100,np_gen: int = 1):
+    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,Max_pow_genR: float,Min_pow_genR: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,Qset:float=0,S_rated:float=None,gen_type=DEFAULT_GEN_TYPE,installation_cost:float=0,S_base:float=100,np_gen: int = 1):
         self.genNumber = Gen_AC.genNumber
         Gen_AC.genNumber += 1
         self.S_base = S_base
@@ -1230,7 +1225,7 @@ class Gen_DC:
         return self.PGen/(self.capacity_MW*self.np_gen)*100 if self.np_gen >0 else 0
    
 
-    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,gen_type='Other',installation_cost:float=0,S_base:float=100,np_gen: int = 1):
+    def __init__(self,name, node,Max_pow_gen: float,Min_pow_gen: float,quadratic_cost_factor: float=0,linear_cost_factor: float=0,fixed_cost:float =0,Pset:float=0,gen_type=DEFAULT_GEN_TYPE,installation_cost:float=0,S_base:float=100,np_gen: int = 1):
         self.genNumber_DC = Gen_DC.genNumber_DC
         Gen_DC.genNumber_DC += 1
 
@@ -1933,7 +1928,7 @@ class Line_AC:
         R,X,G,B,MVA_rating = Cable_parameters(S_base, R_Ohm, L_mH, C_uF, G_uS, A_rating, kV_base, Length_km,N_cables)
         return R, X, G, B, MVA_rating
     
-    def __init__(self, fromNode: Node_AC, toNode: Node_AC,r: float= 0.001, x: float=0.001, g: float=0, b: float=0, MVA_rating: float=9999,Length_km:float=1.0,m:float=1, shift:float=0,N_cables=1, name=None,geometry=None,isTf=False,S_base:float=100,Cable_type:str ='Custom'):
+    def __init__(self, fromNode: Node_AC, toNode: Node_AC,r: float= 0.001, x: float=0.001, g: float=0, b: float=0, MVA_rating: float=9999,Length_km:float=1.0,m:float=1, shift:float=0,N_cables=1, name=None,geometry=None,isTf=False,S_base:float=100,Cable_type:str = CableType.CUSTOM):
         self.lineNumber = Line_AC.lineNumber
         Line_AC.lineNumber += 1
         
@@ -1962,7 +1957,7 @@ class Line_AC:
         self._Cable_type = Cable_type
         
         # If not Custom, update parameters
-        if Cable_type != 'Custom':
+        if Cable_type != CableType.CUSTOM:
             self.Cable_type = Cable_type
         else:
             self._calculate_Ybus_branch() 
@@ -2019,7 +2014,7 @@ class Line_AC:
     @Cable_type.setter
     def Cable_type(self, new_type):
         self._Cable_type = new_type
-        if new_type != 'Custom':
+        if new_type != CableType.CUSTOM:
             self.R, self.X, self.G, self.B, self.MVA_rating = self.get_cable_parameters(
                 new_type, self.S_base, self.Length_km, self.N_cables,self.kV_base)
             self._calculate_Ybus_branch()  
@@ -2745,15 +2740,15 @@ class Line_DC:
         r, _, _, _, MW_rating = Cable_parameters(S_base, R_Ohm, L_mH, C_uF, G_uS, A_rating, kV_base, km,1)
         return r, MW_rating
     
-    def __init__(self, fromNode: Node_DC, toNode: Node_DC, r: float=0.001, MW_rating: float=9999,km:float=1, polarity='m', name=None,N_cables=1,Cable_type:str='Custom',S_base:float=100):
+    def __init__(self, fromNode: Node_DC, toNode: Node_DC, r: float=0.001, MW_rating: float=9999,km:float=1, polarity=Polarity.MONOPOLAR, name=None,N_cables=1,Cable_type:str=CableType.CUSTOM,S_base:float=100):
         self.lineNumber = Line_DC.lineNumber
         Line_DC.lineNumber += 1
 
         self.m_sm_b = polarity
         self.S_base = S_base
-        if polarity == 'm':
+        if polarity == Polarity.MONOPOLAR:
             self.pol = 1
-        elif polarity == 'b' or polarity == 'sm':
+        elif polarity == Polarity.BIPOLAR or polarity == Polarity.SYMMETRIC_MONOPOLAR:
             self.pol = 2
         else:
             print('No viable polarity inserted pol =1')
@@ -2785,7 +2780,7 @@ class Line_DC:
 
         self._Cable_type = Cable_type
 
-        if Cable_type != 'Custom':
+        if Cable_type != CableType.CUSTOM:
             self.Cable_type=Cable_type
         
 
@@ -2839,7 +2834,7 @@ class Line_DC:
     @Cable_type.setter
     def Cable_type(self, new_type):
         self._Cable_type = new_type
-        if new_type != 'Custom':
+        if new_type != CableType.CUSTOM:
             self.R, self.MW_rating = self.get_cable_parameters(new_type, self.S_base, self.Length_km, self.np_line,self.kV_base)
 
 class CFC_DC:
@@ -3116,7 +3111,7 @@ class AC_DC_converter:
         self.ra_og = arm_res
         self.ra = arm_res *self.cn_pol  # Ohm
        
-        self.power_loss_model = 'quadratic'
+        self.power_loss_model = PowerLossModel.QUADRATIC
         self.Vsum = 0
         
         
@@ -3138,23 +3133,23 @@ class AC_DC_converter:
         self.Ucmin = Ucmin
         self.Ucmax = Ucmax
         self.OPF_fx=False
-        self.OPF_fx_type='PDC'
+        self.OPF_fx_type=ConverterOpfFxType.PDC
         
-        if self.AC_type=='Slack':
-            self.OPF_fx_type='None'
+        if self.AC_type==NodeType.SLACK:
+            self.OPF_fx_type=ConverterOpfFxType.NONE
             
-        if self.AC_type == 'PV':
-            if self.type == 'PAC':
-                self.OPF_fx_type='PV'
-            elif self.type == 'Slack':
-                self.OPF_fx_type='None'
-            if self.Node_AC.type == 'PQ':
-                self.Node_AC.type = 'PV'
-        if self.AC_type == 'PQ':
-            if  self.type == 'PAC':
-                self.OPF_fx_type='PQ'
+        if self.AC_type == NodeType.PV:
+            if self.type == ConverterDCType.PAC:
+                self.OPF_fx_type=ConverterOpfFxType.PV
+            elif self.type == ConverterDCType.SLACK:
+                self.OPF_fx_type=ConverterOpfFxType.NONE
+            if self.Node_AC.type == NodeType.PQ:
+                self.Node_AC.type = NodeType.PV
+        if self.AC_type == NodeType.PQ:
+            if  self.type == ConverterDCType.PAC:
+                self.OPF_fx_type=ConverterOpfFxType.PQ
             else:
-                self.OPF_fx_type='Q'
+                self.OPF_fx_type=ConverterOpfFxType.Q
             self.Node_AC.Q_s_fx += self.Q_AC
            
 

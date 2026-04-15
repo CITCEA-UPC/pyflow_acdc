@@ -8,7 +8,7 @@ import sys
 import warnings
 import time
 from .grid_analysis import analyse_grid, pol2cartz, cartz2pol
-from .constants import DEFAULT_TOLERANCE, PF_OUTER_TOLERANCE, PF_INNER_TOLERANCE, CONV_TOLERANCE, DEFAULT_PF_MAX_ITER, DEFAULT_CONV_MAX_ITER
+from .constants import DEFAULT_TOLERANCE, PF_OUTER_TOLERANCE, PF_INNER_TOLERANCE, CONV_TOLERANCE, DEFAULT_PF_MAX_ITER, DEFAULT_CONV_MAX_ITER, NodeType, ConverterDCType, PowerLossModel
 
 __all__ = [
     'AC_PowerFlow',
@@ -74,7 +74,7 @@ def ACDC_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
     }
     
     for conv in grid.Converters_ACDC:
-        if conv.type!= 'PAC':
+        if conv.type!= ConverterDCType.PAC:
             AC_node = conv.Node_AC
             DC_node = conv.Node_DC
             DC_node.Pconv = conv.P_DC
@@ -97,7 +97,7 @@ def ACDC_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
         tolerance_tracker['ac_pf_tolerances'].append(ac_tol)
         
         for conv in grid.Converters_ACDC:
-            if conv.type== 'PAC':
+            if conv.type== ConverterDCType.PAC:
                 PGi_ren = sum(rs.PGi_ren*rs.gamma for rs in conv.Node_AC.connected_RenSource)
                 QGi_ren = sum(rs.QGi_ren for rs in conv.Node_AC.connected_RenSource)
                 PGi_opt = sum(gen.PGen for gen in conv.Node_AC.connected_gen)
@@ -106,10 +106,10 @@ def ACDC_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
                     conv.P_AC = -(PGi_ren+PGi_opt-conv.Node_AC.PLi) 
                     conv.Q_AC = -(conv.Node_AC.QGi+QGi_opt+QGi_ren-conv.Node_AC.QLi+conv.Node_AC.Q_s_fx)
                 else:
-                    if conv.AC_type == 'Slack':
+                    if conv.AC_type == NodeType.SLACK:
                         conv.P_AC = conv.Node_AC.P_INJ-(PGi_ren+PGi_opt-conv.Node_AC.PLi) 
                         conv.Q_AC = conv.Node_AC.Q_INJ-(conv.Node_AC.QGi+QGi_opt+QGi_ren-conv.Node_AC.QLi+conv.Node_AC.Q_s_fx)
-                    if conv.AC_type == 'PV':
+                    if conv.AC_type == NodeType.PV:
                         conv.Q_AC = conv.Node_AC.Q_INJ-(conv.Node_AC.QGi+QGi_opt-conv.Node_AC.QLi+conv.Node_AC.Q_s_fx)
                 flow_conv_P_AC(grid,conv)
                 s=1
@@ -138,7 +138,7 @@ def ACDC_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
             AC_node = conv.Node_AC
             DC_node = conv.Node_DC
 
-            if conv.AC_type == 'PV':
+            if conv.AC_type == NodeType.PV:
                 QGi_opt = sum(gen.QGen for gen in conv.Node_AC.connected_gen)
                 QGi_ren = sum(rs.QGi_ren for rs in conv.Node_AC.connected_RenSource)
                 conv.Q_AC = AC_node.Q_INJ-(AC_node.QGi+QGi_opt+QGi_ren-AC_node.QLi+AC_node.Q_s_fx)
@@ -198,7 +198,7 @@ def Jacobian_DC(grid, V_DC, P,Droop_PF):
     for i in range(grid.nn_DC):
         m = grid.nodes_DC[i].nodeNumber
 
-        if grid.nodes_DC[i].type != 'Slack':
+        if grid.nodes_DC[i].type != ConverterDCType.SLACK:
             for k in range(grid.nn_DC):
                 n = grid.nodes_DC[k].nodeNumber
 
@@ -210,7 +210,7 @@ def Jacobian_DC(grid, V_DC, P,Droop_PF):
                 else:
                     J[m, n] = P[m, 0]
                     if grid.nconv != 0:
-                        if grid.nodes_DC[k].type == 'Droop' and Droop_PF:
+                        if grid.nodes_DC[k].type == ConverterDCType.DROOP and Droop_PF:
                             J[m, n] += grid.nodes_DC[k].Droop_rate * V[m]
 
                     for a in range(grid.nn_DC):
@@ -258,7 +258,7 @@ def load_flow_DC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
 
         for node in grid.nodes_DC:
             if grid.nconv != 0:
-                if node.type == 'Droop' and Droop_PF:
+                if node.type == ConverterDCType.DROOP and Droop_PF:
                     n = node.nodeNumber
                     Droop_change = (node.V_ini-V[n])*node.Droop_rate
                     P_known[n] = np.copy(grid.P_DC[n]+grid.Pconv_DC[n]) + Droop_change
@@ -280,7 +280,7 @@ def load_flow_DC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
         # Recall the updated voltage vector into the correct place
         k = 0  # Index for dV vector
         for i in range(grid.nn_DC):
-            if grid.nodes_DC[i].type != 'Slack':
+            if grid.nodes_DC[i].type != ConverterDCType.SLACK:
                 dV = dV_V[k].item()*V[i]
                 V[i] += dV
                 k += 1  # Move to the next element in dV
@@ -313,11 +313,11 @@ def load_flow_DC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
 
         for conv in grid.Converters_ACDC:
             n = conv.Node_DC.nodeNumber
-            if conv.type== 'Droop' and Droop_PF:
+            if conv.type== ConverterDCType.DROOP and Droop_PF:
                 conv.P_DC         = P_known[n].item()-grid.P_DC[n].item()
                 conv.Node_DC.Pconv= P_known[n].item()-grid.P_DC[n].item()
                 s = 1
-            elif conv.type== 'Slack':
+            elif conv.type== ConverterDCType.SLACK:
                 conv.Node_DC.Pconv = Pf[n].item()-grid.P_DC[n].item()
                 conv.P_DC          = Pf[n].item()-grid.P_DC[n].item()
                 s = 1
@@ -330,9 +330,9 @@ def Jacobian_AC(grid, Voltages, Angles,P,Q):
     V = Voltages
     th = Angles
     
-    slack_indices = np.array([i for i, node in enumerate(grid.nodes_AC) if node.type == 'Slack'], dtype=int)
-    pv_indices = np.array([i for i, node in enumerate(grid.nodes_AC) if node.type == 'PV'], dtype=int)
-    pq_indices = np.array([i for i, node in enumerate(grid.nodes_AC) if node.type == 'PQ'], dtype=int)
+    slack_indices = np.array([i for i, node in enumerate(grid.nodes_AC) if node.type == NodeType.SLACK], dtype=int)
+    pv_indices = np.array([i for i, node in enumerate(grid.nodes_AC) if node.type == NodeType.PV], dtype=int)
+    pq_indices = np.array([i for i, node in enumerate(grid.nodes_AC) if node.type == NodeType.PQ], dtype=int)
     non_slack_indices = np.sort(np.concatenate((pv_indices, pq_indices)))
 
     
@@ -438,7 +438,7 @@ def load_flow_AC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
         Q_del = []
         for node in grid.nodes_AC:
             i = node.nodeNumber
-            if node.type != 'PQ':
+            if node.type != NodeType.PQ:
                 Q_del.append(i)
 
         dP = np.delete(dPa, grid.slack_bus_number_AC, axis=0)
@@ -462,14 +462,14 @@ def load_flow_AC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
         # Recall the updated voltage vector into the correct place
         k = 0  # Index for dV vector
         for i in range(grid.nn_AC):
-            if grid.nodes_AC[i].type != 'Slack':
+            if grid.nodes_AC[i].type != NodeType.SLACK:
                 s = 1
                 # grid.nodes_AC[i].theta += dTh[k].item()
                 angles[i] += dTh[k].item()
                 k += 1  # Move to the next element in dTh
         k = 0  # Index for dV vector
         for i in range(grid.nn_AC):
-            if grid.nodes_AC[i].type == 'PQ':
+            if grid.nodes_AC[i].type == NodeType.PQ:
                 # grid.nodes_AC[i].V += dV[k].item()
                 V[i] += dV[k].item()
                 k += 1  # Move to the next element in dV
@@ -552,7 +552,7 @@ def flow_conv_P_AC(grid, conv):
 
     Pc = np.real(Sc)
     
-    if conv.power_loss_model == 'MMC':
+    if conv.power_loss_model == PowerLossModel.MMC:
          
          P_loss,I= mmc_loss(conv,Pc)
         
@@ -735,7 +735,7 @@ def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
             warnings.warn(f'Converter {conv.name} did not converge. Lowest tolerance: {np.round(tol, decimals=6)}')
 
         
-        if conv.power_loss_model == 'MMC':
+        if conv.power_loss_model == PowerLossModel.MMC:
            
             P_loss,I= mmc_loss(conv,Pc)
            
@@ -766,7 +766,7 @@ def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
     else:
         Ps=Pc
         Qs=Qc
-    if conv.type!= 'PAC':
+    if conv.type!= ConverterDCType.PAC:
         conv.P_AC = Ps
     conv.Q_AC = Qs
     
@@ -842,7 +842,7 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
         if iter_num > maxIter:
             warnings.warn(f'Converter {conv.name} did not converge. Lowest tolerance: {np.round(tol, decimals=6)}')
             
-        if conv.power_loss_model == 'MMC':
+        if conv.power_loss_model == PowerLossModel.MMC:
             
             
             P_loss,I= mmc_loss(conv,Pc)
@@ -872,7 +872,7 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
     Pc = Uc*Uc*Gc-Us*Uc*(Gc*np.cos(th_s-th_c)-Bc*np.sin(th_s-th_c))
     Qc = -Uc*Uc*Bc+Us*Uc*(Gc*np.sin(th_s-th_c)+Bc*np.cos(th_s-th_c))
 
-    if conv.type!= 'PAC':
+    if conv.type!= ConverterDCType.PAC:
         conv.P_AC = Ps
     conv.Q_AC = Qs
     
@@ -962,7 +962,7 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
         if iter_num > maxIter:
             warnings.warn(f'Converter {conv.name} did not converge. Lowest tolerance: {np.round(tol, decimals=6)}')
 
-        if conv.power_loss_model == 'MMC':
+        if conv.power_loss_model == PowerLossModel.MMC:
 
     
             P_loss,I= mmc_loss(conv,Pc)
@@ -985,7 +985,7 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
     Ps = -Us*Us*Gtf+Us*Uf*(Gtf*np.cos(th_s-th_f)+Btf*np.sin(th_s-th_f))
     Qs = Us*Us*Btf+Us*Uf*(Gtf*np.sin(th_s-th_f)-Btf*np.cos(th_s-th_f))
     # CHECK THIs
-    if conv.type!= 'PAC':
+    if conv.type!= ConverterDCType.PAC:
         conv.P_AC = Ps
     conv.Q_AC = Qs
     
@@ -1094,7 +1094,7 @@ def Converter_Qlimit(grid, conv):
 
     AC_node = conv.Node_AC.nodeNumber
 
-    if conv.AC_type == 'PV' or conv.AC_type == 'Slack':
+    if conv.AC_type == NodeType.PV or conv.AC_type == NodeType.SLACK:
         conv.Node_AC.Q_s = (grid.Q_INJ[AC_node]-grid.Q_AC[AC_node]).item()
         Q_req = conv.Node_AC.Q_s
     else:
@@ -1104,7 +1104,7 @@ def Converter_Qlimit(grid, conv):
     if Q_req > Qs_max or Q_req < Qs_min:
 
         warnings.warn(f'Converter {conv.name}: Q limit reached')
-        if conv.Node_AC.type == 'Slack':
+        if conv.Node_AC.type == NodeType.SLACK:
             warnings.warn(f'Limiting Q from converter, external reactive compensation needed at node {conv.Node_AC.name}')
             if Q_req > Qs_plus:
                 conv.Node_AC.Q_s = Qs_max
@@ -1116,12 +1116,12 @@ def Converter_Qlimit(grid, conv):
 
         else:
             warnings.warn(f'Limiting Q from converter and changing AC node {conv.Node_AC.name} to PQ')
-            conv.Node_AC.type = 'PQ'
+            conv.Node_AC.type = NodeType.PQ
             if Q_req > Qs_max:
                 conv.Node_AC.Q_s = Qs_max
             elif Q_req < Qs_min:
                 conv.Node_AC.Q_s = Qs_min
-        conv.AC_type = 'PQ'
+        conv.AC_type = NodeType.PQ
         
 
         

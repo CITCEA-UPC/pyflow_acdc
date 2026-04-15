@@ -9,6 +9,14 @@ import numpy as np
 import pandas as pd
 import os
 from .Classes import MTDCPrice_Zone, OffshorePrice_Zone
+from .constants import (
+    NodeType,
+    ConverterDCType,
+    AcDcSide,
+    Polarity,
+    DataInput,
+    PriceZoneCategory,
+)
 
 import os
 import pickle
@@ -66,13 +74,13 @@ def generate_add_price_zone_code(price_zone_data):
   
     # Loop through each entry in the data list and generate the corresponding function call
     for zone in price_zone_data:
-        if zone["type"]=="main":        
+        if zone["type"] == PriceZoneCategory.MAIN:
             code += f"    pyf.add_price_zone(grid,'{zone['name']}',{zone['price']},import_pu_L={zone['import_pu_L']},export_pu_G={zone['export_pu_G']},a={zone['a']},b={zone['b']},c={zone['c']},import_expand_pu={zone['import_expand_pu']})\n"
     for zone in price_zone_data:
-        if zone["type"]== "offshore":
+        if zone["type"] == PriceZoneCategory.OFFSHORE:
             code += f"    pyf.add_offshore_price_zone(grid,'{zone['main_price_zone']}','{zone['name']}')\n"
     for zone in price_zone_data:
-        if zone["type"]== "MTDC":
+        if zone["type"] == PriceZoneCategory.MTDC:
             code += f"    pyf.add_MTDC_price_zone(grid, '{zone['name']}',linked_price_zones={zone['linked_price_zones']},pricing_strategy={zone['pricing_strategy']})\n"        
     
    
@@ -236,9 +244,9 @@ def create_dictionaries(grid):
         for line in getattr(grid, "lines_DC", []):
             if line:
                 if line.pol   == 1:
-                    pol = 'm'
+                    pol = Polarity.MONOPOLAR
                 else:
-                    pol = 'b'
+                    pol = Polarity.BIPOLAR
             
                 data["lines_DC"].append({
                     "fromNode":   line.fromNode.name,
@@ -293,13 +301,13 @@ def create_dictionaries(grid):
                         "name": price_zone.name,
                         "linked_price_zones": price_zone.linked_price_zones,
                         "pricing_strategy": price_zone.pricing_strategy,
-                        "type":'MTDC',
+                        "type": PriceZoneCategory.MTDC.value,
                     })
                 elif isinstance(price_zone, OffshorePrice_Zone):
                     data["Price_Zone"].append({
                         "main_price_zone": price_zone.main_price_zone.name,
                         "name": price_zone.name,
-                        "type":'offshore', 
+                        "type": PriceZoneCategory.OFFSHORE.value, 
                     })
                 else:
                     data["Price_Zone"].append({
@@ -311,7 +319,7 @@ def create_dictionaries(grid):
                         "b":           price_zone.b,
                         "c":           price_zone.c,
                         "import_expand_pu": price_zone.import_expand,
-                        "type":'main',
+                        "type": PriceZoneCategory.MAIN.value,
                     })
 
     # RenSource Zones
@@ -403,7 +411,7 @@ def {file_name}():
     {Converters_ACDC_code}
     
     # Create the grid
-    [grid, res] = pyf.Create_grid_from_data(S_base, nodes_AC, lines_AC, nodes_DC, lines_DC, Converters_ACDC, data_in='pu')
+    [grid, res] = pyf.Create_grid_from_data(S_base, nodes_AC, lines_AC, nodes_DC, lines_DC, Converters_ACDC, data_in='{DataInput.PU.value}')
     grid.name = '{file_name}'
     """
     
@@ -423,7 +431,7 @@ def {file_name}():
     for index, row in nodes_AC.iterrows():
         node_name = nodes_AC.at[index, 'Node_id']
         price_zone = nodes_AC.at[index, 'PZ']
-        ACDC = 'AC'
+        ACDC = '{AcDcSide.AC.value}'
         if price_zone is not None:
             pyf.assign_nodeToPrice_Zone(grid, node_name, price_zone,ACDC)
     """
@@ -434,7 +442,7 @@ def {file_name}():
     for index, row in nodes_DC.iterrows():
         node_name = nodes_DC.at[index, 'Node_id']
         price_zone = nodes_DC.at[index, 'PZ']
-        ACDC = 'DC'
+        ACDC = '{AcDcSide.DC.value}'
         if price_zone is not None:
             pyf.assign_nodeToPrice_Zone(grid, node_name, price_zone,ACDC)
     """
@@ -504,9 +512,9 @@ def gather_grid_data(grid):
     node_ac_data = []
 
     for node in grid.nodes_AC:
-        if node.type == 'PQ':
+        if node.type == NodeType.PQ:
             tp=1
-        elif node.type =='PV':
+        elif node.type == NodeType.PV:
             tp=2
         else:
             tp=3
@@ -581,16 +589,16 @@ def gather_grid_data(grid):
     conv_data = []
     if grid.Converters_ACDC is not None:   
         for conv in grid.Converters_ACDC:
-            if conv.AC_type == 'PQ':
+            if conv.AC_type == NodeType.PQ:
                 tpac=1
-            elif conv.AC_type =='PV':
+            elif conv.AC_type == NodeType.PV:
                 tpac=2
             else:
                 tpac=1
             
-            if conv.type == 'P' or conv.type == 'PAC':
+            if conv.type == ConverterDCType.P or conv.type == ConverterDCType.PAC:
                 tpdc=1
-            elif conv.type =='Slack':
+            elif conv.type == ConverterDCType.SLACK:
                 tpdc=2
             else: 
                 tpdc=3
@@ -662,7 +670,7 @@ def gather_grid_data(grid):
     
     if grid.RenSources is not None:    
         for gen in grid.RenSources:
-            if gen.connected =='DC':
+            if gen.connected == AcDcSide.DC:
                 continue
             gen_data.append({
                 "bus": gen.Node.nodeNumber+1,
@@ -702,7 +710,7 @@ def gather_grid_data(grid):
         }) 
     if grid.RenSources is not None:        
         for gen in grid.RenSources:
-            if gen.connected =='DC':
+            if gen.connected == AcDcSide.DC:
                 continue
             gen_cost_data.append({
                 "type": 2,
