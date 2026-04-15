@@ -229,15 +229,12 @@ def Jacobian_DC(grid, V_DC, P,Droop_PF):
         if grid.nodes_DC[i].type != 'Slack':
             for k in range(grid.nn_DC):
                 n = grid.nodes_DC[k].nodeNumber
-                Y = grid.Ybus_DC[m, n]
-                pol = 1
 
                 if m != n:
-                    if Y != 0:
+                    if grid.Ybus_DC[m, n] != 0:
                         line = grid.get_lineDC_by_nodes(m, n)
-                        pol = line.pol
-
-                    J[m, n] = pol*Y*V[m]*V[n]
+                        G = line.np_line / line.R
+                        J[m, n] = -line.pol * G * V[m] * V[n]
                 else:
                     J[m, n] = P[m, 0]
                     if grid.nconv != 0:
@@ -246,11 +243,10 @@ def Jacobian_DC(grid, V_DC, P,Droop_PF):
 
                     for a in range(grid.nn_DC):
                         if a != m:
-                            Ya = grid.Ybus_DC[m, a]
-                            if Ya != 0:
+                            if grid.Ybus_DC[m, a] != 0:
                                 line = grid.get_lineDC_by_nodes(m, a)
-                                pola = line.pol
-                                J[m, n] += pola*-Ya*V[m]*V[m]
+                                G = line.np_line / line.R
+                                J[m, n] += line.pol * G * V[m] * V[m]
 
         else:
             grid.slack_bus_number_DC.append(m)
@@ -278,20 +274,15 @@ def load_flow_DC(grid, tol_lim=1e-8, maxIter=100,Droop_PF=True):
         P = np.zeros((grid.nn_DC, 1))
         P1 = np.zeros((grid.nn_DC, 1))
         Pf = np.zeros((grid.nn_DC, 1))
-        pol = 1
-        npar = 1
         for node in grid.nodes_DC:
 
             i = node.nodeNumber
             for k in range(grid.nn_DC):
-                Y = grid.Ybus_DC[i, k]
-
                 if k != i:
-                    if Y != 0:
+                    if grid.Ybus_DC[i, k] != 0:
                         line = grid.get_lineDC_by_nodes(i, k)
-                        pol = line.pol
-                        G = 1/line.R
-                        P[i] += pol*V[i]*(V[i]-V[k])*G
+                        G = line.np_line / line.R
+                        P[i] += line.pol*V[i]*(V[i]-V[k])*G
 
         for node in grid.nodes_DC:
             if grid.nconv != 0:
@@ -339,14 +330,11 @@ def load_flow_DC(grid, tol_lim=1e-8, maxIter=100,Droop_PF=True):
     for node in grid.nodes_DC:
         i = node.nodeNumber
         for k in range(grid.nn_DC):
-            Y = grid.Ybus_DC[i, k]
             if k != i:
-                if Y != 0:
+                if grid.Ybus_DC[i, k] != 0:
                     line = grid.get_lineDC_by_nodes(i, k)
-                    pol = line.pol
-                    npar = line.np_line
-                    G = 1/line.R
-                    Pf[i] += pol*V[i]*(V[i]-V[k])*G
+                    G = line.np_line / line.R
+                    Pf[i] += line.pol*V[i]*(V[i]-V[k])*G
         grid.nodes_DC[i].V = V[i]
         node.P_INJ = Pf[i].item()
     dPa = P_known-Pf

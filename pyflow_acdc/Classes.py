@@ -1016,8 +1016,8 @@ class Grid:
             Pij_DC[i, j] = V[i]*(Iij[i, j])*pol
             Pij_DC[j, i] = V[j]*(Iij[j, i])*pol
             
-            line.toP=Pij_DC[j,i]*line.np_line
-            line.fromP=Pij_DC[i,j]*line.np_line
+            line.toP=Pij_DC[j,i]
+            line.fromP=Pij_DC[i,j]
 
         L_loss = np.zeros(self.nl_DC, dtype=float)
 
@@ -1026,8 +1026,8 @@ class Grid:
             i = line.fromNode.nodeNumber
             j = line.toNode.nodeNumber
 
-            L_loss[l] = (Pij_DC[i, j]+Pij_DC[j, i])*line.np_line
-            line.loss = (Pij_DC[i, j]+Pij_DC[j, i])*line.np_line
+            L_loss[l] = Pij_DC[i, j]+Pij_DC[j, i]
+            line.loss = Pij_DC[i, j]+Pij_DC[j, i]
 
         self.L_loss_DC = L_loss
 
