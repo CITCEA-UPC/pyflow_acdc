@@ -6,7 +6,6 @@ import numpy as np
 import math
 import pyomo.environ as pyo
 import pandas as pd
-import sys
 try:
     import gurobipy
     GUROBI_AVAILABLE = True
@@ -25,6 +24,7 @@ from .ACDC_OPF import pyomo_model_solve,OPF_obj,OPF_obj_L,obj_w_rule,ExportACDC_
 from .ACDC_Static_TEP import transmission_expansion, linear_transmission_expansion
 
 from .Graph_and_plot import save_network_svg
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
 
 
 __all__ = [
@@ -56,8 +56,8 @@ class MIPConfig:
     t_MW: float | None = None
 
 
-def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,max_turbines_per_string=None,limit_crossings=True,sub_min_connections=True,
-                   MIP_solver='glpk',CSS_L_solver='glpk',CSS_NL_solver='bonmin',svg=None,max_iter=None,time_limit=300,NL=False,tee=False,fs=False,save_path=None,
+def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,ObjRule=None,max_turbines_per_string=None,limit_crossings=True,sub_min_connections=True,
+                   MIP_solver='glpk',CSS_L_solver='glpk',CSS_NL_solver='bonmin',svg=None,max_iter=None,time_limit=DEFAULT_TIME_LIMIT,NL=False,tee=False,fs=False,save_path=None,
                    MIP_gap=0.01,backend='pyomo',min_turbines_per_string=False,fixed_substation_connections=None,max_ns=None):
     
     if LCoE is not None:
@@ -76,8 +76,8 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
         os.makedirs(save_dir)
     
 
-    staring_cables = grid.Cable_options[0].cable_types
-    new_cables = staring_cables.copy()
+    starting_cables = grid.Cable_options[0].cable_types
+    new_cables = starting_cables.copy()
   
     results = []
     tot_timing_info = {}
@@ -248,11 +248,11 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
         if hasattr(model_MIP, 'line_used') and hasattr(model_MIP, 'lines'):
             # Pyomo model
             cable_length = pyo.value(sum(model_MIP.line_used[line] * grid.lines_AC_ct[line].Length_km for line in model_MIP.lines))
-            weighted_length = pyo.value(sum(model_MIP.line_used[line] * grid.lines_AC_ct[line].trench_lenght_km for line in model_MIP.lines))
+            weighted_length = pyo.value(sum(model_MIP.line_used[line] * grid.lines_AC_ct[line].trench_length_km for line in model_MIP.lines))
         elif hasattr(model_MIP, 'line_used_vals'):
             # OR-Tools MockModel
             cable_length = sum(model_MIP.line_used_vals[line] * grid.lines_AC_ct[line].Length_km for line in model_MIP.line_used_vals.keys())
-            weighted_length = sum(model_MIP.line_used_vals[line] * grid.lines_AC_ct[line].trench_lenght_km for line in model_MIP.line_used_vals.keys())
+            weighted_length = sum(model_MIP.line_used_vals[line] * grid.lines_AC_ct[line].trench_length_km for line in model_MIP.line_used_vals.keys())
 
         else:
             raise AttributeError("model_MIP must have either Pyomo attributes ('line_used', 'lines') or OR-Tools attribute ('line_used_vals')")
@@ -799,7 +799,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
                 # Try to get bound if available (CP-SAT may not provide in callback)
                 try:
                     bound = self.BestObjectiveBound()
-                except:
+                except Exception:
                     bound = None
                 
                 # Calculate relative gap
@@ -831,7 +831,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
             obj_val = solver.ObjectiveValue()
             # If objective is reasonable (not infinity), we have a solution
             feasible_solution_found = obj_val < 1e20
-        except:
+        except Exception:
             feasible_solution_found = False
     
     # Post-solve handling
@@ -904,7 +904,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
         # Get bound if available
         try:
             bound = solver.BestObjectiveBound()
-        except:
+        except Exception:
             bound = None
         
         # Calculate relative gap
@@ -2118,7 +2118,7 @@ def _plot_feasible_solutions_subplots(results_mip, results_css, suptitle=None, s
 
 
 
-def simple_CSS(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,CSS_L_solver='gurobi',CSS_NL_solver='bonmin',time_limit=1200,NL=False,tee=False,export=True,fs=False):
+def simple_CSS(grid,NPV=True,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,ObjRule=None,CSS_L_solver='gurobi',CSS_NL_solver='bonmin',time_limit=1200,NL=False,tee=False,export=True,fs=False):
 
     grid.Array_opf = False
     if NL:

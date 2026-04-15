@@ -18,7 +18,7 @@ def CigreB4_OPF():
 
     start_time = time.perf_counter()
 
-    grid,res  = pyf.CigreB4_ACDC()
+    grid,res  = pyf.cases['CigreB4_ACDC']()
     # pyf.ACDC_sequential(grid)
     model, timing_info, model_res,solver_stats=pyf.Optimal_PF(grid)
 

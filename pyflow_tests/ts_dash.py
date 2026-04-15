@@ -3,7 +3,7 @@ import pandas as pd
 from pyflow_acdc.Graph_Dash import create_dash_app
 
 def ts_dash():
-    [grid,results] = pyf.NS_MTDC()
+    [grid,results] = pyf.cases['NS_MTDC']()
 
     start = 5990
     end = 6000

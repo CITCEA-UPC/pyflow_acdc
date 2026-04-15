@@ -10,6 +10,7 @@ from .Results_class import*
 from .Classes import*
 from .grid_analysis import Cable_parameters, Converter_parameters
 from .grid_modifications import add_gen
+from .constants import SQRT_3, MAX_RATING_PLACEHOLDER, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC
 
 import pickle
 import gzip
@@ -79,11 +80,11 @@ def Create_grid_from_data(S_base, AC_node_data=None, AC_line_data=None, DC_node_
     DC_lines_list = list(DC_lines.values()) if DC_lines is not None else []
     
     ACDC_convs = process_ACDC_converters(S_base, data_in, Converter_data, AC_nodes, DC_nodes) if Converter_data is not None else None
-    Convertor_list = list(ACDC_convs.values()) if ACDC_convs is not None else []
+    Converter_list = list(ACDC_convs.values()) if ACDC_convs is not None else []
         
         
     G = Grid(S_base, AC_nodes_list, AC_lines_list, nodes_DC=DC_nodes_list,
-             lines_DC=DC_lines_list, Converters=Convertor_list)
+             lines_DC=DC_lines_list, Converters=Converter_list)
     res = Results(G, decimals=3)
 
     return [G, res]
@@ -119,12 +120,12 @@ def Extend_grid_from_data(grid, AC_node_data=None, AC_line_data=None, DC_node_da
     DC_lines_list = list(DC_lines.values()) if DC_lines is not None else []
     
     ACDC_convs = process_ACDC_converters(S_base, data_in, Converter_data, grid=grid) if Converter_data is not None else None
-    Convertor_list = list(ACDC_convs.values()) if ACDC_convs is not None else []
+    Converter_list = list(ACDC_convs.values()) if ACDC_convs is not None else []
 
     
     grid.lines_AC.extend(AC_lines_list)
     grid.lines_DC.extend(DC_lines_list)
-    grid.Converters_ACDC.extend(Convertor_list)
+    grid.Converters_ACDC.extend(Converter_list)
     
     grid.create_Ybus_AC()
     grid.create_Ybus_DC()
@@ -276,7 +277,7 @@ def process_AC_line(S_base,data_in,AC_line_data,AC_nodes=None,grid=None):
             Reactance    = AC_line_data.at[index, 'X']   if 'X'   in AC_line_data.columns else None
             Conductance  = AC_line_data.at[index, 'G']   if 'G'   in AC_line_data.columns else 0
             Susceptance  = AC_line_data.at[index, 'B']   if 'B'   in AC_line_data.columns else 0
-            MVA_rating   = AC_line_data.at[index, 'MVA_rating']   if 'MVA_rating'   in AC_line_data.columns else 99999
+            MVA_rating   = AC_line_data.at[index, 'MVA_rating']   if 'MVA_rating'   in AC_line_data.columns else MAX_RATING_PLACEHOLDER
             A_rating       = AC_line_data.at[index, 'A_rating']   if 'A_rating'   in AC_line_data.columns else None
             
             km           = AC_line_data.at[index, 'Length_km']    if 'Length_km'    in AC_line_data.columns else 1
@@ -294,7 +295,7 @@ def process_AC_line(S_base,data_in,AC_line_data,AC_nodes=None,grid=None):
             
             if A_rating is not None:
                 N_cables = AC_line_data.at[index, 'N_cables']  if 'N_cables'   in AC_line_data.columns else 1
-                MVA_rating = N_cables*A_rating*kV_base*np.sqrt(3)/(1000)
+                MVA_rating = N_cables*A_rating*kV_base*SQRT_3/(1000)
 
 
             Z_base = kV_base**2/S_base
@@ -377,8 +378,8 @@ def process_DC_node(S_base,data_in,DC_node_data):
             Power_Gained  = DC_node_data.at[index, 'Power_Gained']  if 'Power_Gained'  in DC_node_data.columns else 0
             Power_load    = DC_node_data.at[index, 'Power_Load']    if 'Power_Load'    in DC_node_data.columns else 0
             kV_base       = DC_node_data.at[index, 'kV_base']  
-            Umin          = DC_node_data.at[index, 'Umin']          if 'Umin'          in DC_node_data.columns else 0.95
-            Umax          = DC_node_data.at[index, 'Umax']          if 'Umax'          in DC_node_data.columns else 1.05
+            Umin          = DC_node_data.at[index, 'Umin']          if 'Umin'          in DC_node_data.columns else DEFAULT_V_MIN_DC
+            Umax          = DC_node_data.at[index, 'Umax']          if 'Umax'          in DC_node_data.columns else DEFAULT_V_MAX_DC
             x_coord       = DC_node_data.at[index, 'x_coord']       if 'x_coord'       in DC_node_data.columns else None
             y_coord       = DC_node_data.at[index, 'y_coord']       if 'y_coord'       in DC_node_data.columns else None
             
@@ -399,12 +400,12 @@ def process_DC_node(S_base,data_in,DC_node_data):
             var_name = index 
             node_type = DC_node_data.at[index, 'type']              if 'type'          in DC_node_data.columns else 'P'
             
-            Voltage_0     = DC_node_data.at[index, 'Voltage_0']     if 'Power_Gained'  in DC_node_data.columns else 1.01
+            Voltage_0     = DC_node_data.at[index, 'Voltage_0']     if 'Voltage_0'     in DC_node_data.columns else 1.01
             Power_Gained  = DC_node_data.at[index, 'Power_Gained']  if 'Power_Gained'  in DC_node_data.columns else 0
             Power_load    = DC_node_data.at[index, 'Power_Load']    if 'Power_Load'    in DC_node_data.columns else 0
             kV_base       = DC_node_data.at[index, 'kV_base']  
-            Umin          = DC_node_data.at[index, 'Umin']          if 'Umin'          in DC_node_data.columns else 0.95
-            Umax          = DC_node_data.at[index, 'Umax']          if 'Umax'          in DC_node_data.columns else 1.05
+            Umin          = DC_node_data.at[index, 'Umin']          if 'Umin'          in DC_node_data.columns else DEFAULT_V_MIN_DC
+            Umax          = DC_node_data.at[index, 'Umax']          if 'Umax'          in DC_node_data.columns else DEFAULT_V_MAX_DC
             x_coord       = DC_node_data.at[index, 'x_coord']       if 'x_coord'       in DC_node_data.columns else None
             y_coord       = DC_node_data.at[index, 'y_coord']       if 'y_coord'       in DC_node_data.columns else None
 
@@ -440,7 +441,7 @@ def process_DC_line(S_base,data_in,DC_line_data,DC_nodes=None,grid=None):
             
             
             Resistance    = DC_line_data.at[index, 'r']    if 'r'  in DC_line_data.columns else 0.0001
-            MW_rating     = DC_line_data.at[index, 'MW_rating']      if 'MW_rating'     in DC_line_data.columns else 99999
+            MW_rating     = DC_line_data.at[index, 'MW_rating']      if 'MW_rating'     in DC_line_data.columns else MAX_RATING_PLACEHOLDER
             kV_base       = toNode.kV_base 
             pol           = DC_line_data.at[index, 'Mono_Bi_polar']  if 'Mono_Bi_polar' in DC_line_data.columns else 'm'
             km            = DC_line_data.at[index, 'Length_km']        if 'Length_km' in DC_line_data.columns else 1
@@ -471,7 +472,7 @@ def process_DC_line(S_base,data_in,DC_line_data,DC_nodes=None,grid=None):
             
             
             
-            MW_rating     = DC_line_data.at[index, 'MW_rating']      if 'MW_rating'     in DC_line_data.columns else 99999
+            MW_rating     = DC_line_data.at[index, 'MW_rating']      if 'MW_rating'     in DC_line_data.columns else MAX_RATING_PLACEHOLDER
             kV_base       = toNode.kV_base 
             pol           = DC_line_data.at[index, 'Mono_Bi_polar']  if 'Mono_Bi_polar' in DC_line_data.columns else 'm'
             km            = DC_line_data.at[index, 'Length_km']      if 'Length_km' in DC_line_data.columns else 1
@@ -536,7 +537,7 @@ def process_DC_line(S_base,data_in,DC_line_data,DC_nodes=None,grid=None):
 def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes=None,grid=None):
     if data_in == 'pu':
         Converter_data = Converter_data.set_index('Conv_id')
-        "Convertor data sorting"
+        "Converter data sorting"
         Converters = {}
         for index, row in Converter_data.iterrows():
             var_name        = index
@@ -544,7 +545,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
                 AC_node         = AC_nodes[Converter_data.at[index, 'AC_node']]         
                 DC_node         = DC_nodes[Converter_data.at[index, 'DC_node']] 
             else:
-                AC_node     = grid.nodes_DC[grid.nodes_dict_AC[Converter_data.at[index, 'AC_node']]] 
+                AC_node     = grid.nodes_AC[grid.nodes_dict_AC[Converter_data.at[index, 'AC_node']]] 
                 DC_node     = grid.nodes_DC[grid.nodes_dict_DC[Converter_data.at[index, 'DC_node']]]  
             AC_type         = Converter_data.at[index, 'AC_type']        if 'AC_type'        in Converter_data.columns else AC_node.type
             DC_type         = Converter_data.at[index, 'DC_type']        if 'DC_type'        in Converter_data.columns else DC_node.type
@@ -558,7 +559,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
             Filter_pu       = Converter_data.at[index, 'Filter_b']       if 'Filter_b'       in Converter_data.columns else 0
             Droop           = Converter_data.at[index, 'Droop']          if 'Droop'          in Converter_data.columns else 0
             kV_base         = Converter_data.at[index, 'AC_kV_base']     if 'AC_kV_base'     in Converter_data.columns else AC_node.kV_base
-            MVA_max         = Converter_data.at[index, 'MVA_rating']     if 'MVA_rating'     in Converter_data.columns else 99999
+            MVA_max         = Converter_data.at[index, 'MVA_rating']     if 'MVA_rating'     in Converter_data.columns else MAX_RATING_PLACEHOLDER
             Ucmin           = Converter_data.at[index, 'Ucmin']          if 'Ucmin'          in Converter_data.columns else 0.85
             Ucmax           = Converter_data.at[index, 'Ucmax']          if 'Ucmax'          in Converter_data.columns else 1.2
             n               = Converter_data.at[index, 'Nconverter']     if 'Nconverter'     in Converter_data.columns else 1
@@ -580,7 +581,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
                 Converters[var_name].geometry = geometry    
     elif data_in == 'Ohm':
         Converter_data = Converter_data.set_index('Conv_id')
-        "Convertor data sorting"
+        "Converter data sorting"
         Converters = {}
         for index, row in Converter_data.iterrows():
             var_name        = index
@@ -588,7 +589,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
                 AC_node         = AC_nodes[Converter_data.at[index, 'AC_node']]         
                 DC_node         = DC_nodes[Converter_data.at[index, 'DC_node']] 
             else:
-                AC_node     = grid.nodes_DC[grid.nodes_dict_AC[Converter_data.at[index, 'AC_node']]] 
+                AC_node     = grid.nodes_AC[grid.nodes_dict_AC[Converter_data.at[index, 'AC_node']]] 
                 DC_node     = grid.nodes_DC[grid.nodes_dict_DC[Converter_data.at[index, 'DC_node']]]  
             AC_type         = Converter_data.at[index, 'AC_type']        if 'AC_type'        in Converter_data.columns else AC_node.type
             DC_type         = Converter_data.at[index, 'DC_type']        if 'DC_type'        in Converter_data.columns else DC_node.type
@@ -602,7 +603,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
             Filter          = Converter_data.at[index, 'Filter_B']         if 'Filter_B'         in Converter_data.columns else 0
             Droop           = Converter_data.at[index, 'Droop']          if 'Droop'          in Converter_data.columns else 0
             kV_base         = Converter_data.at[index, 'AC_kV_base']     if 'AC_kV_base'     in Converter_data.columns else AC_node.kV_base
-            MVA_max         = Converter_data.at[index, 'MVA_rating']     if 'MVA_rating'     in Converter_data.columns else 99999
+            MVA_max         = Converter_data.at[index, 'MVA_rating']     if 'MVA_rating'     in Converter_data.columns else MAX_RATING_PLACEHOLDER
             Ucmin           = Converter_data.at[index, 'Ucmin']          if 'Ucmin'          in Converter_data.columns else 0.85
             Ucmax           = Converter_data.at[index, 'Ucmax']          if 'Ucmax'          in Converter_data.columns else 1.2
             n               = Converter_data.at[index, 'Nconverter']     if 'Nconverter'     in Converter_data.columns else 1
@@ -643,7 +644,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
                 Converters[var_name].geometry = geometry
     else:
         Converter_data = Converter_data.set_index('Conv_id')
-        "Convertor data sorting"
+        "Converter data sorting"
         Converters = {}
         for index, row in Converter_data.iterrows():
             var_name         = index
@@ -665,7 +666,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
             Filter           = Converter_data.at[index, 'Filter_uF']     if 'Filter_uF'      in Converter_data.columns else 0
             Droop            = Converter_data.at[index, 'Droop']         if 'Droop'          in Converter_data.columns else 0
             kV_base          = Converter_data.at[index, 'AC_kV_base']    if 'AC_kV_base'     in Converter_data.columns else AC_node.kV_base
-            MVA_rating       = Converter_data.at[index, 'MVA_rating']    if 'MVA_rating'     in Converter_data.columns else 99999
+            MVA_rating       = Converter_data.at[index, 'MVA_rating']    if 'MVA_rating'     in Converter_data.columns else MAX_RATING_PLACEHOLDER
             Ucmin           = Converter_data.at[index, 'Ucmin']          if 'Ucmin'          in Converter_data.columns else 0.85
             Ucmax           = Converter_data.at[index, 'Ucmax']          if 'Ucmax'          in Converter_data.columns else 1.2
             n               = Converter_data.at[index, 'Nconverter']     if 'Nconverter'     in Converter_data.columns else 1
@@ -705,7 +706,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
    
     for strg in Converters:
         conv = Converters[strg]
-        conv.basekA  = S_base/(np.sqrt(3)*conv.AC_kV_base)
+        conv.basekA  = S_base/(SQRT_3*conv.AC_kV_base)
         conv.a_conv  = conv.a_conv_og/S_base
         conv.b_conv  = conv.b_conv_og*conv.basekA/S_base
         conv.c_inver = conv.c_inver_og*conv.basekA**2/S_base
@@ -717,7 +718,7 @@ def process_ACDC_converters(S_base,data_in,Converter_data,AC_nodes=None,DC_nodes
     return    Converters
 
 
-def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],cable_database=None,cable_types_allowed=3,curtailment_allowed=0.05,max_turbines_per_string= None,LCoE=1,trenching_cost=1,MIP_time=None,name=None):
+def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=None,cable_database=None,cable_types_allowed=3,curtailment_allowed=0.05,max_turbines_per_string= None,LCoE=1,trenching_cost=1,MIP_time=None,name=None):
     from .grid_modifications import add_AC_node, add_line_sizing, add_RenSource, add_extgrid, add_cable_option
     from .Classes import Cable_options, Line_AC, Line_DC
 
@@ -735,7 +736,8 @@ def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],ca
     # - If cable_database is provided: load it for all classes, extract cable_types from index if empty
     # - If cable_types is provided (no cable_database): use with default pyflow database
     # - If both empty: don't create cable_option
-    
+    if cable_types is None:
+        cable_types = []
     if cable_database is not None:
         # User provided custom database - use it for all classes
         Cable_options.load_cable_database(cable_database=cable_database)
@@ -786,7 +788,7 @@ def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],ca
             node.ct_limit = turbines_df.loc[attrs['original_idx']].connections
             
         if attrs['point_type'] == 'substation':
-            add_extgrid(grid,node,MVAmax=99999,Allow_sell=True,lf=LCoE)
+            add_extgrid(grid,node,MVAmax=MAX_RATING_PLACEHOLDER,Allow_sell=True,lf=LCoE)
             node.ct_limit = substations_df.loc[attrs['original_idx']].connections
             node.type = 'Slack'
             node.V_ini = 1
@@ -826,7 +828,7 @@ def Create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=[],ca
         line_obj = add_line_sizing(grid,fromnode,tonode,cable_option=cable_option.name,active_config=0,Length_km=l,name=name,geometry=geo,update_grid=False)
         
         line_obj.installation_cost_per_km = trenching_cost
-        line_obj.trench_lenght_km = w_l
+        line_obj.trench_length_km = w_l
         # Store the line object using original graph edge key format for crossing_pairs lookup
         # crossing_pairs uses _generate_edge_key which creates f"{str(u)}_{str(v)}" (original graph order)
         original_edge_key = f'{str(u)}_{str(v)}'
@@ -1180,10 +1182,10 @@ def Create_grid_from_mat(matfile):
         DC_lines_list = list(DC_lines.values())
 
     if Converter_data is None:
-        Convertor_list = None
+        Converter_list = None
     else:
         # Converter_data = Converter_data.set_index('Conv_id')
-        "Convertor data sorting"
+        "Converter data sorting"
         Converters = {}
         for index, row in Converter_data.iterrows():
           if Converter_data.at[index, 'status'] !=0:   
@@ -1246,12 +1248,12 @@ def Create_grid_from_mat(matfile):
                 Converters[var_name].np_conv_b = 0
                 Converters[var_name].np_conv_max = 1
                 Converters[var_name].base_cost = Converter_data.at[index, 'cost']
-        Convertor_list = list(Converters.values())
+        Converter_list = list(Converters.values())
 
 
 
     G = Grid(S_base, AC_nodes_list, AC_lines_list, nodes_DC=DC_nodes_list,
-             lines_DC=DC_lines_list, Converters=Convertor_list)
+             lines_DC=DC_lines_list, Converters=Converter_list)
     res = Results(G, decimals=3)
     
     if EXP_line_data is not None:
@@ -1369,21 +1371,28 @@ def Create_grid_from_pickle(path,use_dill=False):
     return [grid, res]
 
 def load_pickle(path, use_dill=False):
+    """Load a Grid object from a pickle/dill file.
+
+    WARNING: pickle/dill can execute arbitrary code. Only load files from trusted sources.
+    """
     opener = gzip.open if path.endswith(".gz") else open
-    # Try pickle first, fall back to dill if it fails (for files saved with dill)
     if not use_dill:
         try:
             with opener(path, "rb") as f:
-                return pickle.load(f)
+                obj = pickle.load(f)
         except Exception:
             if _dill is not None:
                 with opener(path, "rb") as f:
-                    return _dill.load(f)
-            raise
+                    obj = _dill.load(f)
+            else:
+                raise
     else:
         lib = _dill if _dill is not None else pickle
         with opener(path, "rb") as f:
-            return lib.load(f)
+            obj = lib.load(f)
+    if not isinstance(obj, Grid):
+        raise TypeError(f"Expected a Grid object, got {type(obj).__name__}")
+    return obj
 
 def change_S_base(grid,Sbase_new):
     
@@ -1462,8 +1471,7 @@ def create_sub_grid(grid,Area=None, Area_name = None,polygon_coords=None):
             
             
         else:
-            print("No area provided to create sub grid")
-            return grid
+            raise ValueError("No area provided to create sub grid")
         
         
         for node in ac_nodes_list:

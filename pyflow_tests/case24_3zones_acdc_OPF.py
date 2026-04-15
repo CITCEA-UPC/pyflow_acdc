@@ -2,7 +2,7 @@ import pyflow_acdc as pyf
 
 def case24_3zones_acdc_OPF():
 
-    grid,res = pyf.case24_3zones_acdc()
+    grid,res = pyf.cases['case24_3zones_acdc']()
 
     pyf.Optimal_PF(grid)
 

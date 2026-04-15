@@ -15,7 +15,7 @@ def test_docs_power_flow():
 def run_test():
     """Test power flow example from documentation."""
     # Test the PEI grid example from docs
-    [grid, res] = pyf.PEI_grid()
+    [grid, res] = pyf.cases['PEI_grid']()
 
     time,tol,ps_iterations = pyf.ACDC_sequential(grid, QLimit=False)
 

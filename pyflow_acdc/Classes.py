@@ -13,6 +13,8 @@ import numpy as np
 import yaml
 from pathlib import Path
 
+from .constants import SQRT_3, HOURS_PER_YEAR, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC, DEFAULT_DISCOUNT_RATE, DEFAULT_N_YEARS
+
 
 def pol2cart(r, theta):
     x = r*np.cos(theta)
@@ -106,18 +108,13 @@ class Grid:
         self.Converters_ACDC = Converters if Converters else []
         for conv in self.Converters_ACDC:
             if not hasattr(conv, 'basekA'):
-                conv.basekA    = self.S_base/(np.sqrt(3)*conv.AC_kV_base)
+                conv.basekA    = self.S_base/(SQRT_3*conv.AC_kV_base)
                 
                 conv.a_conv = conv.a_conv_og/self.S_base
                 conv.b_conv = conv.b_conv_og*conv.basekA/self.S_base
                 conv.c_inver = conv.c_inver_og*conv.basekA**2/self.S_base
                 conv.c_inver = conv.c_inver_og*conv.basekA**2/self.S_base
                 conv.c_rect = conv.c_rect_og*conv.basekA**2/self.S_base
-                
-            # if not hasattr(conv, 'basekA_DC'):    
-            #     conv.basekA_DC = self.S_base/(conv.DC_kV_base)
-            #     conv.ra_rect  = conv.c_rect_og*conv.basekA_DC**2/self.S_base
-            #     conv.ra_inver = conv.c_inver_og*conv.basekA_DC**2/self.S_base
                 
         self.lines_DC = []
         if lines_DC:
@@ -179,8 +176,8 @@ class Grid:
         self.CurtCost=False
 
         self.MixedBinCont = False
-        self.TEP_n_years = 25
-        self.TEP_discount_rate =0.02
+        self.TEP_n_years = DEFAULT_N_YEARS
+        self.TEP_discount_rate = DEFAULT_DISCOUNT_RATE
         self.Array_opf = False
         
         self.name = 'Grid'
@@ -1053,7 +1050,7 @@ class Gen_AC:
 
     @property
     def base_cost(self):
-        return self._base_cost * (1 + self.lamda_capex)
+        return self._base_cost * (1 + self.lambda_capex)
 
     @base_cost.setter
     def base_cost(self, value):
@@ -1065,7 +1062,7 @@ class Gen_AC:
     
     @property
     def life_time_hours(self):
-        return self.life_time *8760
+        return self.life_time * HOURS_PER_YEAR
 
     @S_base.setter
     def S_base(self, new_S_base):
@@ -1141,15 +1138,15 @@ class Gen_AC:
         self.np_gen_b = np_gen
         self.np_gen = np_gen
         self.np_gen_max = np_gen * 3   # maximum number of generators to be present at the same time
-        self.lamda_capex = 0
+        self.lambda_capex = 0
         
         # Used in multi period TEP
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
-            'planned_decomision': [0],
+            'planned_decommission': [0],
             'max_inv': [self.np_gen_max],
             'np_dynamic': [self.np_gen],
-            'lamda_capex': [self.lamda_capex],
+            'lambda_capex': [self.lambda_capex],
         }
         
 
@@ -1195,7 +1192,7 @@ class Gen_AC:
                 new_name = f"{name}_{count}"
             name = new_name
         if name is None:
-            self._name = str(node.name)
+            self._name = str(f'genAC_{node.name}')
         else:
             self._name = name
 
@@ -1221,7 +1218,7 @@ class Gen_DC:
 
     @property
     def base_cost(self):
-        return self._base_cost * (1 + self.lamda_capex)
+        return self._base_cost * (1 + self.lambda_capex)
 
     @base_cost.setter
     def base_cost(self, value):
@@ -1233,7 +1230,7 @@ class Gen_DC:
     
     @property
     def life_time_hours(self):
-        return self.life_time *8760
+        return self.life_time * HOURS_PER_YEAR
 
     @S_base.setter
     def S_base(self, new_S_base):
@@ -1283,13 +1280,13 @@ class Gen_DC:
         self.np_gen_b = np_gen
         self.np_gen = np_gen
         self.np_gen_max = np_gen * 3
-        self.lamda_capex = 0
+        self.lambda_capex = 0
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
-            'planned_decomision': [0],
+            'planned_decommission': [0],
             'max_inv': [self.np_gen_max],
             'np_dynamic': [self.np_gen],
-            'lamda_capex': [self.lamda_capex],
+            'lambda_capex': [self.lambda_capex],
         }
         
         self.lf=linear_cost_factor
@@ -1317,7 +1314,7 @@ class Gen_DC:
                 new_name = f"{name}_{count}"
             name = new_name
         if name is None:
-            self._name = str(node.name)
+            self._name = str(f'genDC_{node.name}')
         else:
             self._name = name
 
@@ -1338,7 +1335,7 @@ class Ren_Source:
 
     @property
     def base_cost(self):
-        return self._base_cost * (1 + self.lamda_capex)
+        return self._base_cost * (1 + self.lambda_capex)
 
     @base_cost.setter
     def base_cost(self, value):
@@ -1350,7 +1347,7 @@ class Ren_Source:
     
     @property
     def life_time_hours(self):
-        return self.life_time *8760
+        return self.life_time * HOURS_PER_YEAR
 
     @S_base.setter
     def S_base(self, new_S_base):
@@ -1417,15 +1414,15 @@ class Ren_Source:
         self.np_rsgen_b = np_rsgen
         self.np_rsgen = np_rsgen
         self.np_rsgen_max= np_rsgen *3   # maximum number of generators to be present at the same time
-        self.lamda_capex = 0
+        self.lambda_capex = 0
 
         # Used in multi period TEP
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
-            'planned_decomision': [0],
+            'planned_decommission': [0],
             'max_inv': [self.np_rsgen_max],
             'np_dynamic': [self.np_rsgen],
-            'lamda_capex': [self.lamda_capex],
+            'lambda_capex': [self.lambda_capex],
         }
 
         self.base_cost = installation_cost
@@ -1434,10 +1431,7 @@ class Ren_Source:
             'PRGi_available': None
         }
         
-        self.inv_dic ={
-            'PRGi_base' : None
-        }
-
+        
         self.PGRi_linked=False
         self.Ren_source_zone=None
         
@@ -1468,7 +1462,7 @@ class Ren_Source:
                 new_name = f"{name}_{count}"
             name = new_name
         if name is None:
-            self._name = str(self.Node.name)
+            self._name = str(f'rs_{self.Node}')
         else:
             self._name = name
 
@@ -1485,15 +1479,6 @@ class Ren_Source:
         self._PGi_ren_base = value
         self.update_PGi_ren()
 
-    #@property
-    #def PRGi_inv_factor(self):
-    #    return self._PRGi_inv_factor
-    
-    #@PRGi_inv_factor.setter
-    #def PRGi_inv_factor(self, value):
-    #    self._PRGi_inv_factor = value
-    #    self.update_PGi_ren()
-
     @property
     def PRGi_available(self):
         return self._PRGi_available
@@ -1504,7 +1489,7 @@ class Ren_Source:
         self.update_PGi_ren()
      
     def update_PGi_ren(self):
-        self.PGi_ren = self._PGi_ren_base * self._PRGi_available #* self._PRGi_inv_factor
+        self.PGi_ren = self._PGi_ren_base * self._PRGi_available 
    
     
 class Node_AC:  
@@ -1570,8 +1555,6 @@ class Node_AC:
         self.PGi_ren= 0 
         # self._PRGi_available=1
         self.RenSource=False
-        # self.PGRi_linked=False
-        # self.Ren_source_zone=None
         self.S_rating = 0
         
         self.PLi= Power_load
@@ -1601,10 +1584,6 @@ class Node_AC:
         self.Qmin = 0
         self.Qmax = 0
         self.Reactor = Gs+ Bs*1j
-        # self.Q_max = Q_max
-        # self.Q_min = Q_min
-        # self.P_AC = self.PGi-self.PLi
-        # self.Q_AC = self.QGi-self.QLi
         self.P_s = 0
         self.Q_s = 0
         self.Q_s_fx = 0  # reactive power by converters in PQ mode
@@ -1625,10 +1604,6 @@ class Node_AC:
         self.pu_power_limit=None
         self.curtailment=1
 
-        # self.Max_pow_gen=0
-        # self.Min_pow_gen=0
-        # self.Max_pow_genR=0
-        # self.Min_pow_genR=0
         self.connected_gen=[]
         self.connected_RenSource=[]
         
@@ -1743,7 +1718,7 @@ class Node_DC:
     def name(self):
         return self._name
 
-    def __init__(self, node_type: str,kV_base:float, Voltage_0: float=1, Power_Gained: float=0, Power_load: float=0, name=None, Umin=0.95, Umax=1.05,x_coord=None,y_coord=None):
+    def __init__(self, node_type: str,kV_base:float, Voltage_0: float=1, Power_Gained: float=0, Power_load: float=0, name=None, Umin=DEFAULT_V_MIN_DC, Umax=DEFAULT_V_MAX_DC,x_coord=None,y_coord=None):
        
         self.nodeNumber = Node_DC.nodeNumber
         Node_DC.nodeNumber += 1
@@ -2047,7 +2022,7 @@ class Line_AC:
     
     @property
     def life_time_hours(self):
-        return self.life_time *8760
+        return self.life_time * HOURS_PER_YEAR
 
     @S_base.setter
     def S_base(self, new_S_base):
@@ -2103,7 +2078,7 @@ class Exp_Line_AC(Line_AC):
 
     @property
     def base_cost(self):
-        return self._base_cost * (1 + self.lamda_capex)
+        return self._base_cost * (1 + self.lambda_capex)
 
     @base_cost.setter
     def base_cost(self, value):
@@ -2114,7 +2089,7 @@ class Exp_Line_AC(Line_AC):
     
         self.kV_base = self.fromNode.kV_base
         self.direction = 'from'
-        self.lamda_capex = 0
+        self.lambda_capex = 0
         self.base_cost = 0
         self.life_time = 50
         self.exp_inv=1
@@ -2130,10 +2105,10 @@ class Exp_Line_AC(Line_AC):
         self.allow_planned_decrease = False
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
-            'planned_decomision': [0],
+            'planned_decommission': [0],
             'max_inv': [self.np_line_max],
             'np_dynamic': [self.np_line],
-            'lamda_capex': [self.lamda_capex],
+            'lambda_capex': [self.lambda_capex],
         }
         self.hover_text = None
 
@@ -2229,7 +2204,7 @@ class Size_selection(Line_AC):
 
     @property
     def life_time_hours(self):
-        return self.life_time *8760
+        return self.life_time * HOURS_PER_YEAR
     
     @property
     def capacity_MVA(self):
@@ -2239,7 +2214,7 @@ class Size_selection(Line_AC):
     
     @property
     def installation_cost(self):
-        return self.installation_cost_per_km * self.trench_lenght_km
+        return self.installation_cost_per_km * self.trench_length_km
     
     @cable_types.setter
     def cable_types(self, value):
@@ -2286,7 +2261,7 @@ class Size_selection(Line_AC):
         self.base_cost = []
         self.Ybus_list = []
 
-        self.life_time = 25
+        self.life_time = DEFAULT_N_YEARS
 
         self.ts_max_loading = 0
         self.ts_avg_loading = 0
@@ -2299,7 +2274,7 @@ class Size_selection(Line_AC):
         self.network_flow = None    
 
         self.installation_cost_per_km = 1
-        self.trench_lenght_km = self.Length_km
+        self.trench_length_km = self.Length_km
 
         
         # If cable types are provided, validate and calculate parameters
@@ -2482,7 +2457,7 @@ class Cable_options:
                 # Calculate MVA rating: A_rating * kV_base * sqrt(3) / 1000
                 A_rating = cable_data['A_rating']
                 kV_base = cable_data['Nominal_voltage_kV'] 
-                MVA_rating = A_rating * kV_base * np.sqrt(3) / 1000
+                MVA_rating = A_rating * kV_base * SQRT_3 / 1000
                 mva_ratings.append(MVA_rating)
             else:
                 raise ValueError(f"Cable type '{cable_type}' not found in database")
@@ -2742,7 +2717,7 @@ class Line_DC:
    
     @property
     def life_time_hours(self):
-        return self.life_time *8760     
+        return self.life_time * HOURS_PER_YEAR     
         
     @property
     def name(self):
@@ -2750,7 +2725,7 @@ class Line_DC:
 
     @property
     def base_cost(self):
-        return self._base_cost * (1 + self.lamda_capex)
+        return self._base_cost * (1 + self.lambda_capex)
 
     @base_cost.setter
     def base_cost(self, value):
@@ -2818,13 +2793,13 @@ class Line_DC:
         self.np_line_opf=False
         self.planned_installation = 0
         self.allow_planned_decrease = False
-        self.lamda_capex = 0
+        self.lambda_capex = 0
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
-            'planned_decomision': [0],
+            'planned_decommission': [0],
             'max_inv': [self.np_line_max],
             'np_dynamic': [self.np_line],
-            'lamda_capex': [self.lamda_capex],
+            'lambda_capex': [self.lambda_capex],
         }
 
         self.R = r
@@ -2990,7 +2965,7 @@ class AC_DC_converter:
 
     @property
     def base_cost(self):
-        return self._base_cost * (1 + self.lamda_capex)
+        return self._base_cost * (1 + self.lambda_capex)
 
     @base_cost.setter
     def base_cost(self, value):
@@ -2998,7 +2973,7 @@ class AC_DC_converter:
         
     @property
     def life_time_hours(self):
-        return self.life_time *8760  
+        return self.life_time * HOURS_PER_YEAR  
 
     @property
     def capacity_MVA(self):
@@ -3096,13 +3071,13 @@ class AC_DC_converter:
         self.np_conv_opf=False
         self.planned_installation = 0
         self.allow_planned_decrease = False
-        self.lamda_capex = 0
+        self.lambda_capex = 0
         self.investment_decisions = {
             'planned_installation': [self.planned_installation],
-            'planned_decomision': [0],
+            'planned_decommission': [0],
             'max_inv': [self.np_conv_max],
             'np_dynamic': [self.np_conv],
-            'lamda_capex': [self.lamda_capex],
+            'lambda_capex': [self.lambda_capex],
         }
         self.base_cost = 0
 
@@ -3294,24 +3269,12 @@ class Ren_source_zone:
                 ren_source.PRGi_available=value
                 ren_source.Ren_source_zone = self.name
 
-    @property
-    def np_rsgen(self):
-        return self.np_rsgen
-    
-    @np_rsgen.setter
-    def np_rsgen(self, value):
-        self.np_rsgen = value
-        for ren_source in self.RenSources:
-            ren_source.np_rsgen=value
-
-
     def __init__(self,name=None):
            self.ren_source_num = Ren_source_zone.ren_source_num
            Ren_source_zone.ren_source_num += 1
            
            self.RenSources=[]
            self._PRGi_available=1
-           self._np_rsgen=1
            
            self.TS_dict = {
                'PRGi_available': None
@@ -3440,7 +3403,7 @@ class Price_Zone:
         self._update_pgl_max_from_positive_price_delta()
 
     def _update_pgl_max_from_positive_price_delta(self):
-        delta = self.posisitve_price_delta
+        delta = self.positive_price_delta
         if delta is None:
             return
 
@@ -3499,7 +3462,7 @@ class Price_Zone:
         # Keep aggregated zone load consistent with node updates.
         self._sync_PLi_total()
 
-    def __init__(self,price=1,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand=0,curvature_factor=1,S_base:float=100,name=None,posisitve_price_delta=None):
+    def __init__(self,price=1,import_pu_L=1,export_pu_G=1,a=0,b=1,c=0,import_expand=0,curvature_factor=1,S_base:float=100,name=None,positive_price_delta=None):
         self.price_zone_num = Price_Zone.price_zone_num
         Price_Zone.price_zone_num += 1
         
@@ -3521,7 +3484,7 @@ class Price_Zone:
         self.a=a
         self._b=b
         self.c=c
-        self.posisitve_price_delta = posisitve_price_delta
+        self.positive_price_delta = positive_price_delta
         self.PGL_min_base=-np.inf
 
         self.PGL_min=self.PGL_min_base
@@ -3759,9 +3722,8 @@ class TimeSeries:
         self.element_name=element_name
         self.data = data
         
-        s = 1
         if name is None:
-            self._name = str(self.TS_AC_num)
+            self._name = str(f'TS_{self.TS_num}')
         else:
             self._name = name
 

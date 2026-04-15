@@ -10,7 +10,6 @@ from pyomo.util.infeasible import log_infeasible_constraints
 from pyomo.opt import SolverStatus
 
 import os
-import sys
 from contextlib import redirect_stdout
 
 import time
@@ -21,9 +20,6 @@ import re
 from  .ACDC_OPF_NL_model import *
 from  .AC_OPF_L_model import *
 from .grid_analysis import analyse_grid
-import cProfile
-import pstats
-from io import StringIO
 
 try:
     import gurobipy
@@ -33,7 +29,6 @@ except ImportError:
 
 
 import logging
-from pyomo.util.infeasible import log_infeasible_constraints
 
 __all__ = [
     'Translate_pyf_OPF',
@@ -106,17 +101,7 @@ def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',
     
     t1 = time.perf_counter()
     
-    # pr = cProfile.Profile()
-    # pr.enable()
-    # Call your function here
     OPF_create_LModel_AC(model,grid)
-    # pr.disable()
-    
-    # s = StringIO()
-    # ps = pstats.Stats(pr, stream=s)
-    # ps.sort_stats('cumulative')  # Can also try 'time'
-    # ps.print_stats()
-    # print(s.getvalue())
     
     t2 = time.perf_counter()  
     t_modelcreate = t2-t1
@@ -140,20 +125,11 @@ def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',
     model_res,solver_stats = pyomo_model_solve(model,grid,solver,tee,callback=callback)
     
     t1 = time.perf_counter()
-    # pr = cProfile.Profile()
-    # pr.enable()
-    # Call your function here
     ExportACDC_Lmodel_toPyflowACDC(model, grid)
-    # pr.disable()
 
     for obj in weights_def:
         weights_def[obj]['v']=calculate_objective(grid,obj,OnlyGen)
     
-    # s = StringIO()
-    # ps = pstats.Stats(pr, stream=s)
-    # ps.sort_stats('cumulative')  # Can also try 'time'
-    # ps.print_stats()
-    # print(s.getvalue())
     t2 = time.perf_counter()  
     t_modelexport = t2-t1
    
@@ -179,17 +155,7 @@ def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,lim
     
     t1 = time.perf_counter()
     
-    # pr = cProfile.Profile()
-    # pr.enable()
-    # Call your function here
     OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,limit_flow_rate=limit_flow_rate)
-    # pr.disable()
-    
-    # s = StringIO()
-    # ps = pstats.Stats(pr, stream=s)
-    # ps.sort_stats('cumulative')  # Can also try 'time'
-    # ps.print_stats()
-    # print(s.getvalue())
     
     t2 = time.perf_counter()  
     t_modelcreate = t2-t1
@@ -219,20 +185,11 @@ def Optimal_PF(grid,ObjRule=None,PV_set=False,OnlyGen=True,Price_Zones=False,lim
     model_res,solver_stats = pyomo_model_solve(model,grid,solver,tee,callback=callback)
     
     t1 = time.perf_counter()
-    # pr = cProfile.Profile()
-    # pr.enable()
-    # Call your function here
     ExportACDC_NLmodel_toPyflowACDC(model, grid, Price_Zones)
-    # pr.disable()
 
     for obj in weights_def:
         weights_def[obj]['v']=calculate_objective(grid,obj,OnlyGen)
     
-    # s = StringIO()
-    # ps = pstats.Stats(pr, stream=s)
-    # ps.sort_stats('cumulative')  # Can also try 'time'
-    # ps.print_stats()
-    # print(s.getvalue())
     t2 = time.perf_counter()  
     t_modelexport = t2-t1
    
@@ -315,7 +272,7 @@ def log_infeasible_constraints_limited(model, max_per_type=5):
                                 constraint_groups[constraint_name].append(
                                     f"{constraint_name}[{index}]: {expr_val:.6f} > {upper_val:.6f} (upper bound violation)"
                                 )
-                        except:
+                        except ValueError:
                             # If we can't evaluate, just note the constraint
                             constraint_groups[constraint_name].append(
                                 f"{constraint_name}[{index}]: Unable to evaluate"
@@ -328,7 +285,7 @@ def log_infeasible_constraints_limited(model, max_per_type=5):
                             constraint_groups[constraint_name].append(
                                 f"{constraint_name}[{index}]: {expr_val:.6f} != 0 (equality violation)"
                             )
-                    except:
+                    except ValueError:
                         constraint_groups[constraint_name].append(
                             f"{constraint_name}[{index}]: Unable to evaluate"
                         )
@@ -1355,7 +1312,6 @@ def OPF_obj_L(model,grid,ObjRule):
     
     if ObjRule['Energy_cost']['w']==0:
         return 0
-    #(model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf+
     AC= sum((model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc) for gen in grid.Generators)
 
     return AC
@@ -1363,12 +1319,6 @@ def OPF_obj_L(model,grid,ObjRule):
 
 def OPF_obj(model,grid,weights_def,OnlyGen=True):
     np_den_eps = 1e-3
-   
-    # for node in  model.nodes_AC:
-    #     nAC=grid.nodes_AC[node]
-    #     if nAC.Num_conv_connected >= 2:
-    #         obj_expr += sum(model.Q_conv_s_AC[conv]**2 for conv in nAC.connected_conv)
-
    
     def formula_Min_Ext_Gen():
         if weights_def['Ext_Gen']['w']==0:

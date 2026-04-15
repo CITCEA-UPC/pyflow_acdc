@@ -8,7 +8,8 @@ Created on Thu Nov  7 18:25:02 2024
 import pyomo.environ as pyo
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
-import time
+
+from .constants import CT_SELECTION_THRESHOLD, BINARY_THRESHOLD
 
 
 __all__ = [
@@ -121,7 +122,7 @@ def AC_variables(model,grid,AC_info):
             
     "AC Variables"
     #AC nodes variables
-    model.thetha_AC  = pyo.Var(model.nodes_AC, bounds=(-1.6, 1.6), initialize=Theta_ini)
+    model.theta_AC  = pyo.Var(model.nodes_AC, bounds=(-1.6, 1.6), initialize=Theta_ini)
 
     model.P_known_AC = pyo.Param(model.nodes_AC, initialize=P_know,mutable=True)
         
@@ -173,7 +174,7 @@ def AC_variables(model,grid,AC_info):
         model.Pfrom_CT = pyo.Var(model.nodes_AC,bounds=fromCT_opt_bounds ,initialize=0)
             
     def AC_theta_slack_rule(model, node):
-        return model.thetha_AC[node] == 0
+        return model.theta_AC[node] == 0
 
     model.AC_theta_slack_constraint = pyo.Constraint(model.AC_slacks, rule=AC_theta_slack_rule)
     
@@ -243,7 +244,7 @@ def AC_constraints(model,grid,AC_info):
     # AC node constraints
     def P_AC_node_rule(model, node):
         P_sum = sum(
-            -np.imag(grid.Ybus_AC[node, k]) * (model.thetha_AC[node] - model.thetha_AC[k])
+            -np.imag(grid.Ybus_AC[node, k]) * (model.theta_AC[node] - model.theta_AC[k])
             for k in model.nodes_AC if grid.Ybus_AC[node, k] != 0
         )
         P_var = model.P_known_AC[node] + model.PGi_ren[node] + model.PGi_opt[node]
@@ -386,8 +387,8 @@ def AC_constraints(model,grid,AC_info):
             Ybus = line.Ybus_branch_new
         else:
             Ybus = line.Ybus_list[idx]
-        thf=model.thetha_AC[f]
-        tht=model.thetha_AC[t]
+        thf=model.theta_AC[f]
+        tht=model.theta_AC[t]
         if direction == 'to':
             B = np.imag(Ybus[1,0])  # Btf
             P = -B * (tht - thf)
@@ -692,7 +693,7 @@ def ExportACDC_Lmodel_toPyflowACDC(model,grid, solver_results=None, tee=False):
     grid.Theta_V_AC = np.zeros(grid.nn_AC)
 
     
-    theta_AC_values = {k: np.float64(pyo.value(v)) for k, v in model.thetha_AC.items()}
+    theta_AC_values = {k: np.float64(pyo.value(v)) for k, v in model.theta_AC.items()}
     V_AC_values     = {k: 1.0 for k in theta_AC_values.keys()}
     PGi_opt_values  = {k: np.float64(pyo.value(v)) for k, v in model.PGi_opt.items()}
     QGi_opt_values  = {k: 0.0 for k in PGi_opt_values.keys()}
@@ -764,7 +765,7 @@ def ExportACDC_Lmodel_toPyflowACDC(model,grid, solver_results=None, tee=False):
         
         def process_line_AC_REP(line):
             l = line.lineNumber
-            line.rec_branch = True if lines_AC_REP[l] >= 0.99999 else False
+            line.rec_branch = True if lines_AC_REP[l] >= BINARY_THRESHOLD else False
             line.P_loss = lines_AC_REC_P_loss[l]
             state = 1 if line.rec_branch else 0
             line.fromS = (lines_AC_REC_fromP[l][state] + 1j*lines_AC_REC_fromQ[l][state])
@@ -785,14 +786,14 @@ def ExportACDC_Lmodel_toPyflowACDC(model,grid, solver_results=None, tee=False):
                 if hasattr(line, 'lineNumber'):
                     try:
                         line.network_flow = abs(pyo.value(model.network_flow[line.lineNumber]))
-                    except:
+                    except Exception:
                         line.network_flow = 0.0
         
         grid.Cable_options[0].active_config = gen_active_config
         
         def process_line_AC_CT(line):
             l = line.lineNumber
-            ct_selected = [lines_AC_CT[l][ct] >= 0.90  for ct in model.ct_set]
+            ct_selected = [lines_AC_CT[l][ct] >= CT_SELECTION_THRESHOLD  for ct in model.ct_set]
             if any(ct_selected):
                 line.active_config = np.where(ct_selected)[0][0]
                 ct = list(model.ct_set)[line.active_config]

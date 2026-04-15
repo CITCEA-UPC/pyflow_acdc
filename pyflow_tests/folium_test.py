@@ -2,7 +2,7 @@ import pyflow_acdc as pyf
 
 def folium_test():
 
-        grid,res = pyf.NS_MTDC()
+        grid,res = pyf.cases['NS_MTDC']()
 
         pyf.Optimal_PF(grid)
 

@@ -7,10 +7,10 @@ Created on Thu Feb 15 12:59:08 2024
 """
 import numpy as np
 from prettytable import PrettyTable as pt
-import matplotlib.pyplot as plt
 import pandas as pd
 
 from .Classes import Price_Zone
+from .constants import SQRT_3, HOURS_PER_YEAR
 
 
 class Results:
@@ -804,9 +804,9 @@ class Results:
                     j = line.toNode.nodeNumber
                     I_base = self.Grid.S_base/line.kV_base
 
-                    i_from = line.i_from*I_base/np.sqrt(3)
+                    i_from = line.i_from*I_base/SQRT_3
 
-                    i_to = line.i_to*I_base/np.sqrt(3)
+                    i_to = line.i_to*I_base/SQRT_3
                     
                     load = line.loading
                     rows.append({
@@ -1826,14 +1826,14 @@ class Results:
             if l.np_line_opf:
                 
                 opt=l.np_line
-                cost=((opt)*l.MVA_rating*l.Length_km*l.phi)*l.life_time*8760/(10**6)
+                cost=((opt)*l.MVA_rating*l.Length_km*l.phi)*l.life_time*HOURS_PER_YEAR/(10**6)
                 tot+=cost
                 tot_n+=((opt)*l.MVA_rating*l.Length_km*l.phi)/1000
 
         for l in self.Grid.lines_DC:
             if l.np_line_opf:
                 opt=l.np_line
-                cost=((opt)*l.MW_rating*l.Length_km*l.phi)*l.life_time*8760/(10**6)
+                cost=((opt)*l.MW_rating*l.Length_km*l.phi)*l.life_time*HOURS_PER_YEAR/(10**6)
                 tot+=cost
                 tot_n+=((opt)*l.MW_rating*l.Length_km*l.phi)/1000
                 
@@ -1841,7 +1841,7 @@ class Results:
         for cn in self.Grid.Converters_ACDC:
             if cn.np_conv_opf:
                 opt=cn.np_conv
-                cost=((opt)*cn.MVA_max*cn.phi)*cn.life_time*8760/(10**6)
+                cost=((opt)*cn.MVA_max*cn.phi)*cn.life_time*HOURS_PER_YEAR/(10**6)
                 tot+=cost
                 tot_n+=((opt)*cn.MVA_max*cn.phi)/1000
         
@@ -1867,7 +1867,7 @@ class Results:
                 present_value=0
                 for year in range(1, n_years + 1):
                     # Discount each yearly cash flow and add to the present value
-                    present_value += (weighted_total * 8760) / ((1 + discount_rate) ** year)/1000
+                    present_value += (weighted_total * HOURS_PER_YEAR) / ((1 + discount_rate) ** year)/1000
                 
                 rows_zones.append([m.name, weighted_total, weighted_price, present_value])
 
@@ -1887,7 +1887,7 @@ class Results:
         tot_pv=0
         for year in range(1, n_years + 1):
             # Discount each yearly cash flow and add to the present value
-            tot_pv += (weighted_sum * 8760) / ((1 + discount_rate) ** year)/1000
+            tot_pv += (weighted_sum * HOURS_PER_YEAR) / ((1 + discount_rate) ** year)/1000
         df_npv = pd.DataFrame([[tot_pv, tot, -(tot_pv + tot)]], columns=[
             "Present Value Cost Generation[M€]","Investment [M€]","NPV [M€]"
         ])

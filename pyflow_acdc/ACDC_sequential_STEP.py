@@ -91,9 +91,9 @@ def _apply_decommission_for_run(grid, linked_decommission_schedule, run_idx):
     planned_now = {}
     for name, el, _ in _iter_dynamic_elements(grid):
         inv = el.investment_decisions
-        if "planned_decomision" in inv:
+        if "planned_decommission" in inv:
             planned_now[name] = _series_value_for_run(
-                inv["planned_decomision"], run_idx, f"{name}:planned_decomision"
+                inv["planned_decommission"], run_idx, f"{name}:planned_decommission"
             )
 
     by_name = {name: (el, np_attr) for name, el, np_attr in _iter_dynamic_elements(grid)}

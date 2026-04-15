@@ -37,7 +37,7 @@ __all__ = ['plot_Graph',
            'Time_series_prob',
            'plot_neighbour_graph',
            'plot_TS_res',
-           'plot_model_feasebility',
+           'plot_model_feasibility',
            'save_network_svg',
            'plot_3D']
 
@@ -802,7 +802,7 @@ def plot_Graph(Grid,text='inPu',base_node_size=10,G=None):
     s=1
     return fig
  
-def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_format=None,skip_failed=False):
+def plot_TS_res(grid, start, end, plotting_choices=None,show=True,path=None,save_format=None,skip_failed=False):
     Plot = [
         'Power Generation by price zone'    ,
         'Power Generation by generator'    ,
@@ -816,7 +816,7 @@ def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_f
         'Power Generation by price zone area chart'    ,
     ]
     
-    if plotting_choices == []:
+    if not plotting_choices:
         plotting_choices = Plot
     for plotting_choice in plotting_choices:
         # Verify that the choice is valid
@@ -1714,7 +1714,7 @@ def save_network_svg(
 
 
     
-def plot_model_feasebility(solver_stats,sol='all', x_axis='time', y_axis= 'objective', normalize = False,show=True, save_path=None, width_mm=None):
+def plot_model_feasibility(solver_stats,sol='all', x_axis='time', y_axis= 'objective', normalize = False,show=True, save_path=None, width_mm=None):
     import matplotlib.pyplot as plt
     # Respect optional width in millimeters for journal-style figures
     fig = None

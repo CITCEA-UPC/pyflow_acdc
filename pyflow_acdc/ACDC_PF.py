@@ -7,6 +7,7 @@ import numpy as np
 import sys
 import time
 from .grid_analysis import analyse_grid
+from .constants import DEFAULT_TOLERANCE, PF_OUTER_TOLERANCE, PF_INNER_TOLERANCE, CONV_TOLERANCE, DEFAULT_PF_MAX_ITER, DEFAULT_CONV_MAX_ITER
 
 __all__ = [
     'AC_PowerFlow',
@@ -41,7 +42,7 @@ def cartz2pol(z):
     theta = np.angle(z)
     return r, theta
 
-def Power_flow(grid,tol_lim=1e-10, maxIter=100):
+def Power_flow(grid,tol_lim=DEFAULT_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
     analyse_grid(grid)
     if grid.ACmode and grid.DCmode:
         t,tol,_=ACDC_sequential(grid,tol_lim, maxIter)
@@ -52,7 +53,7 @@ def Power_flow(grid,tol_lim=1e-10, maxIter=100):
     return t,tol
 
 
-def AC_PowerFlow(grid, tol_lim=1e-10, maxIter=100):
+def AC_PowerFlow(grid, tol_lim=DEFAULT_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
     time_1 = time.perf_counter()
     grid.reset_run_flags()
     grid.Update_PQ_AC()
@@ -65,7 +66,7 @@ def AC_PowerFlow(grid, tol_lim=1e-10, maxIter=100):
     time_2 = time.perf_counter()
     return time_2-time_1,ac_tol
     
-def DC_PowerFlow(grid, tol_lim=1e-10, maxIter=100,Droop_PF=True):
+def DC_PowerFlow(grid, tol_lim=DEFAULT_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,Droop_PF=True):
     time_1 = time.perf_counter()
     grid.reset_run_flags()
     grid.Update_P_DC()
@@ -75,7 +76,7 @@ def DC_PowerFlow(grid, tol_lim=1e-10, maxIter=100,Droop_PF=True):
     time_2 = time.perf_counter()
     return time_2-time_1,dc_tol
 
-def ACDC_sequential(grid, tol_lim=1e-4, maxIter=100, internal_tol = 1e-8,change_slack2Droop=False, QLimit=False,Droop_PF=True):
+def ACDC_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER, internal_tol=PF_INNER_TOLERANCE,change_slack2Droop=False, QLimit=False,Droop_PF=True):
     time_1 = time.perf_counter()
     tolerance = 1
     grid.reset_run_flags()
@@ -253,7 +254,7 @@ def Jacobian_DC(grid, V_DC, P,Droop_PF):
 
     return J
 
-def load_flow_DC(grid, tol_lim=1e-8, maxIter=100,Droop_PF=True):
+def load_flow_DC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,Droop_PF=True):
 
     iter_num = 0
 
@@ -292,9 +293,6 @@ def load_flow_DC(grid, tol_lim=1e-8, maxIter=100,Droop_PF=True):
                     P_known[n] = np.copy(grid.P_DC[n]+grid.Pconv_DC[n]) + Droop_change
                     s = 1        
 
-        # print (P1)
-        # print (P)
-        # print('------')
         dPa = P_known-P
 
         J_DC = Jacobian_DC(grid,V, P,Droop_PF)
@@ -411,7 +409,7 @@ def Jacobian_AC(grid, Voltages, Angles,P,Q):
 
 
 
-def load_flow_AC(grid, tol_lim=1e-8, maxIter=100):
+def load_flow_AC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
 
     Pnet = np.copy(grid.P_AC+grid.Ps_AC)
     Qnet = np.copy(grid.Q_AC+grid.Qs_AC)
@@ -488,8 +486,7 @@ def load_flow_AC(grid, tol_lim=1e-8, maxIter=100):
         nan_indices = np.where(nan_indices)[0]
 
         if nan_indices.size > 0:
-            print("Linear results not avialable for AC PF")
-            sys.exit()
+            raise RuntimeError("NaN detected in AC load flow solver — linear results not available")
         dTh = X[0:(grid.nn_AC-nps)]
         dV = X[grid.nn_AC-nps:]
       
@@ -507,10 +504,6 @@ def load_flow_AC(grid, tol_lim=1e-8, maxIter=100):
                 # grid.nodes_AC[i].V += dV[k].item()
                 V[i] += dV[k].item()
                 k += 1  # Move to the next element in dV
-
-        # for node in grid.nodes:
-        #      V[node.nodeNumber]= node.V_iter
-        #      angles[node.nodeNumber] = node.theta_iter
 
         tol = max(abs(M))
         if iter_num == maxIter:
@@ -582,9 +575,7 @@ def flow_conv_P_AC(grid, conv):
         Uf_cart = 0 + 1j*0
         Ic_cart = Is
         Uc_cart = Us_cart+(Ztf+Zc)*Ic_cart
-        
-        # else:
-        #     [Uc, th_c] = [Us, th_s]
+
     [Uc, th_c] = cartz2pol(Uc_cart)
     [Uf, th_f] = cartz2pol(Uf_cart)
     [Ic, th_Ic] = cartz2pol(Ic_cart)
@@ -698,7 +689,7 @@ def Jacobian_conv(grid, conv, Qcf, Qsf, Pcf, Psf, U_f, U_c, Pc, Qc, Ps, Qs):
 
     return J_conv
 
-def flow_conv(grid, conv, tol_lim=1e-12, maxIter=20):
+def flow_conv(grid, conv, tol_lim=CONV_TOLERANCE, maxIter=DEFAULT_CONV_MAX_ITER):
 
     if conv.Bf == 0:
         tol = flow_conv_no_filter(grid,conv, tol_lim, maxIter)
@@ -846,7 +837,7 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
     Pc_known = -np.copy(conv.P_DC)
     Qs_known = np.copy(conv.Q_AC)
     Us = conv.U_s
-    th_s = conv.th_S
+    th_s = conv.th_s
 
     tol2 = 1
 
@@ -1033,8 +1024,6 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
 
     Ps = -Us*Us*Gtf+Us*Uf*(Gtf*np.cos(th_s-th_f)+Btf*np.sin(th_s-th_f))
     Qs = Us*Us*Btf+Us*Uf*(Gtf*np.sin(th_s-th_f)-Btf*np.cos(th_s-th_f))
-    # Pc=  Uc*Uc*Gc-Uf*Uc*(Gc*np.cos(th_f-th_c)-Bc*np.sin(th_f-th_c))
-    # Qc= -Uc*Uc*Bc+Uf*Uc*(Gc*np.sin(th_f-th_c)+Bc*np.cos(th_f-th_c))
     # CHECK THIs
     if conv.type!= 'PAC':
         conv.P_AC = Ps
@@ -1116,15 +1105,24 @@ def Converter_Qlimit(grid, conv):
 
     Po = np.real(S0)
 
-    sqrt = r**2-(Ps-Po)**2
-    if sqrt < 0:
-        print(f'Converter {conv.name} is over current capacity')
+    sqrt_arg = r**2-(Ps-Po)**2
+    sqrt_argV_max = rVmax**2-(Ps-Po)**2
+    sqrt_argV_min = rVmin**2-(Ps-Po)**2
+    if sqrt_arg < 0:
+        print(f'Warning: Converter {conv.name} is over current capacity, clamping sqrt operand to 0')
+        sqrt_arg = 0
+    if sqrt_argV_max < 0:
+        print(f'Warning: Converter {conv.name} voltage-circle Vmax operand negative, clamping to 0')
+        sqrt_argV_max = 0
+    if sqrt_argV_min < 0:
+        print(f'Warning: Converter {conv.name} voltage-circle Vmin operand negative, clamping to 0')
+        sqrt_argV_min = 0
 
-    Qs_plus  = Q0+np.sqrt(r**2-(Ps-Po)**2)
-    Qs_minus = Q0-np.sqrt(r**2-(Ps-Po)**2)
+    Qs_plus  = Q0+np.sqrt(sqrt_arg)
+    Qs_minus = Q0-np.sqrt(sqrt_arg)
 
-    Qs_plusV = Q0V+np.sqrt(rVmax**2-(Ps-Po)**2)
-    Qs_minusV = Q0V-np.sqrt(rVmin**2-(Ps-Po)**2)
+    Qs_plusV = Q0V+np.sqrt(sqrt_argV_max)
+    Qs_minusV = Q0V-np.sqrt(sqrt_argV_min)
 
     Qs_max = min(Qs_plus, Qs_plusV)
     Qs_min = max(Qs_minus, Qs_minusV)

@@ -11,6 +11,7 @@ from gurobipy import GRB
 import numpy as np
 import time
 from .Graph_and_plot import save_network_svg
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
 
 __all__ = ['Optimal_L_CSS_gurobi']
 
@@ -122,7 +123,7 @@ def add_pprint_to_model(model, gen_vars=None, ac_vars=None):
     # We'll use a try-except to handle the case where we can't add attributes
     try:
         model._pprint = pprint
-    except:
+    except AttributeError:
         # If we can't add attributes, we'll just return the function
         pass
     return model
@@ -186,7 +187,7 @@ def debug_infeasibility(model, gen_vars=None, ac_vars=None):
     print("=" * 80)
 
 
-def Optimal_L_CSS_gurobi(grid, OPEX=True, NPV=True, n_years=25, Hy=8760, discount_rate=0.02,tee=False,time_limit=300):
+def Optimal_L_CSS_gurobi(grid, OPEX=True, NPV=True, n_years=25, Hy=HOURS_PER_YEAR, discount_rate=DEFAULT_DISCOUNT_RATE,tee=False,time_limit=DEFAULT_TIME_LIMIT):
     """Main function to create and solve Gurobi model"""
     
     analyse_grid(grid)
@@ -409,14 +410,14 @@ def AC_variables_gurobi(model, grid, AC_info):
             #ac_vars['ct_branch'][line, ct].start = ct_ini[line, ct]
     
     # Voltage angles with tighter bounds
-    ac_vars['thetha_AC'] = {}
+    ac_vars['theta_AC'] = {}
     for node in lista_nodos_AC:
-        ac_vars['thetha_AC'][node] = model.addVar(
+        ac_vars['theta_AC'][node] = model.addVar(
             lb=-np.pi/2, ub=np.pi/2,  
-            name=f"thetha_AC_{node}",
+            name=f"theta_AC_{node}",
         )
         # Don't set start values for voltage angles - let Gurobi find its own feasible starting point
-        # ac_vars['thetha_AC'][node].start = Theta_ini[node] if Theta_ini[node] is not None else 0.0
+        # ac_vars['theta_AC'][node].start = Theta_ini[node] if Theta_ini[node] is not None else 0.0
 
     
     # Power generation variables with better bounds
@@ -590,19 +591,19 @@ def AC_constraints_gurobi(model, grid, AC_info, gen_info, gen_vars, ac_vars):
         B = np.imag(l.Ybus_branch[0, 1])
         
         model.addConstr(
-            ac_vars['PAC_to'][line] == -B * (ac_vars['thetha_AC'][t] - ac_vars['thetha_AC'][f]),
+            ac_vars['PAC_to'][line] == -B * (ac_vars['theta_AC'][t] - ac_vars['theta_AC'][f]),
             name=f"power_flow_to_{line}"
         )
         
         model.addConstr(
-            ac_vars['PAC_from'][line] == -B * (ac_vars['thetha_AC'][f] - ac_vars['thetha_AC'][t]),
+            ac_vars['PAC_from'][line] == -B * (ac_vars['theta_AC'][f] - ac_vars['theta_AC'][t]),
             name=f"power_flow_from_{line}"
         )
     
     # Slack node angle constraint - fix slack node angle to 0
     #for slack_node in AC_slack:
     #    model.addConstr(
-    #        ac_vars['thetha_AC'][slack_node] == 0,
+    #        ac_vars['theta_AC'][slack_node] == 0,
     #        name=f"slack_angle_{slack_node}"
     #    )
     
@@ -669,22 +670,22 @@ def AC_constraints_gurobi(model, grid, AC_info, gen_info, gen_vars, ac_vars):
             M_angle= B*3.1416
             # Power flow constraints
             model.addConstr(
-                ac_vars['ct_PAC_to'][line, ct] + B * (ac_vars['thetha_AC'][t] - ac_vars['thetha_AC'][f]) <= M_angle*(1-ac_vars['ct_branch'][line, ct]),
+                ac_vars['ct_PAC_to'][line, ct] + B * (ac_vars['theta_AC'][t] - ac_vars['theta_AC'][f]) <= M_angle*(1-ac_vars['ct_branch'][line, ct]),
                 name=f"ct_power_flow_to_lower_{line}_{ct}"
             )
 
             model.addConstr(
-                ac_vars['ct_PAC_to'][line, ct] + B * (ac_vars['thetha_AC'][t] - ac_vars['thetha_AC'][f]) >= -M_angle*(1-ac_vars['ct_branch'][line, ct]),
+                ac_vars['ct_PAC_to'][line, ct] + B * (ac_vars['theta_AC'][t] - ac_vars['theta_AC'][f]) >= -M_angle*(1-ac_vars['ct_branch'][line, ct]),
                 name=f"ct_power_flow_to_upper_{line}_{ct}"
             )
             
             model.addConstr(
-                ac_vars['ct_PAC_from'][line, ct] + B * (ac_vars['thetha_AC'][f] - ac_vars['thetha_AC'][t]) <= M_angle*(1-ac_vars['ct_branch'][line, ct]),
+                ac_vars['ct_PAC_from'][line, ct] + B * (ac_vars['theta_AC'][f] - ac_vars['theta_AC'][t]) <= M_angle*(1-ac_vars['ct_branch'][line, ct]),
                 name=f"ct_power_flow_from_lower_{line}_{ct}"
             )
             
             model.addConstr(
-                ac_vars['ct_PAC_from'][line, ct] + B * (ac_vars['thetha_AC'][f] - ac_vars['thetha_AC'][t]) >= -M_angle*(1-ac_vars['ct_branch'][line, ct]),
+                ac_vars['ct_PAC_from'][line, ct] + B * (ac_vars['theta_AC'][f] - ac_vars['theta_AC'][t]) >= -M_angle*(1-ac_vars['ct_branch'][line, ct]),
                 name=f"ct_power_flow_from_upper_{line}_{ct}"
             )
             # McCormick envelopes for z_to
@@ -817,7 +818,7 @@ def add_network_flow_constraints(model, grid, ac_vars, lista_nodos_AC, lista_lin
         )
 
 
-def set_objective(model, grid, gen_vars, ac_vars, OPEX=True, NPV=True, n_years=25, Hy=8760, discount_rate=0.02):
+def set_objective(model, grid, gen_vars, ac_vars, OPEX=True, NPV=True, n_years=25, Hy=HOURS_PER_YEAR, discount_rate=DEFAULT_DISCOUNT_RATE):
     """Set objective function for Gurobi model"""
     cab_types_set = list(range(0,len(grid.Cable_options[0]._cable_types)))
     # Investment costs
@@ -883,7 +884,7 @@ def ExportACDC_Lmodel_toPyflowACDC_gurobi(model, grid,gen_vars,ac_vars, tee=True
     for node in grid.nodes_AC:
         nAC = node.nodeNumber
         node.V = 1.0  
-        node.theta = ac_vars['thetha_AC'][nAC].X
+        node.theta = ac_vars['theta_AC'][nAC].X
         
         node.PGi_opt = ac_vars['PGi_opt'][nAC].X
         node.QGi_opt = 0.0 

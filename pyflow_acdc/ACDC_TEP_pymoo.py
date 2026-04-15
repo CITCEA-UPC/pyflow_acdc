@@ -6,9 +6,10 @@ from pymoo.algorithms.moo.nsga2 import NSGA2
 from pymoo.optimize import minimize
 import time
 import matplotlib.pyplot as plt
-from .ACDC_OPF_NL_model import analyse_grid,ExportACDC_NLmodel_toPyflowACDC
+from .ACDC_OPF_NL_model import ExportACDC_NLmodel_toPyflowACDC
 from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective
 from .grid_analysis import analyse_grid
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT
 
 __all__ = [
     'transmission_expansion_pymoo'
@@ -408,7 +409,7 @@ class TEPOuterProblem(ElementwiseProblem):
         
         
 
-def transmission_expansion_pymoo(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,solver='GA',time_limit=300,tee=False,n_gen=10):
+def transmission_expansion_pymoo(grid,NPV=True,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,ObjRule=None,solver='GA',time_limit=DEFAULT_TIME_LIMIT,tee=False,n_gen=10):
     
             
     analyse_grid(grid)
@@ -467,7 +468,10 @@ def _handle_single_objective_result(res, problem, grid):
 
     print(f"Number of Pyomo runs: {problem.pyomo_runs}")
     print(f"Pyomo time: {problem.pyomo_time}")
-    print(f"mean Pyomo time: {problem.pyomo_time / problem.pyomo_runs}")
+    if problem.pyomo_runs > 0:
+        print(f"mean Pyomo time: {problem.pyomo_time / problem.pyomo_runs}")
+    else:
+        print("mean Pyomo time: N/A (no runs)")
     val = [e.opt.get("F")[0] for e in res.history]
     plt.plot(np.arange(len(val)), val)
     plt.show()

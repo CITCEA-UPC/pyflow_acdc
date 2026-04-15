@@ -113,7 +113,7 @@ __all__ = [
     'plot_folium',
     'plot_folium_network',
     'save_network_svg',
-    'plot_model_feasebility',
+    'plot_model_feasibility',
     'plot_3D',
     
     # Market Analysis
@@ -143,7 +143,7 @@ try:
             'multi_scenario_TEP', 'expand_elements_from_pd',
             'repurpose_element_from_pd', 'update_attributes', 'Expand_element',
             'Translate_pd_TEP', 'export_TEP_TS_results_to_excel',
-            'alpha_paretto', 'rate_sensitivity', 'kappa_sensitivity',
+            'alpha_pareto', 'rate_sensitivity', 'kappa_sensitivity',
             'comprehensive_sensitivity_analysis'
         ])
         try:
@@ -252,11 +252,10 @@ for folder in _case_folders:
         module_name = "__".join(rel_module.parts)
         spec = importlib.util.spec_from_file_location(module_name, case_file)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        spec.loader.exec_module(module)  # Trust boundary: only loads .py from bundled example_grids/
         
         # Add all public functions from the module to the `cases` namespace
         cases.update({name: obj for name, obj in vars(module).items() if not name.startswith("_")})
 
-# Optional: Add all cases to this module's global namespace
-globals().update(cases)    
+    
 
