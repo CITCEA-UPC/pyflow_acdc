@@ -111,3 +111,4 @@ packages = ["pyflow_acdc","pyflow_tests"]
 
 [project.scripts]
 pyflow-acdc-test = "pyflow_tests.run_tests:main"
+pyflow-acdc-check-solvers = "pyflow_acdc.solver_utils:cli_check_solvers"

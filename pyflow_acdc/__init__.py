@@ -123,6 +123,12 @@ __all__ = [
     'clean_entsoe_data',
 ]
 
+try:
+    from .solver_utils import *
+    __all__.append('check_available_solvers')
+except ImportError:
+    pass
+
 # Try to import OPF module if pyomo is available
 try:
     from .ACDC_OPF import *

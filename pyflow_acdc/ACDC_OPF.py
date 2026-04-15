@@ -987,6 +987,8 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         Dictionary with solver statistics including feasible_solutions
     """
     solver = solver.lower()
+    if solver == 'maingo':
+        solver = 'appsi_maingo'
     # Keep internal flags separate from backend solver options.
     solver_options = dict(solver_options) if solver_options else None
     feasible_solutions = []  # Always defined, but only populated if callback is used
