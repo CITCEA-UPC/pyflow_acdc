@@ -27,14 +27,12 @@ def get_gen_p_min_eff(gen, np_gen_value, p_load_eff_value=None):
 
     
 
-def OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_rate=True,robust_mode=False):
+def OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_rate=True):
     from .ACDC_OPF import Translate_pyf_OPF 
     
     if limit_flow_rate is True:
         limit_flow_rate = 1
         
-    model.robust_mode = bool(robust_mode)
-    
     opf_data = Translate_pyf_OPF(grid,Price_Zones=Price_Zones)
     AC_info = opf_data['AC_info']
     DC_info = opf_data['DC_info']
@@ -393,27 +391,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
     lista_lineas_AC_rec,S_lineACrec_lim,S_lineACrec_lim_new,grid.REC_AC_act = REC_info
     lista_lineas_AC_ct,S_lineACct_lim,cab_types_set,allowed_types = CT_info
     
-    if grid.TEP_AC and model.robust_mode:
-        lines_np0 = [ln for ln in lista_lineas_AC_exp if int(NP_lineAC[ln]) == 0]
-        model.lines_AC_exp_np0 = pyo.Set(initialize=lines_np0)
-        model.z_ACexp_active = pyo.Var(model.lines_AC_exp_np0, domain=pyo.Binary, initialize=0)
-        
-        def _z_link_lower_rule(m, line):
-            return m.NumLinesACP[line] >= m.z_ACexp_active[line]
-        
-        def _z_link_upper_rule(m, line):
-            ub = m.NumLinesACP[line].ub
-            if ub is None:
-                ub = grid.lines_AC_exp[line].np_line_max
-            if ub is None:
-                raise ValueError(f"robust_mode: missing upper bound for expandable AC line {line} (np_line_max is None)")
-            return m.NumLinesACP[line] <= ub * m.z_ACexp_active[line]
-        
-        model.z_ACexp_link_lower = pyo.Constraint(model.lines_AC_exp_np0, rule=_z_link_lower_rule)
-        model.z_ACexp_link_upper = pyo.Constraint(model.lines_AC_exp_np0, rule=_z_link_upper_rule)
-    else:
-        model.lines_AC_exp_np0 = pyo.Set(initialize=[])
-
     "AC equality constraints"
     # AC node constraints
     def P_AC_node_rule(model, node):
@@ -714,8 +691,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         if (not TEP) and NP_lineAC[line] <= 0:
             return pyo.Constraint.Skip
         Pto = calculate_P(model,l,'to')
-        if model.robust_mode and line in model.lines_AC_exp_np0:
-            return pyo.Constraint.Skip
         return model.exp_PAC_to[line] == Pto
     
     def P_from_AC_line_exp(model,line):       
@@ -723,8 +698,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
        if (not TEP) and NP_lineAC[line] <= 0:
            return pyo.Constraint.Skip
        Pfrom = calculate_P(model,l,'from')
-       if model.robust_mode and line in model.lines_AC_exp_np0:
-           return pyo.Constraint.Skip
        return model.exp_PAC_from[line] == Pfrom
     
     def Q_to_AC_line_exp(model,line):   
@@ -732,8 +705,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         if (not TEP) and NP_lineAC[line] <= 0:
             return pyo.Constraint.Skip
         Qto = calculate_Q(model,l,'to')
-        if model.robust_mode and line in model.lines_AC_exp_np0:
-            return pyo.Constraint.Skip
         return model.exp_QAC_to[line] == Qto
     
     def Q_from_AC_line_exp(model,line):       
@@ -741,15 +712,10 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
        if (not TEP) and NP_lineAC[line] <= 0:
            return pyo.Constraint.Skip
        Qfrom = calculate_Q(model,l,'from')
-
-       if model.robust_mode and line in model.lines_AC_exp_np0:
-           return pyo.Constraint.Skip
        return model.exp_QAC_from[line] == Qfrom
     
     def P_loss_AC_rule_exp(model,line):
         if (not TEP) and NP_lineAC[line] <= 0:
-            return pyo.Constraint.Skip
-        if model.robust_mode and line in model.lines_AC_exp_np0:
             return pyo.Constraint.Skip
         return model.exp_PAC_line_loss[line]== model.exp_PAC_to[line]+model.exp_PAC_from[line]
     
@@ -760,124 +726,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         model.exp_Qto_AC_line_constraint   = pyo.Constraint(model.lines_AC_exp, rule=Q_to_AC_line_exp)
         model.exp_Qfrom_AC_line_constraint = pyo.Constraint(model.lines_AC_exp, rule=Q_from_AC_line_exp)
         model.exp_P_AC_loss_constraint     = pyo.Constraint(model.lines_AC_exp, rule=P_loss_AC_rule_exp)
-        
-        if model.robust_mode:
-            u_min_ac,u_max_ac,V_ini_AC,Theta_ini, P_know,Q_know,price = AC_nodes_info
-            
-            def _exp_flow_limit(line):
-                if limit_flow_rate is False:
-                    return S_lineACexp_limit[line]
-                return S_lineACexp_limit[line] * limit_flow_rate
-            
-            def _bigm_bounds(line_obj, direction):
-                f = line_obj.fromNode.nodeNumber
-                t = line_obj.toNode.nodeNumber
-                Y = line_obj.Ybus_branch
-                Vf_max = float(u_max_ac[f])
-                Vt_max = float(u_max_ac[t])
-                
-                if direction == 'Pto':
-                    Gtt = float(np.real(Y[1, 1]))
-                    Gtf = float(np.real(Y[1, 0]))
-                    Btf = float(np.imag(Y[1, 0]))
-                    bound = (Vt_max ** 2) * abs(Gtt) + (Vf_max * Vt_max) * float(np.sqrt(Gtf ** 2 + Btf ** 2))
-                elif direction == 'Pfrom':
-                    Gff = float(np.real(Y[0, 0]))
-                    Gft = float(np.real(Y[0, 1]))
-                    Bft = float(np.imag(Y[0, 1]))
-                    bound = (Vf_max ** 2) * abs(Gff) + (Vf_max * Vt_max) * float(np.sqrt(Gft ** 2 + Bft ** 2))
-                elif direction == 'Qto':
-                    Btt = float(np.imag(Y[1, 1]))
-                    Gtf = float(np.real(Y[1, 0]))
-                    Btf = float(np.imag(Y[1, 0]))
-                    bound = (Vt_max ** 2) * abs(Btt) + (Vf_max * Vt_max) * float(np.sqrt(Gtf ** 2 + Btf ** 2))
-                elif direction == 'Qfrom':
-                    Bff = float(np.imag(Y[0, 0]))
-                    Gft = float(np.real(Y[0, 1]))
-                    Bft = float(np.imag(Y[0, 1]))
-                    bound = (Vf_max ** 2) * abs(Bff) + (Vf_max * Vt_max) * float(np.sqrt(Gft ** 2 + Bft ** 2))
-                else:
-                    bound = 0.0
-                
-                s = float(_exp_flow_limit(line_obj.lineNumber))
-                return s + bound
-            
-            def _Pto_bigm_ub(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Pto')
-                Pto = calculate_P(m, l, 'to')
-                return m.exp_PAC_to[line] - Pto <= M * (1 - m.z_ACexp_active[line])
-            def _Pto_bigm_lb(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Pto')
-                Pto = calculate_P(m, l, 'to')
-                return m.exp_PAC_to[line] - Pto >= -M * (1 - m.z_ACexp_active[line])
-            
-            def _Pfrom_bigm_ub(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Pfrom')
-                Pfrom = calculate_P(m, l, 'from')
-                return m.exp_PAC_from[line] - Pfrom <= M * (1 - m.z_ACexp_active[line])
-            def _Pfrom_bigm_lb(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Pfrom')
-                Pfrom = calculate_P(m, l, 'from')
-                return m.exp_PAC_from[line] - Pfrom >= -M * (1 - m.z_ACexp_active[line])
-            
-            def _Qto_bigm_ub(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Qto')
-                Qto = calculate_Q(m, l, 'to')
-                return m.exp_QAC_to[line] - Qto <= M * (1 - m.z_ACexp_active[line])
-            def _Qto_bigm_lb(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Qto')
-                Qto = calculate_Q(m, l, 'to')
-                return m.exp_QAC_to[line] - Qto >= -M * (1 - m.z_ACexp_active[line])
-            
-            def _Qfrom_bigm_ub(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Qfrom')
-                Qfrom = calculate_Q(m, l, 'from')
-                return m.exp_QAC_from[line] - Qfrom <= M * (1 - m.z_ACexp_active[line])
-            def _Qfrom_bigm_lb(m, line):
-                l = grid.lines_AC_exp[line]
-                M = _bigm_bounds(l, 'Qfrom')
-                Qfrom = calculate_Q(m, l, 'from')
-                return m.exp_QAC_from[line] - Qfrom >= -M * (1 - m.z_ACexp_active[line])
-            
-            model.exp_Pto_AC_line_bigm_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_Pto_bigm_ub)
-            model.exp_Pto_AC_line_bigm_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_Pto_bigm_lb)
-            model.exp_Pfrom_AC_line_bigm_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_Pfrom_bigm_ub)
-            model.exp_Pfrom_AC_line_bigm_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_Pfrom_bigm_lb)
-            model.exp_Qto_AC_line_bigm_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qto_bigm_ub)
-            model.exp_Qto_AC_line_bigm_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qto_bigm_lb)
-            model.exp_Qfrom_AC_line_bigm_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qfrom_bigm_ub)
-            model.exp_Qfrom_AC_line_bigm_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_Qfrom_bigm_lb)
-
-            # Gate line losses so they cannot create objective/unboundedness when the corridor is inactive.
-            def _loss_U(line):
-                # Losses are modeled as P_to + P_from in per-unit; each side is bounded by the S limit.
-                return 2.0 * float(_exp_flow_limit(line))
-
-            def _loss_upper(m, line):
-                return m.exp_PAC_line_loss[line] <= _loss_U(line) * m.z_ACexp_active[line]
-
-            def _loss_lower(m, line):
-                return m.exp_PAC_line_loss[line] >= 0
-
-            def _loss_link_ub(m, line):
-                sumP = m.exp_PAC_to[line] + m.exp_PAC_from[line]
-                return m.exp_PAC_line_loss[line] - sumP <= _loss_U(line) * (1 - m.z_ACexp_active[line])
-
-            def _loss_link_lb(m, line):
-                sumP = m.exp_PAC_to[line] + m.exp_PAC_from[line]
-                return m.exp_PAC_line_loss[line] - sumP >= -_loss_U(line) * (1 - m.z_ACexp_active[line])
-
-            model.exp_PAC_loss_gate_upper = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_upper)
-            model.exp_PAC_loss_gate_lower = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_lower)
-            model.exp_PAC_loss_link_ub = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_link_ub)
-            model.exp_PAC_loss_link_lb = pyo.Constraint(model.lines_AC_exp_np0, rule=_loss_link_lb)
     
     def P_to_AC_line_rec(model,line,state):   
         l = grid.lines_AC_rec[line]
@@ -1115,24 +963,10 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         def S_to_AC_limit_rule_exp(model,line):
             if (not TEP) and NP_lineAC[line] <= 0:
                 return pyo.Constraint.Skip
-            if model.robust_mode and line in model.lines_AC_exp_np0:
-                npl = model.NumLinesACP[line]
-                # Stronger form: when npl=0 (line inactive in the LP relaxation),
-                # this forces exp flows to 0. The previous multiplied-by-npl form
-                # becomes 0 <= 0 and lets exp flows float when npl=0.
-                return (model.exp_PAC_to[line]**2 + model.exp_QAC_to[line]**2) <= (
-                    npl * (S_lineACexp_limit[line] * limit_flow_rate)**2
-                )
             return model.exp_PAC_to[line]**2+model.exp_QAC_to[line]**2 <= (S_lineACexp_limit[line]*limit_flow_rate)**2
         def S_from_AC_limit_rule_exp(model,line):
             if (not TEP) and NP_lineAC[line] <= 0:
                 return pyo.Constraint.Skip
-            if model.robust_mode and line in model.lines_AC_exp_np0:
-                npl = model.NumLinesACP[line]
-                # Same strengthening as S_to: if npl=0, exp flows must be 0.
-                return (model.exp_PAC_from[line]**2 + model.exp_QAC_from[line]**2) <= (
-                    npl * (S_lineACexp_limit[line] * limit_flow_rate)**2
-                )
             return model.exp_PAC_from[line]**2+model.exp_QAC_from[line]**2 <= (S_lineACexp_limit[line]*limit_flow_rate)**2
         
         if grid.TEP_AC:

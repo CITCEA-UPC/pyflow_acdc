@@ -861,7 +861,6 @@ def _prepare_TEP_model(
     discount_rate,
     ObjRule,
     PV_set=False,
-    robust_mode=False,
 ):
 
     analyse_grid(grid)
@@ -874,7 +873,7 @@ def _prepare_TEP_model(
     model = pyo.ConcreteModel()
     model.name = "TEP MTDC AC/DC hybrid OPF"
 
-    OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True,robust_mode=robust_mode)
+    OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True)
     _TEP_install_variables(model, grid)
     _TEP_install_constraints(model, grid)
 
@@ -951,7 +950,6 @@ def transmission_expansion(
     callback=False,
     solver_options=None,
     obj_scaling=1.0,
-    robust_mode=False,
     nlp_warmstart=False,
 ):
     grid.reset_run_flags()
@@ -964,7 +962,6 @@ def transmission_expansion(
         discount_rate,
         ObjRule,
         PV_set,
-        robust_mode,
     )
     
     present_value =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
@@ -1422,7 +1419,6 @@ def create_scenarios(
     Hy,
     alpha,
     limit_flow_rate,
-    robust_mode=False,
     obj_scaling=1.0,
 ):
        
@@ -1432,7 +1428,7 @@ def create_scenarios(
     w={}
 
     base_model = pyo.ConcreteModel()
-    OPF_create_NLModel_ACDC(base_model,grid,PV_set=False,Price_Zones=Price_Zones,TEP=True,limit_flow_rate=limit_flow_rate,robust_mode=robust_mode)
+    OPF_create_NLModel_ACDC(base_model,grid,PV_set=False,Price_Zones=Price_Zones,TEP=True,limit_flow_rate=limit_flow_rate)
 
     for t in model.scenario_frames:
         if t == 1:
@@ -1495,7 +1491,6 @@ def multi_scenario_TEP(
     obj_scaling=1.0,
     solver_options=None,
     nlp_warmstart=False,
-    robust_mode=False,
 ):
     
     analyse_grid(grid)
@@ -1536,7 +1531,6 @@ def multi_scenario_TEP(
         Hy,
         alpha,
         limit_flow_rate,
-        robust_mode=robust_mode,
         obj_scaling=obj_scaling,
     )
 
