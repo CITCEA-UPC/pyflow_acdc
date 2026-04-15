@@ -14,31 +14,8 @@ import yaml
 from pathlib import Path
 
 from .constants import SQRT_3, HOURS_PER_YEAR, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC, DEFAULT_DISCOUNT_RATE, DEFAULT_N_YEARS
+from .grid_analysis import pol2cart, cart2pol, pol2cartz, cartz2pol
 
-
-def pol2cart(r, theta):
-    x = r*np.cos(theta)
-    y = r*np.sin(theta)
-    return x, y
-
-
-def pol2cartz(r, theta):
-    x = r*np.cos(theta)
-    y = r*np.sin(theta)
-    z = x+1j*y
-    return z
-
-
-def cart2pol(x, y):
-    rho = np.sqrt(x**2 + y**2)
-    theta = np.arctan2(y, x)
-    return rho, theta
-
-
-def cartz2pol(z):
-    r = np.abs(z)
-    theta = np.angle(z)
-    return r, theta
 
 class Grid:
     DEFAULT_GENERATION_TYPES = [

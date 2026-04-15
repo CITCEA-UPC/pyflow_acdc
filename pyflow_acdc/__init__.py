@@ -191,6 +191,7 @@ try:
         'run_mp_ts_dash',
         'create_mp_ts_dash',
         'plot_TS_res_from_ts',
+        'plot_TS_res_dash',
     ])
     HAS_DASH = True
 except ImportError:

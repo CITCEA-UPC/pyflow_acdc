@@ -52,11 +52,6 @@ def find_value_from_cdf(cdf, x):
             return i
     return None
 
-
-
-def pack_variables(*args):
-    return args
-
 def Time_series_PF(grid):
     if grid.nodes_AC == None:
         print("only DC")

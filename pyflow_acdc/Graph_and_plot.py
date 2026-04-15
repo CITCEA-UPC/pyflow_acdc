@@ -1111,7 +1111,7 @@ def create_subgraph_color_dict(G):
 
 
 
-def create_geometries(grid):
+def create_geometries_from_layout(grid):
     """
     Create geometries for all grid elements if they don't exist.
     First checks if nodes have x and y coordinates, if not uses calculate_positions.
@@ -1169,7 +1169,7 @@ def create_geometries(grid):
     # Step 6: Create geometries for generators and renewable sources
     ac_nodes_by_name = {str(n.name): n for n in grid.nodes_AC}
     dc_nodes_by_name = {str(n.name): n for n in grid.nodes_DC}
-    for gen in grid.Generators + grid.RenSources:
+    for gen in grid.Generators + grid.Generators_DC + grid.RenSources:
         if not hasattr(gen, 'geometry') or gen.geometry is None:
             node_ref = None
             if hasattr(gen, 'Node_AC'):
@@ -1190,6 +1190,8 @@ def create_geometries(grid):
                 if node_obj is not None and node_obj in pos:
                     x, y = pos[node_obj]
                     gen.geometry = Point(x, y)
+
+
 
 def save_network_svg(
     grid,
@@ -1278,7 +1280,7 @@ def save_network_svg(
             if tee:
                 print(f"Creating geometries for {len(elements_without_geometry)} elements without geometries...")
                 print("Missing geometries:", ", ".join(elements_without_geometry))
-            create_geometries(grid)
+            create_geometries_from_layout(grid)
 
         if journal:
             # Convert 88mm to pixels (assuming 96 DPI)

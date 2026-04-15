@@ -16,7 +16,7 @@ from .constants import HOURS_PER_YEAR, CT_SELECTION_THRESHOLD, BINARY_THRESHOLD,
 
 from .ACDC_OPF_NL_model import OPF_create_NLModel_ACDC, TEP_variables
 from .AC_OPF_L_model import OPF_create_LModel_AC,ExportACDC_Lmodel_toPyflowACDC
-from .ACDC_OPF import pyomo_model_solve,OPF_obj,OPF_obj_L,obj_w_rule,ExportACDC_NLmodel_toPyflowACDC,calculate_objective,reset_to_initialize,calculate_objective_from_model
+from .ACDC_OPF import pyomo_model_solve,OPF_obj,OPF_obj_L,obj_w_rule,ExportACDC_NLmodel_toPyflowACDC,calculate_objective,reset_to_initialize,calculate_objective_from_model,pack_variables
 
 from .Graph_and_plot import save_network_svg
 
@@ -37,9 +37,6 @@ __all__ = [
     'kappa_sensitivity',
     'comprehensive_sensitivity_analysis'
 ]
-
-def pack_variables(*args):
-    return args
 
 
 def update_grid_scenario_frame(grid,ts,t,n_clusters,clustering):

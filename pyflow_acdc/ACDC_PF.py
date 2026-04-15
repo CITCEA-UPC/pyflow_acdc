@@ -5,8 +5,9 @@ Provides functions for AC and AC/DC power flow analysis.
 """
 import numpy as np
 import sys
+import warnings
 import time
-from .grid_analysis import analyse_grid
+from .grid_analysis import analyse_grid, pol2cartz, cartz2pol
 from .constants import DEFAULT_TOLERANCE, PF_OUTER_TOLERANCE, PF_INNER_TOLERANCE, CONV_TOLERANCE, DEFAULT_PF_MAX_ITER, DEFAULT_CONV_MAX_ITER
 
 __all__ = [
@@ -15,32 +16,6 @@ __all__ = [
     'ACDC_sequential',
     'Power_flow'
 ]
-
-
-
-def pol2cart(r, theta):
-    x = r*np.cos(theta)
-    y = r*np.sin(theta)
-    return x, y
-
-
-def pol2cartz(r, theta):
-    x = r*np.cos(theta)
-    y = r*np.sin(theta)
-    z = x+1j*y
-    return z
-
-
-def cart2pol(x, y):
-    rho = np.sqrt(x**2 + y**2)
-    theta = np.arctan2(y, x)
-    return rho, theta
-
-
-def cartz2pol(z):
-    r = np.abs(z)
-    theta = np.angle(z)
-    return r, theta
 
 def Power_flow(grid,tol_lim=DEFAULT_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
     analyse_grid(grid)
@@ -203,11 +178,7 @@ def ACDC_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
     
     if grid.iter_num_seq == maxIter:
         if tolerance > tol_lim*100:
-            print('')
-            print(
-                f'Warning  Sequential flow did not converge in less than {maxIter} iterations')
-            print(
-                f'Lowest tolerance reached: {np.round(tolerance,decimals=6)}')
+            warnings.warn(f'Sequential flow did not converge in {maxIter} iterations. Lowest tolerance: {np.round(tolerance, decimals=6)}')
             tolerance_tracker['convergence_status']['sequential_converged'] = False
     
     grid.Line_AC_calc()
@@ -317,9 +288,7 @@ def load_flow_DC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
         # print(f"Iteration {iter_num}, Max Voltage Change: {max(abs(dV))}, tolerance: {tol}")
 
         if iter_num == maxIter:
-            print('')
-            print(f'Warning  load flow DC did not converge in {maxIter} iterations')
-            print(f'Lowest tolerance reached: {np.round(tol,decimals=6)}')
+            warnings.warn(f'DC load flow did not converge in {maxIter} iterations. Lowest tolerance: {np.round(tol, decimals=6)}')
 
     grid.iter_flow_DC.append(iter_num)
 
@@ -507,9 +476,7 @@ def load_flow_AC(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
 
         tol = max(abs(M))
         if iter_num == maxIter:
-            print('')
-            print(f'Warning  load flow AC did not converge')
-            print(f'Lowest tolerance reached: {np.round(tol,decimals=int(-np.log10(tol_lim)))}')
+            warnings.warn(f'AC load flow did not converge. Lowest tolerance: {np.round(tol, decimals=int(-np.log10(tol_lim)))}')
 
     grid.iter_flow_AC.append(iter_num)
 
@@ -765,9 +732,7 @@ def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
             Qc  = Qs_known
             
         if iter_num > maxIter:
-            print('')
-            print(f'Warning  converter {conv.name} did not converge')
-            print(f'Lowest tolerance reached: {np.round(tol,decimals=6)}')
+            warnings.warn(f'Converter {conv.name} did not converge. Lowest tolerance: {np.round(tol, decimals=6)}')
 
         
         if conv.power_loss_model == 'MMC':
@@ -875,10 +840,7 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
         Qc = -Uc*Uc*Bc+Us*Uc*(Gc*np.sin(th_s-th_c)+Bc*np.cos(th_s-th_c))
 
         if iter_num > maxIter:
-            print('')
-            print(f'Warning  converter {conv.name} did not converge')
-            print(f'Lowest tolerance reached: {np.round(tol,decimals=6)}')
-            print(f'Lowest tolerance reached: {np.round(tol,decimals=6)}')
+            warnings.warn(f'Converter {conv.name} did not converge. Lowest tolerance: {np.round(tol, decimals=6)}')
             
         if conv.power_loss_model == 'MMC':
             
@@ -998,9 +960,7 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
         Qc = -Uc*Uc*Bc+Uf*Uc*(Gc*np.sin(th_f-th_c)+Bc*np.cos(th_f-th_c))
 
         if iter_num > maxIter:
-            print('')
-            print(f'Warning  converter {conv.name} did not converge')
-            print(f'Lowest tolerance reached: {np.round(tol,decimals=6)}')
+            warnings.warn(f'Converter {conv.name} did not converge. Lowest tolerance: {np.round(tol, decimals=6)}')
 
         if conv.power_loss_model == 'MMC':
 
@@ -1109,13 +1069,13 @@ def Converter_Qlimit(grid, conv):
     sqrt_argV_max = rVmax**2-(Ps-Po)**2
     sqrt_argV_min = rVmin**2-(Ps-Po)**2
     if sqrt_arg < 0:
-        print(f'Warning: Converter {conv.name} is over current capacity, clamping sqrt operand to 0')
+        warnings.warn(f'Converter {conv.name} is over current capacity, clamping sqrt operand to 0')
         sqrt_arg = 0
     if sqrt_argV_max < 0:
-        print(f'Warning: Converter {conv.name} voltage-circle Vmax operand negative, clamping to 0')
+        warnings.warn(f'Converter {conv.name} voltage-circle Vmax operand negative, clamping to 0')
         sqrt_argV_max = 0
     if sqrt_argV_min < 0:
-        print(f'Warning: Converter {conv.name} voltage-circle Vmin operand negative, clamping to 0')
+        warnings.warn(f'Converter {conv.name} voltage-circle Vmin operand negative, clamping to 0')
         sqrt_argV_min = 0
 
     Qs_plus  = Q0+np.sqrt(sqrt_arg)
@@ -1143,12 +1103,9 @@ def Converter_Qlimit(grid, conv):
 
     if Q_req > Qs_max or Q_req < Qs_min:
 
-        print('-----------')
-        print(f'{conv.name}  CONVERTER LIMIT circle REACHED')
-        print('-----------')
+        warnings.warn(f'Converter {conv.name}: Q limit reached')
         if conv.Node_AC.type == 'Slack':
-            print(f' Limiting Q from converter')
-            print(f' External reactive compensation needed at node {conv.Node_AC.name}')
+            warnings.warn(f'Limiting Q from converter, external reactive compensation needed at node {conv.Node_AC.name}')
             if Q_req > Qs_plus:
                 conv.Node_AC.Q_s = Qs_max
                 conv.Node_AC.Q_AC = Q_req-Qs_max
@@ -1158,8 +1115,7 @@ def Converter_Qlimit(grid, conv):
                 s = 1
 
         else:
-            print(
-                f'Limiting Q from converter and changing AC node {conv.Node_AC.name} to PQ')
+            warnings.warn(f'Limiting Q from converter and changing AC node {conv.Node_AC.name} to PQ')
             conv.Node_AC.type = 'PQ'
             if Q_req > Qs_max:
                 conv.Node_AC.Q_s = Qs_max

@@ -29,6 +29,9 @@ except ImportError:
 
 
 import logging
+import warnings
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     'Translate_pyf_OPF',
@@ -93,7 +96,7 @@ def Optimal_L_PF(grid,ObjRule=None,OnlyGen=True,Price_Zones=False,solver='glpk',
         other_weights_nonzero = [key for key, value in weights_def.items() 
                                if key != 'Energy_cost' and value['w'] != 0]
         if other_weights_nonzero:
-            print("Linear OPF can only consider energy cost by AC Generator power")
+            warnings.warn("Linear OPF can only consider energy cost by AC Generator power")
         
     model = pyo.ConcreteModel()
     model.name="""AC 'DC linear' OPF"""
@@ -380,7 +383,7 @@ def _gurobi_callback(model, feasible_solutions, bound_solutions, time_limit=None
             try:
                 grb_model.setParam(param_name, param_value)
             except Exception as e:
-                print(f"Warning: Could not set Gurobi parameter {param_name}={param_value}: {e}")
+                logger.warning(f"Could not set Gurobi parameter {param_name}={param_value}: {e}")
 
     grb_model.optimize(my_callback)
 
@@ -818,7 +821,7 @@ def _solver_progress(
                     results.solver.status = original_status
         except Exception as exc:
             if tee_console:
-                print(f"Warning: could not load incumbent solution from solver results: {exc}")
+                logger.warning(f"Could not load incumbent solution from solver results: {exc}")
     
     end = time.perf_counter()
 
@@ -1043,7 +1046,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
 
     # Check for MixedBinCont warning (only if grid is provided)
     if grid is not None and hasattr(grid, 'MixedBinCont') and grid.MixedBinCont and solver == 'ipopt':
-        print('PyFlow ACDC is not capable of ensuring the reliability of this solution.')
+        warnings.warn('PyFlow ACDC is not capable of ensuring the reliability of this solution.')
 
     if callback:
         if solver == 'gurobi' and GUROBI_AVAILABLE:
@@ -1057,7 +1060,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         elif solver == 'highs':
             results, feasible_solutions, all_solutions, bound_solutions = _solver_progress(model, feasible_solutions, 'highs', time_limit, 'highs.log', tee_console=tee, solver_options=solver_options)
         else:
-            print(f"No callback available for {solver}")
+            warnings.warn(f"No callback available for {solver}")
             callback = False
     if not callback:
         # For Minotaur, check if executable is specified in solver_options
@@ -1103,7 +1106,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             results = opt.solve(model, tee=tee, load_solutions=True)
         except Exception as e:
             error_msg = str(e)
-            print(f"  Solver crashed: {e}")
+            logger.error(f"Solver crashed: {e}")
 
             solver_stats = {
                 'solver': solver,
@@ -1288,6 +1291,12 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             pyomo_logger.warning("Skipping infeasible-constraint logging due to overflow: %s", exc)
         except Exception as exc:
             pyomo_logger.warning("Skipping infeasible-constraint logging due to error: %s", exc)
+
+    if tee and explicit_infeasible_termination:
+        try:
+            log_infeasible_constraints_limited(model)
+        except Exception as exc:
+            pyomo_logger.warning("Skipping limited infeasible-constraint logging due to error: %s", exc)
 
     _store_pyomo_results_on_grid(grid, model, results, solver_stats)
     return results, solver_stats

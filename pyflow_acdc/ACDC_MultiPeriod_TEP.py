@@ -17,7 +17,7 @@ from .ACDC_Static_TEP import (
 )
 from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters, TS_ACDC_OPF, results_TS_OPF
-from .Graph_and_plot import save_network_svg, create_geometries
+from .Graph_and_plot import save_network_svg, create_geometries_from_layout
 from .Results_class import Results
 from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, PF_INNER_TOLERANCE
 
@@ -32,9 +32,6 @@ __all__ = [
     'run_ts_opf_for_investment_period',
     'run_opf_for_all_investment_periods',
 ]
-
-def pack_variables(*args):
-    return args
 
 
 def _snapshot_ts_results(grid):
@@ -1718,7 +1715,7 @@ def save_MP_TEP_period_svgs(
     for i in range(periods):
             # From DataFrame by names
         _set_grid_to_multiperiod_state(grid, i, Price_Zones) 
-        create_geometries(grid)
+        create_geometries_from_layout(grid)
 
         save_network_svg(
             grid,

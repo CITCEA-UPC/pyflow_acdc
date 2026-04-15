@@ -339,8 +339,7 @@ def add_line_DC(grid, fromNode, toNode, r=0.001, MW_rating=9999,Length_km=1,R_Oh
         elif polarity == 2:
             polarity = 'b'
         else:
-            print(f"Invalid polarity value: {polarity}")
-            return
+            raise ValueError(f"Invalid polarity value: {polarity}. Must be 1 ('m'), 2 ('b'), 'm', or 'b'.")
     line = Line_DC(fromNode, toNode, Resistance_pu, MW_rating,Length_km, polarity, name,Cable_type=Cable_type)
     grid.lines_DC.append(line)
     

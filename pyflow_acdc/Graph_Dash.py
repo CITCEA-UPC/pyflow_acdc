@@ -17,6 +17,7 @@ __all__ = [
     'run_mp_ts_dash',
     'create_mp_ts_dash',
     'plot_TS_res_from_ts',
+    'plot_TS_res_dash',
 ]
 
 _MP_PLOT_CHOICES = [
@@ -197,7 +198,7 @@ def plot_TS_res_from_ts(
     return fig
 
 
-def plot_TS_res(grid, plotting_choice, selected_rows, x_limits=None, y_limits=None):
+def plot_TS_res_dash(grid, plotting_choice, selected_rows, x_limits=None, y_limits=None):
     return plot_TS_res_from_ts(
         grid.time_series_results,
         grid.S_base,
@@ -431,11 +432,11 @@ def create_dash_app(grid):
         y_limits_1 = (y_min_1, y_max_1) if y_min_1 is not None and y_max_1 is not None else None
         y_limits_2 = (y_min_2, y_max_2) if y_min_2 is not None and y_max_2 is not None else None
         
-        fig1 = plot_TS_res(grid, plotting_choice_1, selected_rows_1, x_limits=x_limits, y_limits=y_limits_1)
+        fig1 = plot_TS_res_dash(grid, plotting_choice_1, selected_rows_1, x_limits=x_limits, y_limits=y_limits_1)
         
         # Only create second plot if it's enabled
         if show_plot_2:
-            fig2 = plot_TS_res(grid, plotting_choice_2, selected_rows_2, x_limits=x_limits, y_limits=y_limits_2)
+            fig2 = plot_TS_res_dash(grid, plotting_choice_2, selected_rows_2, x_limits=x_limits, y_limits=y_limits_2)
         else:
             fig2 = go.Figure()  # Empty figure when plot 2 is disabled
         
@@ -873,4 +874,6 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
 def run_mp_ts_dash(ts_inv, grid_name='MP time series', debug=True, use_reloader=False):
     app = create_mp_ts_dash(ts_inv, grid_name=grid_name)
     app.run(debug=debug, use_reloader=use_reloader)
+
+
 
