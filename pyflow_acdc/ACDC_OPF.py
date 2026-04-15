@@ -466,7 +466,7 @@ def _gurobi_callback(model, feasible_solutions, bound_solutions, time_limit=None
     opt._solver_model.dispose()  # Cleanup
     return results, feasible_solutions, bound_solutions
 
-def _parse_bonmin_log(log_path):
+def _parse_bonmin_log(log_path, bonmin_algorithm='B-BB'):
     """Parse Bonmin log file to extract feasible solutions and all solutions.
     Returns tuple of (feasible_solutions, all_solutions, bound_solutions) where each
     stream stores (time, value, iterations_like_counter).
@@ -477,6 +477,9 @@ def _parse_bonmin_log(log_path):
     last_nlp_call = 0
     cumulative_iterations = 0
     cumulative_time = 0
+    algorithm = str(bonmin_algorithm or 'B-BB').strip().lower().replace('_', '-')
+    parse_cbc0010_incumbent = ('hyb' in algorithm)
+    last_cbc0010_best_solution = None
     
     try:
         with open(log_path, 'r') as f:
@@ -510,15 +513,37 @@ def _parse_bonmin_log(log_path):
                 
                 # Capture best-bound progress from CBC summaries when available.
                 elif line.startswith('Cbc0010I') and 'best possible' in line:
+                    node_match = re.search(r'After\s+(\d+)\s+nodes', line)
+                    # Typical Cbc0010I format in Bonmin B-Hyb:
+                    # "... <best_solution> best solution, best possible <best_bound> (<time> seconds)"
+                    # Keep fallback for alternate ordering if encountered.
+                    best_solution_match = re.search(
+                        r'([-\d\.eE\+]+)\s+best solution,\s+best possible',
+                        line,
+                    )
+                    if best_solution_match is None:
+                        best_solution_match = re.search(
+                            r'best solution,\s+([-\d\.eE\+]+)\s+best possible',
+                            line,
+                        )
                     bound_match = re.search(r'best possible\s+([-\d\.eE\+]+)', line)
                     time_match = re.search(r'\(([\d\.]+)\s+seconds\)', line)
-                    iter_match = re.search(r'After\s+(\d+)\s+nodes', line)
                     if bound_match and time_match:
                         try:
                             best_bound = float(bound_match.group(1))
                             time_sec = float(time_match.group(1))
-                            iterations = int(iter_match.group(1)) if iter_match else cumulative_iterations
+                            iterations = int(node_match.group(1)) if node_match else cumulative_iterations
                             bound_solutions.append((time_sec, best_bound, iterations))
+                            if parse_cbc0010_incumbent and best_solution_match:
+                                best_solution = float(best_solution_match.group(1))
+                                is_new = (
+                                    last_cbc0010_best_solution is None
+                                    or best_solution != last_cbc0010_best_solution
+                                )
+                                all_solutions.append([time_sec, best_solution, iterations, last_nlp_call, is_new])
+                                if is_new:
+                                    feasible_solutions.append((time_sec, best_solution, iterations))
+                                last_cbc0010_best_solution = best_solution
                         except (ValueError, TypeError):
                             continue
 
@@ -852,7 +877,13 @@ def _solver_progress(
             # all_solutions extended schema (ipopt): [..., is_feasible, inf_pr, inf_du]
             all_solutions.append([iter_num, obj, iter_num, iter_num, is_feasible, inf_pr, inf_du])
     elif solver_name == 'bonmin':
-        parsed_feasible, parsed_all, parsed_bounds = _parse_bonmin_log(log_path)
+        bonmin_algorithm = 'B-BB'
+        if solver_options:
+            bonmin_algorithm = solver_options.get('bonmin.algorithm', bonmin_algorithm)
+        parsed_feasible, parsed_all, parsed_bounds = _parse_bonmin_log(
+            log_path,
+            bonmin_algorithm=bonmin_algorithm,
+        )
         feasible_solutions.extend(parsed_feasible)
         all_solutions.extend(parsed_all)
         bound_solutions.extend(parsed_bounds)
