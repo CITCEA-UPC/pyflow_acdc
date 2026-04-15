@@ -6,7 +6,6 @@ import numpy as np
 import math
 import pyomo.environ as pyo
 import pandas as pd
-import sys
 try:
     import gurobipy
     GUROBI_AVAILABLE = True
@@ -25,6 +24,7 @@ from .ACDC_OPF import pyomo_model_solve,OPF_obj,OPF_obj_L,obj_w_rule,ExportACDC_
 from .ACDC_Static_TEP import transmission_expansion, linear_transmission_expansion
 
 from .Graph_and_plot import save_network_svg
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor, NodeType
 
 
 __all__ = [
@@ -56,8 +56,8 @@ class MIPConfig:
     t_MW: float | None = None
 
 
-def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,max_turbines_per_string=None,limit_crossings=True,sub_min_connections=True,
-                   MIP_solver='glpk',CSS_L_solver='glpk',CSS_NL_solver='bonmin',svg=None,max_iter=None,time_limit=300,NL=False,tee=False,fs=False,save_path=None,
+def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,ObjRule=None,max_turbines_per_string=None,limit_crossings=True,sub_min_connections=True,
+                   MIP_solver='glpk',CSS_L_solver='glpk',CSS_NL_solver='bonmin',svg=None,max_iter=None,time_limit=DEFAULT_TIME_LIMIT,NL=False,tee=False,fs=False,save_path=None,
                    MIP_gap=0.01,backend='pyomo',min_turbines_per_string=False,fixed_substation_connections=None,max_ns=None):
     
     if LCoE is not None:
@@ -76,8 +76,8 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
         os.makedirs(save_dir)
     
 
-    staring_cables = grid.Cable_options[0].cable_types
-    new_cables = staring_cables.copy()
+    starting_cables = grid.Cable_options[0].cable_types
+    new_cables = starting_cables.copy()
   
     results = []
     tot_timing_info = {}
@@ -248,11 +248,11 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
         if hasattr(model_MIP, 'line_used') and hasattr(model_MIP, 'lines'):
             # Pyomo model
             cable_length = pyo.value(sum(model_MIP.line_used[line] * grid.lines_AC_ct[line].Length_km for line in model_MIP.lines))
-            weighted_length = pyo.value(sum(model_MIP.line_used[line] * grid.lines_AC_ct[line].trench_lenght_km for line in model_MIP.lines))
+            weighted_length = pyo.value(sum(model_MIP.line_used[line] * grid.lines_AC_ct[line].trench_length_km for line in model_MIP.lines))
         elif hasattr(model_MIP, 'line_used_vals'):
             # OR-Tools MockModel
             cable_length = sum(model_MIP.line_used_vals[line] * grid.lines_AC_ct[line].Length_km for line in model_MIP.line_used_vals.keys())
-            weighted_length = sum(model_MIP.line_used_vals[line] * grid.lines_AC_ct[line].trench_lenght_km for line in model_MIP.line_used_vals.keys())
+            weighted_length = sum(model_MIP.line_used_vals[line] * grid.lines_AC_ct[line].trench_length_km for line in model_MIP.line_used_vals.keys())
 
         else:
             raise AttributeError("model_MIP must have either Pyomo attributes ('line_used', 'lines') or OR-Tools attribute ('line_used_vals')")
@@ -262,7 +262,7 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
         # Compute cable cost matching TEP_obj Array_investments()
         
                
-        present_value_factor = Hy * (1 - (1 + discount_rate) ** -n_years) / discount_rate
+        pv_factor = present_value_factor(Hy, discount_rate, n_years)
 
         if obj_value is None:
             cable_cost = None
@@ -274,7 +274,7 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
             if NL == 'OPF':
                 # OPF: losses from NL solver export
                 loss_MW = sum(line.P_loss for line in grid.lines_AC_ct) * grid.S_base
-                loss_cost = loss_MW * present_value_factor*grid.LCoE
+                loss_cost = loss_MW * pv_factor*grid.LCoE
                 cable_cost = 0
                 for line in grid.lines_AC_ct:
                     if line.active_config >= 0:
@@ -285,7 +285,7 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
                 from .ACDC_PF import Power_flow
                 Power_flow(grid)
                 loss_MW = sum(line.P_loss for line in grid.lines_AC_ct) * grid.S_base
-                loss_cost = loss_MW * present_value_factor*grid.LCoE
+                loss_cost = loss_MW * pv_factor*grid.LCoE
                 cable_cost = obj_value
                 opt_obj = cable_cost + MIP_obj_value
             else:
@@ -436,7 +436,7 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=8760,discount_rate=0.02
         ExportACDC_Lmodel_toPyflowACDC(model, grid, solver_results=model_results, tee=tee)
 
 
-    present_value = Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     for obj in weights_def:
         weights_def[obj]['v']=calculate_objective(grid,obj,True)
         weights_def[obj]['NPV']=weights_def[obj]['v']*present_value
@@ -497,7 +497,7 @@ def min_sub_connections(grid, max_flow=None, solver_name='glpk', crossings=True,
             print(f'Connecting {tn} turbines to {sn} substations')    
             print(f'max connection to substations: {ns}, max turbines per connection: {max_flow}, min turbines per string: {min_t_s}')
         for node in grid.nodes_AC:
-            if node.type == 'Slack':
+            if node.type == NodeType.SLACK:
                 node.ct_limit = ns
 
         t0 = time.perf_counter()
@@ -799,7 +799,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
                 # Try to get bound if available (CP-SAT may not provide in callback)
                 try:
                     bound = self.BestObjectiveBound()
-                except:
+                except Exception:
                     bound = None
                 
                 # Calculate relative gap
@@ -831,7 +831,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
             obj_val = solver.ObjectiveValue()
             # If objective is reasonable (not infinity), we have a solution
             feasible_solution_found = obj_val < 1e20
-        except:
+        except Exception:
             feasible_solution_found = False
     
     # Post-solve handling
@@ -904,7 +904,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
         # Get bound if available
         try:
             bound = solver.BestObjectiveBound()
-        except:
+        except Exception:
             bound = None
         
         # Calculate relative gap
@@ -1206,8 +1206,8 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
             line_obj = grid.lines_AC_ct[line]
             from_node = line_obj.fromNode
             to_node = line_obj.toNode
-            from_is_slack = from_node.type == 'Slack'
-            to_is_slack = to_node.type == 'Slack'
+            from_is_slack = from_node.type == NodeType.SLACK
+            to_is_slack = to_node.type == NodeType.SLACK
             
             if enable_cable_types:
                 if to_is_slack and not from_is_slack:
@@ -1412,7 +1412,7 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
 
             def flow_nonzero_positive(model, line):
                 line_obj = grid.lines_AC_ct[line]
-                to_is_slack = line_obj.toNode.type == 'Slack'
+                to_is_slack = line_obj.toNode.type == NodeType.SLACK
                 min_flow = min_turbines_per_string if to_is_slack else 1
                 if enable_cable_types:
                     M = max_ct_flow + 1
@@ -1422,7 +1422,7 @@ def _create_master_problem_pyomo(grid,crossings=True, max_flow=None,
 
             def flow_nonzero_negative(model, line):
                 line_obj = grid.lines_AC_ct[line]
-                from_is_slack = line_obj.fromNode.type == 'Slack'
+                from_is_slack = line_obj.fromNode.type == NodeType.SLACK
                 min_flow = min_turbines_per_string if from_is_slack else 1
                 if enable_cable_types:
                     M = max_ct_flow + 1
@@ -2118,7 +2118,7 @@ def _plot_feasible_solutions_subplots(results_mip, results_css, suptitle=None, s
 
 
 
-def simple_CSS(grid,NPV=True,n_years=25,Hy=8760,discount_rate=0.02,ObjRule=None,CSS_L_solver='gurobi',CSS_NL_solver='bonmin',time_limit=1200,NL=False,tee=False,export=True,fs=False):
+def simple_CSS(grid,NPV=True,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,ObjRule=None,CSS_L_solver='gurobi',CSS_NL_solver='bonmin',time_limit=1200,NL=False,tee=False,export=True,fs=False):
 
     grid.Array_opf = False
     if NL:

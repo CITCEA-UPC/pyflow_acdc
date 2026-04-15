@@ -55,7 +55,7 @@ def _tiny_array_grid():
 def test_static_tep_model_builds_without_solving():
     pytest.importorskip("pyomo")
 
-    grid, _ = pyf.case39(TEP=True)
+    grid, _ = pyf.cases['case39'](TEP=True)
     model, obj_tep, obj_opf, _, _ = _prepare_TEP_model(
         grid,
         NPV=True,
@@ -101,7 +101,7 @@ def test_mp_tep_build_phase_runs_without_real_solver(monkeypatch):
 
     monkeypatch.setattr("pyflow_acdc.ACDC_MultiPeriod_TEP.pyomo_model_solve", _fake_solve)
 
-    grid, _ = pyf.case39(TEP=True)
+    grid, _ = pyf.cases['case39'](TEP=True)
     model, model_results, timing_info, solver_stats = multi_period_transmission_expansion(
         grid,
         inv_periods=[1.0, 1.05],
@@ -133,7 +133,7 @@ def test_static_tep_transmission_expansion_obj_scaling_branch(monkeypatch):
 
     monkeypatch.setattr("pyflow_acdc.ACDC_Static_TEP.pyomo_model_solve", _fake_solve)
 
-    grid, _ = pyf.case39(TEP=True)
+    grid, _ = pyf.cases['case39'](TEP=True)
     model, model_results, timing_info, solver_stats = transmission_expansion(
         grid,
         ObjRule={"Energy_cost": 1},
@@ -162,7 +162,7 @@ def test_static_tep_transmission_expansion_alpha_branch(monkeypatch):
 
     monkeypatch.setattr("pyflow_acdc.ACDC_Static_TEP.pyomo_model_solve", _fake_solve)
 
-    grid, _ = pyf.case39(TEP=True)
+    grid, _ = pyf.cases['case39'](TEP=True)
     model, model_results, timing_info, solver_stats = transmission_expansion(
         grid,
         ObjRule={"Energy_cost": 1},

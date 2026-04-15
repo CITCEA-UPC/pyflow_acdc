@@ -95,7 +95,7 @@ def darken_color(color, factor=0.6):
     
     return hex_color
 
-def create_geometries(grid):
+def create_geometries_from_coords(grid):
     for node in grid.nodes_AC+grid.nodes_DC:
         if node.x_coord is not None and node.y_coord is not None and node.geometry is None:
             node.geometry = Point(node.x_coord, node.y_coord)
@@ -110,6 +110,8 @@ def create_geometries(grid):
     for gen in grid.Generators+grid.Generators_DC+grid.RenSources:
         if gen.x_coord is not None and gen.y_coord is not None and gen.geometry is None:
             gen.geometry = Point(gen.x_coord, gen.y_coord)
+
+
 
 def plot_folium_network(
     grid,
@@ -135,7 +137,7 @@ def plot_folium_network(
         name = grid.name
     update_hovertexts(grid, text) 
 
-    create_geometries(grid)
+    create_geometries_from_coords(grid)
   
     
     G = grid.Graph_toPlot  # Assuming this is your main graph object
@@ -844,7 +846,7 @@ def plot_folium_ts_results(
     if name is None:
         name = f"{grid.name}_ts_results"
 
-    create_geometries(grid)
+    create_geometries_from_coords(grid)
     ac_loading = grid.time_series_results.get("ac_loading", None)
     dc_loading = grid.time_series_results.get("dc_loading", None)
     ac_pref = ac_loading.add_prefix("AC_Load_") if ac_loading is not None else pd.DataFrame()
@@ -1067,7 +1069,7 @@ def plot_folium_inv_results(
     if name is None:
         name = f"{grid.name}_inv_results"
 
-    create_geometries(grid)
+    create_geometries_from_coords(grid)
 
     def _pick_results_df():
         if source == "auto":

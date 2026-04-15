@@ -5,6 +5,8 @@ Analysis and utility helpers for pyflow_acdc grids.
 import numpy as np
 import pandas as pd
 
+from .constants import SQRT_3
+
 
 __all__ = [
     "pol2cart",
@@ -74,7 +76,7 @@ def Cable_parameters(S_base, R, L_mH, C_uF, G_uS, A_rating, kV_base, km, N_cable
         MVA_rating = N_cables * A_rating * kV_base / (1000)
         # IN DC N cables is always 1 as the varible is used directly in the formulation
     else:
-        MVA_rating = N_cables * A_rating * kV_base * np.sqrt(3) / (1000)
+        MVA_rating = N_cables * A_rating * kV_base * SQRT_3 / (1000)
 
     C = C_uF * (10 ** (-6))
     L = L_mH / 1000

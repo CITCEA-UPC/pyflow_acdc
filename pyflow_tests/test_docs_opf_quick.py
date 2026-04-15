@@ -11,7 +11,7 @@ def test_docs_opf_quick():
 
     obj = {'Energy_cost': 1}
 
-    [grid, res] = pyf.case39_acdc()
+    [grid, res] = pyf.cases['case39_acdc']()
 
     model, timing_info, model_res,solver_stats= pyf.Optimal_PF(grid, ObjRule=obj)
 

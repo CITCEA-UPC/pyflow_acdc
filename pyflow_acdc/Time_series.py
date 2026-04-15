@@ -13,7 +13,8 @@ from scipy import stats as st
 import time
 
 from .grid_analysis import analyse_grid, grid_state
-from .ACDC_PF import AC_PowerFlow, DC_PowerFlow, ACDC_sequential 
+from .ACDC_PF import AC_PowerFlow, DC_PowerFlow, ACDC_sequential
+from .constants import DEFAULT_TOLERANCE, DEFAULT_PF_MAX_ITER, BINARY_THRESHOLD, HOURS_PER_YEAR, NodeType
 
 
 # Base __all__ with functions that don't require OPF
@@ -51,11 +52,6 @@ def find_value_from_cdf(cdf, x):
             return i
     return None
 
-
-
-def pack_variables(*args):
-    return args
-
 def Time_series_PF(grid):
     if grid.nodes_AC == None:
         print("only DC")
@@ -92,12 +88,12 @@ def combine_TS(ts_list, rep_year=False):
         for df in ts_list:
             for col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors='coerce')  # 'coerce' will convert invalid values to NaN
-            if len(df) > 8760:
+            if len(df) > HOURS_PER_YEAR:
                 # remove 29th feb
                 df = df.drop(df.index[1416:1440])
                 df = df.reset_index(drop=True)
-            elif len(df) < 8760:
-                df = df.reindex(range(8760), method='ffill')
+            elif len(df) < HOURS_PER_YEAR:
+                df = df.reindex(range(HOURS_PER_YEAR), method='ffill')
             processed_dfs.append(df)
             
         # Calculate element-wise average across all dataframes
@@ -180,7 +176,7 @@ def update_grid_data(grid,ts, idx,price_zone_restrictions=False,use_clusters=Fal
 def update_ac_nodes(grid, idx):
     row_data = {'time': idx+1}
     for node in grid.nodes_AC:
-        if node.type == 'Slack':
+        if node.type == NodeType.SLACK:
             PGi = (node.P_INJ - node.P_s - node.PGi_ren * node.curtailment + node.PLi).item()
             QGi = node.Q_INJ - node.Q_s - node.Q_s_fx + node.QLi
             if node.S_rating !=0:
@@ -280,7 +276,7 @@ def _calculate_line_loading_from_model(grid,model,idx):
             for line in grid.lines_AC_rec:
                 G = grid.Graph_line_to_Grid_index_AC[line]
                 l = line.lineNumber
-                line.rec_branch = True if lines_AC_REP[l] >= 0.99999 else False
+                line.rec_branch = True if lines_AC_REP[l] >= BINARY_THRESHOLD else False
                 line.P_loss = lines_AC_REC_P_loss[l]
                 state = 1 if line.rec_branch else 0
                 ac_from = (lines_AC_REC_fromP[l][state] + 1j*lines_AC_REC_fromQ[l][state])
@@ -424,13 +420,12 @@ def calculate_pn_min_max_from_model(grid, model, idx):
     return pn_min, pn_max, a, b
 
 
-def TS_ACDC_PF(grid, start=1, end=99999,print_step=False,tol_lim=1e-10, maxIter=100):
+def TS_ACDC_PF(grid, start=1, end=None,print_step=False,tol_lim=DEFAULT_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
     idx = start-1
     TS_len = len(grid.Time_series[0].data)
-    if TS_len < end:
-        max_time = TS_len
-    else:
-        max_time = end
+    if end is None:
+        end = TS_len
+    max_time = min(TS_len, end)
         
     Time_series_res = []
     Time_series_line_res = []
@@ -529,27 +524,15 @@ def _modify_parameters(grid,model,Price_Zones):
     gen_AC_info, gen_DC_info, gen_rs_info = gen_info
     lf,qf,fc,np_gen,lista_gen = gen_AC_info
     P_renSource, np_rsgen, lista_rs = gen_rs_info
-    
-    
-    # lista_nodos_AC, lista_lineas_AC,lista_gen,lista_rs, AC_slack, AC_PV = AC_Lists
+
     _,_,_,_, P_know,Q_know,price = AC_nodes_info
-    #S_lineAC_limit,S_lineACexp_limit,S_lineACtf_limit,m_tf_og,NP_lineAC = AC_lines_info
     if DCmode:
         DC_Lists,DC_nodes_info,_,_ = DC_info
         lf_DC,qf_DC,fc_DC,np_gen_DC,lista_gen_DC = gen_DC_info
-        # lista_nodos_DC, lista_lineas_DC,DC_slack ,DC_nodes_connected_conv   = DC_Lists
         _, _ ,_,P_known_DC,price_dc  = DC_nodes_info
-        # P_lineDC_limit,NP_lineDC    = DC_lines_info
-        
-            
-        # Conv_Lists, Conv_Volt = Conv_info
-        
-        # lista_conv,np_conv_i = Conv_Lists
-        # u_c_min,u_c_max,S_limit_conv,P_conv_limit = Conv_Volt
-    
-    _,Price_Zone_lim = Price_Zone_info   
-    
-    # lista_M, node2price_zone ,price_zone2node=Price_Zone_Lists
+
+    _,Price_Zone_lim = Price_Zone_info
+
     price_zone_as,price_zone_bs,PGL_min, PGL_max = Price_Zone_lim
     
     if Price_Zones:
@@ -610,13 +593,14 @@ def _modify_parameters(grid,model,Price_Zones):
 def TS_ACDC_OPF(
     grid,
     start=1,
-    end=99999,
+    end=None,
     ObjRule=None,
     price_zone_restrictions=False,
     expand=False,
     print_step=False,
     limit_flow_rate=True,
     use_clusters=False,
+    n_clusters=None,
     solver='ipopt',
     obj_scaling=1.0,
     warm_start_mode='roll',
@@ -630,10 +614,9 @@ def TS_ACDC_OPF(
     total_solve_time  = 0
     total_update_time = 0
     count = 0
-    if TS_len < end:
-        max_time = TS_len
-    else:
-        max_time = end
+    if end is None:
+        end = TS_len
+    max_time = min(TS_len, end)
     
     Time_series_voltages = []
     Time_series_line_res = []
@@ -677,9 +660,6 @@ def TS_ACDC_OPF(
            if key in weights_def:
                weights_def[key]['w'] = ObjRule[key]
 
-    # if OnlyGen == False:
-    #     grid.OnlyGen=False
-    
     PV_set=False
     if  weights_def['PZ_cost_of_generation']['w']!=0 :
         price_zone_restrictions=True
@@ -720,22 +700,22 @@ def TS_ACDC_OPF(
         
     infeasible= 0
     inf_list=[]
-    n_clusters = 1
-    if use_clusters:
+    if not use_clusters:
+        n_clusters = 1
+    else:
         available_clusters = list(grid.Time_series[0].data_clustered.keys())
         if len(available_clusters) == 0:
             use_clusters = False
             n_clusters = None
             print("No clusters available")
             print("Please run clustering first,running full Time series")
+        elif n_clusters is not None:
+            if n_clusters not in available_clusters:
+                raise ValueError(f"Invalid cluster number {n_clusters}. Available clusters: {available_clusters}")
         elif len(available_clusters) == 1:
             n_clusters = available_clusters[0]
         else:
-            print(f"Multiple clusters available: {available_clusters}")
-            print("Please select a cluster")
-            n_clusters = int(input("Enter the cluster number: "))
-            if n_clusters not in available_clusters:
-                raise ValueError(f"Invalid cluster number {n_clusters}. Available clusters: {available_clusters}")
+            raise ValueError(f"Multiple clusters available: {available_clusters}. Pass n_clusters= to select one.")
         max_time  = len(grid.Time_series[0].data_clustered[n_clusters])
 
     while idx < max_time:
@@ -869,7 +849,7 @@ def TS_ACDC_OPF(
     # Persist timestep indices that failed / were skipped during the TS loop.
     # These are 1-based indices (matching the public TS time step numbering).
     grid.ts_infeasible_indices = sorted(set(inf_list))
-    touple = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
+    ts_results = pack_variables(Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
                             Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
                             Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
                             Time_series_Opt_res_P_Load,Time_series_price,Time_series_PZ_cost_kEUR,Time_series_PZ_load,Time_series_net_price_zone_power,
@@ -880,7 +860,7 @@ def TS_ACDC_OPF(
     
     # Always persist time-series result frames for plotting/reporting.
     # export_to_grid only controls whether final model state is written back to grid objects.
-    save_TS_to_grid(grid, touple, infeasible)
+    save_TS_to_grid(grid, ts_results, infeasible)
     grid.OPF_obj = weights_def
     grid.OPF_run = True
     grid.Time_series_ran = True
@@ -898,13 +878,13 @@ def TS_ACDC_OPF(
     return timing_info
 
 
-def save_TS_to_grid (grid,touple,infeasible):
+def save_TS_to_grid (grid,ts_results,infeasible):
     # Create the DataFrame from the list of rows
     (Time_series_conv_res,Time_series_line_res,Time_series_grid_loading,
     Time_series_Opt_res_P_conv_AC,Time_series_Opt_res_Q_conv_AC,Time_series_Opt_res_P_conv_DC,
     Time_series_Opt_res_P_extGrid,Time_series_Opt_res_Q_extGrid,Time_series_Opt_curtailment,
     Time_series_Opt_res_P_Load,Time_series_price,Time_series_PZ_cost_kEUR,Time_series_PZ_load,Time_series_net_price_zone_power,
-    Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b,Time_series_res_available)= touple
+    Time_series_PN_min,Time_series_PN_max,Time_series_a,Time_series_b,Time_series_res_available)= ts_results
 
     def to_dataframe(data):
         df = pd.DataFrame(data)

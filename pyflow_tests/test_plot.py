@@ -197,7 +197,7 @@ def test_moray_east_assign_and_plot_outputs(tmp_path):
 
 
 def test_ns_mtdc_generates_hovertexts():
-    grid, _res = pyf.NS_MTDC()
+    grid, _res = pyf.cases['NS_MTDC']()
 
     # Exercise hovertext generation paths on a representative built-in grid.
     update_hovertexts(grid, "data")

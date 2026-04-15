@@ -15,7 +15,7 @@ def run_test():
     """Test CIGRE B4 power flow."""
     start_time = time.perf_counter()
 
-    grid, res = pyf.CigreB4_ACDC()
+    grid, res = pyf.cases['CigreB4_ACDC']()
 
     t = pyf.ACDC_sequential(grid, Droop_PF=True,maxIter=500)
     #model, timing_info, model_res,solver_stats=pyf.Optimal_PF(grid)

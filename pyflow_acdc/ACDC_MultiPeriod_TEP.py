@@ -17,8 +17,9 @@ from .ACDC_Static_TEP import (
 )
 from .grid_analysis import analyse_grid, current_fuel_type_distribution
 from .Time_series import _modify_parameters, TS_ACDC_OPF, results_TS_OPF
-from .Graph_and_plot import save_network_svg, create_geometries
+from .Graph_and_plot import save_network_svg, create_geometries_from_layout
 from .Results_class import Results
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, PF_INNER_TOLERANCE, present_value_factor
 
 
 
@@ -31,9 +32,6 @@ __all__ = [
     'run_ts_opf_for_investment_period',
     'run_opf_for_all_investment_periods',
 ]
-
-def pack_variables(*args):
-    return args
 
 
 def _snapshot_ts_results(grid):
@@ -176,7 +174,7 @@ def _update_grid_investment_period(grid, i):
 
     for element in grid.Generators + grid.RenSources + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC:
         inv = element.investment_decisions
-        element.lamda_capex = _inv_at(inv, 'lamda_capex', idx, element.lamda_capex)
+        element.lambda_capex = _inv_at(inv, 'lambda_capex', idx, element.lambda_capex)
 
 
 def _MP_TEP_constraints(model,grid):
@@ -187,12 +185,12 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_rsgen_decomision(model,rs,i):
             ren_source = grid.RenSources[rs]
-            planned_decomision = _inv_decision(ren_source, 'planned_decomision')[i]
+            planned_decommission = _inv_decision(ren_source, 'planned_decommission')[i]
             decomision_period = ren_source.decomision_period
             if i < decomision_period:
-                return model.decomision_rsgen[rs,i] == planned_decomision
+                return model.decomision_rsgen[rs,i] == planned_decommission
             else:
-                return model.decomision_rsgen[rs,i] == planned_decomision + model.installed_rsgen[rs,i-decomision_period]
+                return model.decomision_rsgen[rs,i] == planned_decommission + model.installed_rsgen[rs,i-decomision_period]
         model.MP_rsgen_decomision_constraint = pyo.Constraint(model.ren_sources,model.inv_periods,rule=MP_rsgen_decomision)
 
         def MP_rsgen_installation(model,rs,i):
@@ -213,12 +211,12 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_gen_decomision(model,g,i):
             gen = grid.Generators[g]
-            planned_decomision = _inv_decision(gen, 'planned_decomision')[i]
+            planned_decommission = _inv_decision(gen, 'planned_decommission')[i]
             decomision_period = gen.decomision_period
             if i < decomision_period:
-                return model.decomision_gen[g,i] == planned_decomision
+                return model.decomision_gen[g,i] == planned_decommission
             else:
-                return model.decomision_gen[g,i] == planned_decomision + model.installed_gen[g,i-decomision_period]
+                return model.decomision_gen[g,i] == planned_decommission + model.installed_gen[g,i-decomision_period]
         model.MP_gen_decomision_constraint = pyo.Constraint(model.gen_AC,model.inv_periods,rule=MP_gen_decomision)
 
         def MP_gen_installation(model,g,i):
@@ -241,12 +239,12 @@ def _MP_TEP_constraints(model,grid):
 
             def MP_AC_line_decomision(model, l, i):
                 line = grid.lines_AC_exp[l]
-                planned_decomision = _inv_decision(line, 'planned_decomision')[i]
+                planned_decommission = _inv_decision(line, 'planned_decommission')[i]
                 decomision_period = line.decomision_period
                 if i < decomision_period:
-                    return model.decomision_ACline[l,i] == planned_decomision
+                    return model.decomision_ACline[l,i] == planned_decommission
                 else:
-                    return model.decomision_ACline[l,i] == planned_decomision + model.installed_ACline[l,i-decomision_period]
+                    return model.decomision_ACline[l,i] == planned_decommission + model.installed_ACline[l,i-decomision_period]
             model.MP_AC_line_decomision_constraint = pyo.Constraint(model.lines_AC_exp, model.inv_periods, rule=MP_AC_line_decomision)
 
             def MP_AC_line_installation(model, l, i):
@@ -267,12 +265,12 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_DC_line_decomision(model, l, i):
             line = grid.lines_DC[l]
-            planned_decomision = _inv_decision(line, 'planned_decomision')[i]
+            planned_decommission = _inv_decision(line, 'planned_decommission')[i]
             decomision_period = line.decomision_period
             if i < decomision_period:
-                return model.decomision_DCline[l,i] == planned_decomision
+                return model.decomision_DCline[l,i] == planned_decommission
             else:
-                return model.decomision_DCline[l,i] == planned_decomision + model.installed_DCline[l,i-decomision_period]
+                return model.decomision_DCline[l,i] == planned_decommission + model.installed_DCline[l,i-decomision_period]
         model.MP_DC_line_decomision_constraint = pyo.Constraint(model.lines_DC, model.inv_periods, rule=MP_DC_line_decomision)
 
         def MP_DC_line_installation(model, l, i):
@@ -293,12 +291,12 @@ def _MP_TEP_constraints(model,grid):
 
         def MP_Conv_decomision(model, c, i):
             conv = grid.Converters_ACDC[c]
-            planned_decomision = _inv_decision(conv, 'planned_decomision')[i]
+            planned_decommission = _inv_decision(conv, 'planned_decommission')[i]
             decomision_period = conv.decomision_period
             if i < decomision_period:
-                return model.decomision_Conv[c,i] == planned_decomision
+                return model.decomision_Conv[c,i] == planned_decommission
             else:
-                return model.decomision_Conv[c,i] == planned_decomision + model.installed_Conv[c,i-decomision_period]
+                return model.decomision_Conv[c,i] == planned_decommission + model.installed_Conv[c,i-decomision_period]
         model.MP_Conv_decomision_constraint = pyo.Constraint(model.conv, model.inv_periods, rule=MP_Conv_decomision)
 
         def MP_Conv_installation(model, c, i):
@@ -463,14 +461,14 @@ def _MP_TEP_variables(model, grid):
         def decom_rs_bounds(model,rs,i):
             ren_source = grid.RenSources[rs]
             if ren_source.np_rsgen_opf:
-                planned_decomision = _inv_decision(ren_source, 'planned_decomision')[i]
+                planned_decommission = _inv_decision(ren_source, 'planned_decommission')[i]
                 decomision_period = ren_source.decomision_period
                 if i < decomision_period: 
-                    return (0,planned_decomision)
+                    return (0,planned_decommission)
                 else:
                     planned_install = planned_installation_rsgen_init(model, rs, i-decomision_period)
                     max_install = np_rsgen_max_install[(rs, i-decomision_period)]
-                    return (0,planned_install+max_install+planned_decomision)  
+                    return (0,planned_install+max_install+planned_decommission)  
             else:
                 return (0,0)  
         model.decomision_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_rs_bounds)
@@ -506,14 +504,14 @@ def _MP_TEP_variables(model, grid):
         def decom_gen_bounds(model,g,i):
             gen = grid.Generators[g]
             if gen.np_gen_opf:
-                planned_decomision = _inv_decision(gen, 'planned_decomision')[i]
+                planned_decommission = _inv_decision(gen, 'planned_decommission')[i]
                 decomision_period = gen.decomision_period
                 if i < decomision_period: 
-                    return (0,planned_decomision)   
+                    return (0,planned_decommission)   
                 else:
                     planned_install = planned_installation_gen_init(model, g, i-decomision_period)
                     max_install = np_gen_max_install[(g, i-decomision_period)]
-                    return (0,planned_install+max_install+planned_decomision)  
+                    return (0,planned_install+max_install+planned_decommission)  
         model.decomision_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_gen_bounds)
 
     if grid.ACmode:
@@ -545,14 +543,14 @@ def _MP_TEP_variables(model, grid):
             def decom_ACline_bounds(model,l,i):
                 line = grid.lines_AC_exp[l]
                 if line.np_line_opf:
-                    planned_decomision = _inv_decision(line, 'planned_decomision')[i]
+                    planned_decommission = _inv_decision(line, 'planned_decommission')[i]
                     decomision_period = line.decomision_period
                     if i < decomision_period: 
-                        return (0,planned_decomision)   
+                        return (0,planned_decommission)   
                     else:
                         planned_install = planned_installation_ACline_init(model, l, i-decomision_period)
                         max_install = np_acline_max_install[(l, i-decomision_period)]
-                        return (0,planned_install+max_install+planned_decomision)  
+                        return (0,planned_install+max_install+planned_decommission)  
             
             model.decomision_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_ACline_bounds)
     if grid.DCmode:
@@ -584,14 +582,14 @@ def _MP_TEP_variables(model, grid):
         def decom_DCline_bounds(model,l,i):
             line = grid.lines_DC[l]
             if line.np_line_opf:
-                planned_decomision = _inv_decision(line, 'planned_decomision')[i]
+                planned_decommission = _inv_decision(line, 'planned_decommission')[i]
                 decomision_period = line.decomision_period
                 if i < decomision_period: 
-                    return (0,planned_decomision)   
+                    return (0,planned_decommission)   
                 else:
                     planned_install = planned_installation_DCline_init(model, l, i-decomision_period)
                     max_install = np_dcline_max_install[(l, i-decomision_period)]
-                    return (0,planned_install+max_install+planned_decomision)  
+                    return (0,planned_install+max_install+planned_decommission)  
             else:
                 return (0,0)  
         model.decomision_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_DCline_bounds)
@@ -624,14 +622,14 @@ def _MP_TEP_variables(model, grid):
         def decom_Conv_bounds(model,c,i):
             conv = grid.Converters_ACDC[c]
             if conv.np_conv_opf:
-                planned_decomision = _inv_decision(conv, 'planned_decomision')[i]
+                planned_decommission = _inv_decision(conv, 'planned_decommission')[i]
                 decomision_period = conv.decomision_period
                 if i < decomision_period: 
-                    return (0,planned_decomision)   
+                    return (0,planned_decommission)   
                 else:
                     planned_install = planned_installation_Conv_init(model, c, i-decomision_period)
                     max_install = np_conv_max_install[(c, i-decomision_period)]
-                    return (0,planned_install+max_install+planned_decomision)  
+                    return (0,planned_install+max_install+planned_decommission)  
             else:
                 return (0,0)  
         model.decomision_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=0,bounds=decom_Conv_bounds)
@@ -640,9 +638,9 @@ def _validate_grid_for_MP_TEP(grid):
     Fast pre-solve validation for MP TEP inputs.
 
     Current checks:
-    - planned_decomision[p] >= 0 for all periods
-    - sum(planned_decomision) <= pre-existing stock
-    - cumulative planned_decomision[t] <= stock[t] where
+    - planned_decommission[p] >= 0 for all periods
+    - sum(planned_decommission) <= pre-existing stock
+    - cumulative planned_decommission[t] <= stock[t] where
       stock[t] = pre-existing + cumulative planned_installation[t]
     """
     def _as_float_series(values, label, name, key):
@@ -651,10 +649,10 @@ def _validate_grid_for_MP_TEP(grid):
             raise ValueError(f"{label} '{name}' has empty {key} series")
         return series
 
-    def _validate_element_planned_decomision(element, base_count, label):
+    def _validate_element_planned_decommission(element, base_count, label):
         inv = element.investment_decisions
         name = element.name
-        required_keys = ('planned_installation', 'planned_decomision', 'max_inv', 'np_dynamic')
+        required_keys = ('planned_installation', 'planned_decommission', 'max_inv', 'np_dynamic')
         for key in required_keys:
             if key not in inv:
                 raise ValueError(f"{label} '{name}' is missing investment_decisions['{key}']")
@@ -668,11 +666,11 @@ def _validate_grid_for_MP_TEP(grid):
             raise ValueError(
                 f"{label} '{name}' has mismatched investment series lengths: "
                 f"planned_installation={series['planned_installation'].size}, "
-                f"planned_decomision={series['planned_decomision'].size}, "
+                f"planned_decommission={series['planned_decommission'].size}, "
                 f"max_inv={series['max_inv'].size}, np_dynamic={series['np_dynamic'].size}"
             )
         planned_installation = series['planned_installation']
-        planned_decomision = series['planned_decomision']
+        planned_decommission = series['planned_decommission']
 
         if np.any(planned_installation < 0):
             bad_idx = np.where(planned_installation < 0)[0][0]
@@ -681,11 +679,11 @@ def _validate_grid_for_MP_TEP(grid):
                 f"{label} '{name}' has negative planned_installation at period {int(bad_idx)}: {bad_val}"
             )
 
-        if np.any(planned_decomision < 0):
-            bad_idx = np.where(planned_decomision < 0)[0][0]
-            bad_val = float(planned_decomision[bad_idx])
+        if np.any(planned_decommission < 0):
+            bad_idx = np.where(planned_decommission < 0)[0][0]
+            bad_val = float(planned_decommission[bad_idx])
             raise ValueError(
-                f"{label} '{name}' has negative planned_decomision at period {int(bad_idx)}: {bad_val}"
+                f"{label} '{name}' has negative planned_decommission at period {int(bad_idx)}: {bad_val}"
             )
 
         if np.any(series['max_inv'] < 0):
@@ -705,14 +703,14 @@ def _validate_grid_for_MP_TEP(grid):
         base_count = float(base_count)
         if base_count < 0:
             raise ValueError(f"{label} '{name}' has negative base count: {base_count}")
-        total_decom = float(np.sum(planned_decomision))
+        total_decom = float(np.sum(planned_decommission))
         if total_decom > base_count + 1e-9:
             raise ValueError(
                 f"{label} '{name}' violates baseline decommission check: "
-                f"sum(planned_decomision)={total_decom} > base_count={base_count}"
+                f"sum(planned_decommission)={total_decom} > base_count={base_count}"
             )
 
-        cum_decom = np.cumsum(planned_decomision)
+        cum_decom = np.cumsum(planned_decommission)
         cum_install = np.cumsum(planned_installation)
         available_stock = base_count + cum_install
         bad = np.where(cum_decom > available_stock + 1e-9)[0]
@@ -755,14 +753,14 @@ def _validate_grid_for_MP_TEP(grid):
         for element in elements:
             if is_active(element):
                 _validate_static_parameters(element, base_count(element), max_count(element), label)
-                _validate_element_planned_decomision(element, base_count(element), label)
+                _validate_element_planned_decommission(element, base_count(element), label)
 
 def multi_period_transmission_expansion(
     grid,
-    inv_periods=[],
+    inv_periods=None,
     n_years=10,
-    Hy=8760,
-    discount_rate=0.02,
+    Hy=HOURS_PER_YEAR,
+    discount_rate=DEFAULT_DISCOUNT_RATE,
     ObjRule=None,
     solver='bonmin',
     time_limit=None,
@@ -827,7 +825,7 @@ def multi_period_transmission_expansion(
     for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC+grid.RenSources: 
         _calculate_decomision_period(element,n_years)
         
-    present_value_opf =   Hy*(1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value_opf = present_value_factor(Hy, discount_rate, n_years)
     for i in model.inv_periods:
         base_model_copy = base_model.clone()
         model.inv_model[i].transfer_attributes_from(base_model_copy)
@@ -975,7 +973,7 @@ def _initialize_MPTEP_sets_model(model,grid):
 
 
 def _period_base_cost(element, i):
-    return float(element._base_cost) * (1.0 + element.investment_decisions['lamda_capex'][i])
+    return float(element._base_cost) * (1.0 + element.investment_decisions['lambda_capex'][i])
 
 def _inv_model_obj(model,grid,i):
     inv_gen= 0
@@ -1323,7 +1321,7 @@ def _scenario_weight_for_frame(grid, t, n_clusters, clustering):
 
 
 def _validate_period_scenario_updates(grid, period_idx, frame_idx, n_clusters, clustering):
-    tol = 1e-8
+    tol = PF_INNER_TOLERANCE
     for pz in grid.Price_Zones:
         expected_curvature = _inv_decision(pz, 'curvature_factor')[period_idx]          
         if abs(float(pz.curvature_factor) - float(expected_curvature)) > tol:
@@ -1461,9 +1459,7 @@ def _build_period_scenario_block(
     for t in period_block.scenario_frames:
         period_block.scenario_model[t].obj.deactivate()
 
-    scaling_factor = Hy
-    if NPV:
-        scaling_factor *= (1 - (1 + discount_rate) ** -n_years) / discount_rate
+    scaling_factor = present_value_factor(Hy, discount_rate, n_years) if NPV else Hy
     expected_opf *= scaling_factor
     period_block.expected_opf = pyo.Expression(expr=expected_opf)
     period_block.obj = pyo.Objective(expr=period_block.expected_opf, sense=pyo.minimize)
@@ -1473,11 +1469,11 @@ def _build_period_scenario_block(
 
 def multi_period_MS_TEP(
     grid,
-    inv_periods=[],
+    inv_periods=None,
     NPV=True,
     n_years=10,
-    Hy=8760,
-    discount_rate=0.02,
+    Hy=HOURS_PER_YEAR,
+    discount_rate=DEFAULT_DISCOUNT_RATE,
     clustering_options=None,
     ObjRule=None,
     solver='bonmin',
@@ -1717,7 +1713,7 @@ def save_MP_TEP_period_svgs(
     for i in range(periods):
             # From DataFrame by names
         _set_grid_to_multiperiod_state(grid, i, Price_Zones) 
-        create_geometries(grid)
+        create_geometries_from_layout(grid)
 
         save_network_svg(
             grid,
@@ -1843,7 +1839,7 @@ def run_ts_opf_for_investment_period(
     grid,
     investment_period,
     start=1,
-    end=99999,
+    end=None,
     ObjRule=None,
     price_zone_restrictions=False,
     print_step=False,
@@ -1959,7 +1955,7 @@ def run_opf_for_all_investment_periods(
     save_grid_pkl: bool = False,
     MS: bool = False,
     ts_start: int = 1,
-    ts_end: int = 99999,
+    ts_end: int = None,
     ts_use_clusters: bool = True,
     ts_include_base_case: bool = True,
     ts_warm_start_mode: str = 'roll',

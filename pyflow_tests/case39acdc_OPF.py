@@ -2,7 +2,7 @@ import pyflow_acdc as pyf
 
 def case39acdc_OPF():
 
-    grid,res = pyf.case39_acdc()
+    grid,res = pyf.cases['case39_acdc']()
 
     model, model_res , timing_info, solver_stats=pyf.Optimal_PF(grid,ObjRule={'Energy_cost': 1})
 

@@ -9,6 +9,8 @@ import pyomo.environ as pyo
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
+from .constants import CT_SELECTION_THRESHOLD, BINARY_THRESHOLD
+
 
 __all__ = [
     'OPF_create_NLModel_ACDC',
@@ -205,7 +207,7 @@ def AC_variables(model,grid,AC_info,PV_set,limit_flow_rate=1,TEP=False):
     "AC Variables"
     #AC nodes variables
     model.V_AC       = pyo.Var(model.nodes_AC, bounds=lambda model, node: (u_min_ac[node], u_max_ac[node]), initialize=V_ini_AC)
-    model.thetha_AC  = pyo.Var(model.nodes_AC, bounds=(-1.6, 1.6), initialize=Theta_ini)
+    model.theta_AC  = pyo.Var(model.nodes_AC, bounds=(-1.6, 1.6), initialize=Theta_ini)
 
     model.P_known_AC = pyo.Param(model.nodes_AC, initialize=P_know,mutable=True)
     model.Q_known_AC = pyo.Param(model.nodes_AC, initialize=Q_know,mutable=True)
@@ -291,7 +293,7 @@ def AC_variables(model,grid,AC_info,PV_set,limit_flow_rate=1,TEP=False):
         return model.V_AC[node] == V_ini_AC[node]
 
     def AC_theta_slack_rule(model, node):
-        return model.thetha_AC[node] == Theta_ini[node]
+        return model.theta_AC[node] == Theta_ini[node]
 
     def AC_V_PV_rule(model, node):
         return model.V_AC[node] == V_ini_AC[node]
@@ -396,8 +398,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
     def P_AC_node_rule(model, node):
         P_sum = sum(
                 model.V_AC[node] * model.V_AC[k] *
-                (np.real(grid.Ybus_AC[node, k]) * pyo.cos(model.thetha_AC[node] - model.thetha_AC[k]) +
-                 np.imag(grid.Ybus_AC[node, k]) * pyo.sin(model.thetha_AC[node] - model.thetha_AC[k]))
+                (np.real(grid.Ybus_AC[node, k]) * pyo.cos(model.theta_AC[node] - model.theta_AC[k]) +
+                 np.imag(grid.Ybus_AC[node, k]) * pyo.sin(model.theta_AC[node] - model.theta_AC[k]))
                 for k in model.nodes_AC if grid.Ybus_AC[node, k] != 0   )   
         P_var = model.P_known_AC[node] + model.PGi_ren[node] + model.PGi_opt[node]
         if grid.DCmode:
@@ -417,8 +419,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
 
         Q_sum = sum(
             model.V_AC[node] * model.V_AC[k] *
-            (np.real(grid.Ybus_AC[node, k]) * pyo.sin(model.thetha_AC[node] - model.thetha_AC[k]) -
-             np.imag(grid.Ybus_AC[node, k]) * pyo.cos(model.thetha_AC[node] - model.thetha_AC[k]))
+            (np.real(grid.Ybus_AC[node, k]) * pyo.sin(model.theta_AC[node] - model.theta_AC[k]) -
+             np.imag(grid.Ybus_AC[node, k]) * pyo.cos(model.theta_AC[node] - model.theta_AC[k]))
             for k in model.nodes_AC if grid.Ybus_AC[node, k] != 0)
         Q_var = model.Q_known_AC[node] + model.QGi_ren[node] + model.QGi_opt[node]
         if grid.DCmode:
@@ -602,8 +604,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
             Gtt=np.real(Ybus[1,1])
             Gtf=np.real(Ybus[1,0])
             Btf=np.imag(Ybus[1,0])
-            thf=model.thetha_AC[f]
-            tht=model.thetha_AC[t]
+            thf=model.theta_AC[f]
+            tht=model.theta_AC[t]
             
             P= Vt*Vt*Gtt + Vf*Vt*(Gtf*pyo.cos(tht - thf) + Btf*pyo.sin(tht - thf))
         else:  # 'from'
@@ -612,8 +614,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
             Gff=np.real(Ybus[0,0])
             Gft=np.real(Ybus[0,1])
             Bft=np.imag(Ybus[0,1])
-            thf=model.thetha_AC[f]
-            tht=model.thetha_AC[t]
+            thf=model.theta_AC[f]
+            tht=model.theta_AC[t]
             
             P= Vf*Vf*Gff + Vf*Vt*(Gft*pyo.cos(thf - tht) + Bft*pyo.sin(thf - tht))
         return P
@@ -633,8 +635,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
             Vf=model.V_AC[f]
             Vt=model.V_AC[t]
         
-            thf=model.thetha_AC[f]
-            tht=model.thetha_AC[t]
+            thf=model.theta_AC[f]
+            tht=model.theta_AC[t]
             
             Btt=np.imag(Ybus[1,1])
             Gtf=np.real(Ybus[1,0])
@@ -648,8 +650,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
             Bff=np.imag(Ybus[0,0])
             Gft=np.real(Ybus[0,1])
             Bft=np.imag(Ybus[0,1])
-            thf=model.thetha_AC[f]
-            tht=model.thetha_AC[t]
+            thf=model.theta_AC[f]
+            tht=model.theta_AC[t]
             
             Q = -Vf*Vf*Bff + Vf*Vt*(Gft*pyo.sin(thf - tht) - Bft*pyo.cos(thf - tht))
         return Q
@@ -836,8 +838,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         Btf=np.imag(tf.Ybus_branch[1,0])
         
       
-        thf=model.thetha_AC[f]
-        tht=model.thetha_AC[t]
+        thf=model.theta_AC[f]
+        tht=model.theta_AC[t]
         
         
         Pto= Vt*Vt*Gtt+ Vf/model.tf_m[tf]*Vt*(Gtf*pyo.cos(tht - thf) + Btf*pyo.sin(tht - thf))
@@ -856,8 +858,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
        Bft=np.imag(tf.Ybus_branch[0,1])
        
     
-       thf=model.thetha_AC[f]
-       tht=model.thetha_AC[t]
+       thf=model.theta_AC[f]
+       tht=model.theta_AC[t]
        
        Pfrom= Vf*Vf*Gff/model.tf_m[tf]**2 + Vf/model.tf_m[tf]*Vt*(Gft*pyo.cos(thf - tht) + Bft*pyo.sin(thf - tht))
 
@@ -870,8 +872,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         Vf=model.V_AC[f]
         Vt=model.V_AC[t]
        
-        thf=model.thetha_AC[f]
-        tht=model.thetha_AC[t]
+        thf=model.theta_AC[f]
+        tht=model.theta_AC[t]
         
         Btt=np.imag(tf.Ybus_branch[1,1])
         Gtf=np.real(tf.Ybus_branch[1,0])
@@ -893,8 +895,8 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
        Gft=np.real(tf.Ybus_branch[0,1])
        Bft=np.imag(tf.Ybus_branch[0,1])
        
-       thf=model.thetha_AC[f]
-       tht=model.thetha_AC[t]
+       thf=model.theta_AC[f]
+       tht=model.theta_AC[t]
        
 
        Qfrom = -Vf*Vf*Bff/model.tf_m[tf]**2 + Vf/model.tf_m[tf]*Vt*(Gft*pyo.sin(thf - tht) - Bft*pyo.cos(thf - tht))
@@ -1144,9 +1146,6 @@ def DC_constraints(model,grid,TEP=False):
             P_var += model.P_DCDC[node]
         return P_sum ==  P_var
 
-    # def P_DC_noconv_rule(model, node):
-    #     return model.P_conv_DC[node] == 0
-    
     model.Gen_PREN_constraint_DC =pyo.Constraint(model.nodes_DC, rule=Gen_PREN_rule_DC)
     model.Gen_P_constraint_DC    =pyo.Constraint(model.nodes_DC, rule=Gen_P_rule_DC)
     model.P_DC_node_constraint = pyo.Constraint(model.nodes_DC, rule=P_DC_node_rule)
@@ -1312,14 +1311,14 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Zc = element.Zc
            Zeq = Ztf+Zc
            if Zeq == 0:
-               return model.thetha_AC[nAC]==model.th_c[conv]
+               return model.theta_AC[nAC]==model.th_c[conv]
            Yeq = 1/Zeq
            
            Gc = np.real(Yeq)  
            Bc = np.imag(Yeq)  
            
            Ps = -model.V_AC[nAC]**2*Gc+model.V_AC[nAC]*model.Uc[conv] * \
-               (Gc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv])+Bc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv]))
+               (Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
           
 
        elif element.Gtf == 0:
@@ -1327,13 +1326,13 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Bcf = Bc+Bf
 
            Ps = -model.V_AC[nAC]**2*Gc+model.V_AC[nAC]*model.Uc[conv] * \
-               (Gc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv])+Bc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv]))
+               (Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
           
            
        else:
 
            Ps = -model.V_AC[nAC]**2*Gtf+model.V_AC[nAC]*model.Uf[conv] * \
-               (Gtf*pyo.cos(model.thetha_AC[nAC]-model.th_f[conv])+Btf*pyo.sin(model.thetha_AC[nAC]-model.th_f[conv]))
+               (Gtf*pyo.cos(model.theta_AC[nAC]-model.th_f[conv])+Btf*pyo.sin(model.theta_AC[nAC]-model.th_f[conv]))
            
        return model.P_conv_s_AC[conv]-Ps==0
            
@@ -1361,19 +1360,19 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Gc = np.real(Yeq)  
            Bc = np.imag(Yeq)  
            
-           Qs = model.V_AC[nAC]**2*Bc+model.V_AC[nAC]*model.Uc[conv]*(Gc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv])-Bc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv]))
+           Qs = model.V_AC[nAC]**2*Bc+model.V_AC[nAC]*model.Uc[conv]*(Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
 
        elif element.Gtf == 0:
   
            Bcf = Bc+Bf
 
            Qs = model.V_AC[nAC]**2*Bcf+model.V_AC[nAC]*model.Uc[conv] * \
-                (Gc*pyo.sin(model.thetha_AC[nAC]-model.th_f[conv])-Bc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv]))
+                (Gc*pyo.sin(model.theta_AC[nAC]-model.th_f[conv])-Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
          
        else:
                          
            Qs = model.V_AC[nAC]**2*Btf+model.V_AC[nAC]*model.Uf[conv] * \
-               (Gtf*pyo.sin(model.thetha_AC[nAC]-model.th_f[conv])-Btf*pyo.cos(model.thetha_AC[nAC]-model.th_f[conv]))
+               (Gtf*pyo.sin(model.theta_AC[nAC]-model.th_f[conv])-Btf*pyo.cos(model.theta_AC[nAC]-model.th_f[conv]))
 
        return model.Q_conv_s_AC[conv]-Qs==0
        
@@ -1406,14 +1405,14 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Bc = np.imag(Yeq)  
            
            Pc = model.Uc[conv]**2*Gc-model.V_AC[nAC]*model.Uc[conv] * \
-               (Gc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv])-Bc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv]))
+               (Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
           
 
        elif element.Gtf == 0:
                     
            Bcf = Bc+Bf
         
-           Pc = model.Uc[conv]**2*Gc-model.V_AC[nAC]*model.Uc[conv]*(Gc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv])-Bc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv]))
+           Pc = model.Uc[conv]**2*Gc-model.V_AC[nAC]*model.Uc[conv]*(Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
            
            
        else:
@@ -1449,14 +1448,14 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            
            
            Qc = -model.Uc[conv]**2*Bc+model.V_AC[nAC]*model.Uc[conv] * \
-               (Gc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv])+Bc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv]))
+               (Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
 
        elif element.Gtf == 0:
            
            Bcf = Bc+Bf
 
            Qc = -model.Uc[conv]*model.Uc[conv]*Bc+model.V_AC[nAC]*model.Uc[conv] * \
-               (Gc*pyo.sin(model.thetha_AC[nAC]-model.th_c[conv])+Bc*pyo.cos(model.thetha_AC[nAC]-model.th_c[conv]))
+               (Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
      
        else:
            
@@ -1487,7 +1486,7 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Bf = element.Bf    
                 
            Psf = model.Uf[conv]*model.Uf[conv]*Gtf-model.Uf[conv]*model.V_AC[nAC] * \
-               (Gtf*pyo.cos(model.thetha_AC[nAC]-model.th_f[conv])-Btf*pyo.sin(model.thetha_AC[nAC]-model.th_f[conv]))
+               (Gtf*pyo.cos(model.theta_AC[nAC]-model.th_f[conv])-Btf*pyo.sin(model.theta_AC[nAC]-model.th_f[conv]))
       
            Pcf = -model.Uf[conv]*model.Uf[conv]*Gc+model.Uf[conv]*model.Uc[conv] * \
                (Gc*pyo.cos(model.th_f[conv]-model.th_c[conv])+Bc*pyo.sin(model.th_f[conv]-model.th_c[conv]))
@@ -1518,7 +1517,7 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
 
          
            Qsf = -model.Uf[conv]**2*Btf+model.Uf[conv]*model.V_AC[nAC] * \
-               (Gtf*pyo.sin(model.thetha_AC[nAC]-model.th_f[conv])+Btf*pyo.cos(model.thetha_AC[nAC]-model.th_f[conv]))
+               (Gtf*pyo.sin(model.theta_AC[nAC]-model.th_f[conv])+Btf*pyo.cos(model.theta_AC[nAC]-model.th_f[conv]))
 
          
            Qcf = model.Uf[conv]**2*Bc+model.Uf[conv]*model.Uc[conv] * \
@@ -1722,17 +1721,15 @@ def price_zone_constraints(model,grid,Price_Zone_info):
             return pyo.Constraint.Skip
     
     def node_price_set_AC(model,node):
-        try: 
+        if node in node2price_zone['AC']:
             price_zone=node2price_zone['AC'][node]
-            return model.price_zone_price[price_zone]== model.price[node] 
-        except:
-            return model.price[node]==0
+            return model.price_zone_price[price_zone]== model.price[node]
+        return model.price[node]==0
     def node_price_set_DC(model,node):
-        try: 
+        if node in node2price_zone['DC']:
             price_zone=node2price_zone['DC'][node]
-            return model.price_zone_price[price_zone]== model.price_dc[node] 
-        except:
-            return model.price_dc[node]==0
+            return model.price_zone_price[price_zone]== model.price_dc[node]
+        return model.price_dc[node]==0
     
     
     def P_price_zone(model,price_zone):
@@ -2167,7 +2164,7 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
         grid.Theta_V_AC = np.zeros(grid.nn_AC)
 
         V_AC_values     = {k: np.float64(pyo.value(v)) for k, v in model.V_AC.items()}
-        theta_AC_values = {k: np.float64(pyo.value(v)) for k, v in model.thetha_AC.items()}
+        theta_AC_values = {k: np.float64(pyo.value(v)) for k, v in model.theta_AC.items()}
         PGi_opt_values  = {k: np.float64(pyo.value(v)) for k, v in model.PGi_opt.items()}
         QGi_opt_values  = {k: np.float64(pyo.value(v)) for k, v in model.QGi_opt.items()}
         PGi_ren_values  = {k: np.float64(pyo.value(v)) for k, v in model.PGi_ren.items()}
@@ -2238,7 +2235,7 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
             
             def process_line_AC_REP(line):
                 l = line.lineNumber
-                line.rec_branch = True if lines_AC_REP[l] >= 0.99999 else False
+                line.rec_branch = True if lines_AC_REP[l] >= BINARY_THRESHOLD else False
                 line.P_loss = lines_AC_REC_P_loss[l]
                 state = 1 if line.rec_branch else 0
                 line.fromS = (lines_AC_REC_fromP[l][state] + 1j*lines_AC_REC_fromQ[l][state])
@@ -2258,7 +2255,7 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
             
             def process_line_AC_CT(line):
                 l = line.lineNumber
-                ct_selected = [lines_AC_CT[l][ct] >= 0.90  for ct in model.ct_set]
+                ct_selected = [lines_AC_CT[l][ct] >= CT_SELECTION_THRESHOLD  for ct in model.ct_set]
                 if any(ct_selected):
                     line.active_config = np.where(ct_selected)[0][0]
                     ct = list(model.ct_set)[line.active_config]
@@ -2367,7 +2364,8 @@ def ExportACDC_NLmodel_toPyflowACDC(model,grid,Price_Zones,TEP=False):
             with ThreadPoolExecutor() as executor:
                 executor.map(process_line_DC_TEP, grid.lines_DC)
 
-        
+            grid.create_Ybus_DC()
+
         if grid.CDC:
             P_DCDC_to_values = {k: np.float64(pyo.value(v)) for k, v in model.cn_DCDC_to.items()}
             P_DCDC_from_values = {k: np.float64(pyo.value(v)) for k, v in model.cn_DCDC_from.items()}

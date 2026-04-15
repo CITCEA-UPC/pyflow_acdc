@@ -14,6 +14,7 @@ __all__ = ['Optimal_L_CSS_ortools']
 
 from .ACDC_OPF import obj_w_rule, calculate_objective
 from .grid_analysis import analyse_grid
+from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
 
 try:
     from ortools.linear_solver import pywraplp
@@ -24,8 +25,8 @@ except ImportError:
 
 # ── Main entry point ────────────────────────────────────────────────────────
 
-def Optimal_L_CSS_ortools(grid, OPEX=True, NPV=True, n_years=25, Hy=8760,
-                          discount_rate=0.02, tee=False, time_limit=300):
+def Optimal_L_CSS_ortools(grid, OPEX=True, NPV=True, n_years=25, Hy=HOURS_PER_YEAR,
+                          discount_rate=DEFAULT_DISCOUNT_RATE, tee=False, time_limit=DEFAULT_TIME_LIMIT):
     """Main function to create and solve OR-Tools linear_solver model.
 
     Equivalent to ``Optimal_L_CSS_gurobi`` but uses the open-source
@@ -74,7 +75,7 @@ def Optimal_L_CSS_ortools(grid, OPEX=True, NPV=True, n_years=25, Hy=8760,
         obj = None
 
     weights_def, _ = obj_w_rule(grid, obj, True)
-    present_value = Hy * (1 - (1 + discount_rate) ** -n_years) / discount_rate
+    present_value = present_value_factor(Hy, discount_rate, n_years)
     for obj_key in weights_def:
         weights_def[obj_key]['v'] = calculate_objective(grid, obj_key, True)
         weights_def[obj_key]['NPV'] = weights_def[obj_key]['v'] * present_value
@@ -218,10 +219,10 @@ def AC_variables_ortools(solver, grid, AC_info):
                 f'ct_branch_{line}_{ct}')
 
     # ── Voltage angles ───────────────────────────────────────────────────
-    ac_vars['thetha_AC'] = {}
+    ac_vars['theta_AC'] = {}
     for node in lista_nodos_AC:
-        ac_vars['thetha_AC'][node] = solver.NumVar(
-            -np.pi / 2, np.pi / 2, f'thetha_AC_{node}')
+        ac_vars['theta_AC'][node] = solver.NumVar(
+            -np.pi / 2, np.pi / 2, f'theta_AC_{node}')
 
     # ── Nodal power variables ────────────────────────────────────────────
     ac_vars['PGi_opt'] = {}
@@ -350,11 +351,11 @@ def AC_constraints_ortools(solver, grid, AC_info, gen_info, gen_vars, ac_vars):
 
         solver.Add(
             ac_vars['PAC_to'][line]
-            == -B * (ac_vars['thetha_AC'][t] - ac_vars['thetha_AC'][f]),
+            == -B * (ac_vars['theta_AC'][t] - ac_vars['theta_AC'][f]),
             f'power_flow_to_{line}')
         solver.Add(
             ac_vars['PAC_from'][line]
-            == -B * (ac_vars['thetha_AC'][f] - ac_vars['thetha_AC'][t]),
+            == -B * (ac_vars['theta_AC'][f] - ac_vars['theta_AC'][t]),
             f'power_flow_from_{line}')
 
     # ── Cable-type selection constraints ─────────────────────────────────
@@ -418,22 +419,22 @@ def AC_constraints_ortools(solver, grid, AC_info, gen_info, gen_vars, ac_vars):
             # Power-flow linking (big-M on angle diff)
             solver.Add(
                 ac_vars['ct_PAC_to'][line, ct]
-                + B * (ac_vars['thetha_AC'][t] - ac_vars['thetha_AC'][f])
+                + B * (ac_vars['theta_AC'][t] - ac_vars['theta_AC'][f])
                 <= M_angle * (1 - ac_vars['ct_branch'][line, ct]),
                 f'ct_pf_to_lower_{line}_{ct}')
             solver.Add(
                 ac_vars['ct_PAC_to'][line, ct]
-                + B * (ac_vars['thetha_AC'][t] - ac_vars['thetha_AC'][f])
+                + B * (ac_vars['theta_AC'][t] - ac_vars['theta_AC'][f])
                 >= -M_angle * (1 - ac_vars['ct_branch'][line, ct]),
                 f'ct_pf_to_upper_{line}_{ct}')
             solver.Add(
                 ac_vars['ct_PAC_from'][line, ct]
-                + B * (ac_vars['thetha_AC'][f] - ac_vars['thetha_AC'][t])
+                + B * (ac_vars['theta_AC'][f] - ac_vars['theta_AC'][t])
                 <= M_angle * (1 - ac_vars['ct_branch'][line, ct]),
                 f'ct_pf_from_lower_{line}_{ct}')
             solver.Add(
                 ac_vars['ct_PAC_from'][line, ct]
-                + B * (ac_vars['thetha_AC'][f] - ac_vars['thetha_AC'][t])
+                + B * (ac_vars['theta_AC'][f] - ac_vars['theta_AC'][t])
                 >= -M_angle * (1 - ac_vars['ct_branch'][line, ct]),
                 f'ct_pf_from_upper_{line}_{ct}')
 
@@ -552,7 +553,7 @@ def _add_network_flow_constraints_ortools(solver, grid, ac_vars,
 # ── Objective ───────────────────────────────────────────────────────────────
 
 def set_objective_ortools(solver, grid, gen_vars, ac_vars, OPEX=True,
-                          NPV=True, n_years=25, Hy=8760, discount_rate=0.02):
+                          NPV=True, n_years=25, Hy=HOURS_PER_YEAR, discount_rate=DEFAULT_DISCOUNT_RATE):
     """Set the minimisation objective (investment + operational cost)."""
     cab_types_set = list(range(len(grid.Cable_options[0]._cable_types)))
 
@@ -573,7 +574,7 @@ def set_objective_ortools(solver, grid, gen_vars, ac_vars, OPEX=True,
     if OPEX:
         present_value = 1.0
         if NPV:
-            present_value = Hy * (1 - (1 + discount_rate) ** -n_years) / discount_rate
+            present_value = present_value_factor(Hy, discount_rate, n_years)
 
         for g in range(grid.n_gen):
             gen = grid.Generators[g]
@@ -610,7 +611,7 @@ def ExportACDC_Lmodel_toPyflowACDC_ortools(solver, grid, gen_vars, ac_vars,
     for node in grid.nodes_AC:
         nAC = node.nodeNumber
         node.V = 1.0
-        node.theta = ac_vars['thetha_AC'][nAC].solution_value()
+        node.theta = ac_vars['theta_AC'][nAC].solution_value()
         node.PGi_opt = ac_vars['PGi_opt'][nAC].solution_value()
         node.QGi_opt = 0.0
         node.PGi_ren = ac_vars['PGi_ren'][nAC].solution_value()

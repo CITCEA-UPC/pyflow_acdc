@@ -37,7 +37,7 @@ __all__ = ['plot_Graph',
            'Time_series_prob',
            'plot_neighbour_graph',
            'plot_TS_res',
-           'plot_model_feasebility',
+           'plot_model_feasibility',
            'save_network_svg',
            'plot_3D']
 
@@ -802,7 +802,7 @@ def plot_Graph(Grid,text='inPu',base_node_size=10,G=None):
     s=1
     return fig
  
-def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_format=None,skip_failed=False):
+def plot_TS_res(grid, start, end, plotting_choices=None,show=True,path=None,save_format=None,skip_failed=False):
     Plot = [
         'Power Generation by price zone'    ,
         'Power Generation by generator'    ,
@@ -816,7 +816,7 @@ def plot_TS_res(grid, start, end, plotting_choices=[],show=True,path=None,save_f
         'Power Generation by price zone area chart'    ,
     ]
     
-    if plotting_choices == []:
+    if not plotting_choices:
         plotting_choices = Plot
     for plotting_choice in plotting_choices:
         # Verify that the choice is valid
@@ -1111,7 +1111,7 @@ def create_subgraph_color_dict(G):
 
 
 
-def create_geometries(grid):
+def create_geometries_from_layout(grid):
     """
     Create geometries for all grid elements if they don't exist.
     First checks if nodes have x and y coordinates, if not uses calculate_positions.
@@ -1169,7 +1169,7 @@ def create_geometries(grid):
     # Step 6: Create geometries for generators and renewable sources
     ac_nodes_by_name = {str(n.name): n for n in grid.nodes_AC}
     dc_nodes_by_name = {str(n.name): n for n in grid.nodes_DC}
-    for gen in grid.Generators + grid.RenSources:
+    for gen in grid.Generators + grid.Generators_DC + grid.RenSources:
         if not hasattr(gen, 'geometry') or gen.geometry is None:
             node_ref = None
             if hasattr(gen, 'Node_AC'):
@@ -1190,6 +1190,8 @@ def create_geometries(grid):
                 if node_obj is not None and node_obj in pos:
                     x, y = pos[node_obj]
                     gen.geometry = Point(x, y)
+
+
 
 def save_network_svg(
     grid,
@@ -1278,7 +1280,7 @@ def save_network_svg(
             if tee:
                 print(f"Creating geometries for {len(elements_without_geometry)} elements without geometries...")
                 print("Missing geometries:", ", ".join(elements_without_geometry))
-            create_geometries(grid)
+            create_geometries_from_layout(grid)
 
         if journal:
             # Convert 88mm to pixels (assuming 96 DPI)
@@ -1714,7 +1716,7 @@ def save_network_svg(
 
 
     
-def plot_model_feasebility(solver_stats,sol='all', x_axis='time', y_axis= 'objective', normalize = False,show=True, save_path=None, width_mm=None):
+def plot_model_feasibility(solver_stats,sol='all', x_axis='time', y_axis= 'objective', normalize = False,show=True, save_path=None, width_mm=None):
     import matplotlib.pyplot as plt
     # Respect optional width in millimeters for journal-style figures
     fig = None
