@@ -612,7 +612,8 @@ def plot_correlation_matrix(corr_matrix, save_path=None):
 
 def cluster_TS(grid, n_clusters, time_series=None, central_market=None, algorithm='kmeans', 
               cv_threshold=0, correlation_threshold=0.8, print_details=False, 
-              correlation_decisions=None, critical_idx=None, base_critical_ratio=0.5, scaler_type='robust', **kwargs):
+              correlation_decisions=None, critical_idx=None, base_critical_ratio=0.5, scaler_type='robust',
+              forced_centers=None, **kwargs):
     """
     Main clustering function with enhanced parameter support.
     
@@ -688,7 +689,17 @@ def cluster_TS(grid, n_clusters, time_series=None, central_market=None, algorith
             data_scaled, labels = data_info
         
     else:
-        n_clusters,clusters, returns, data_info = _run_clustering_algorithm(grid, n_clusters, data, data_scaled, scaler, print_details, algorithm, **kwargs)
+        n_clusters,clusters, returns, data_info = _run_clustering_algorithm(
+            grid,
+            n_clusters,
+            data,
+            data_scaled,
+            scaler,
+            print_details,
+            algorithm,
+            forced_centers=forced_centers,
+            **kwargs,
+        )
         data_scaled, labels = data_info
     grid.Clusters[n_clusters] = {}
     grid.Clusters[n_clusters]['Weight'] = clusters['Weight'].to_numpy(dtype=float)
@@ -710,19 +721,22 @@ def cluster_TS(grid, n_clusters, time_series=None, central_market=None, algorith
     return n_clusters, clusters, returns, data_info
 
 def _run_clustering_algorithm(grid, n_clusters, data, data_scaled, scaler, print_details, algorithm, scaler_type='robust', **kwargs):
+    forced_centers = kwargs.pop('forced_centers', None)
     if algorithm == 'kmeans':
         use_medoids = kwargs.pop('use_medoids', False)
         clusters, returns, data_info = cluster_Kmeans(grid, n_clusters, data, [data_scaled, scaler], 
                                                     print_details=print_details, use_medoids=use_medoids, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'kmeans_medoids':
         clusters, returns, data_info = cluster_Kmeans(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, use_medoids=True, scaler_type=scaler_type, **kwargs)
+                                                    print_details=print_details, use_medoids=True, scaler_type=scaler_type,
+                                                    forced_centers=forced_centers, **kwargs)
     elif algorithm == 'ward':
         clusters, returns, data_info = cluster_Ward(grid, n_clusters, data, [data_scaled, scaler], 
                                                 print_details=print_details, scaler_type=scaler_type, **kwargs)
     elif algorithm == 'kmedoids':
         clusters, returns, data_info = cluster_Kmedoids(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, scaler_type=scaler_type, **kwargs)
+                                                    print_details=print_details, scaler_type=scaler_type,
+                                                    forced_centers=forced_centers, **kwargs)
     elif algorithm == 'pam_hierarchical':
         clusters, returns, data_info = cluster_PAM_Hierarchical(grid, n_clusters, data, [data_scaled, scaler], 
                                                             print_details=print_details, scaler_type=scaler_type, **kwargs)
@@ -784,9 +798,39 @@ def _process_clusters(grid, data, cluster_centers, representative_indices=None):
     return clusters
 
 
+def _validate_forced_centers(data, n_clusters, forced_centers):
+    if forced_centers is None:
+        return []
+    forced_list = list(forced_centers)
+    forced_unique = list(dict.fromkeys(forced_list))
+    if len(forced_unique) > n_clusters:
+        raise ValueError(
+            f"forced_centers has {len(forced_unique)} unique indices, larger than n_clusters={n_clusters}"
+        )
+    missing = [idx for idx in forced_unique if idx not in data.index]
+    if missing:
+        raise ValueError(
+            "forced_centers contains indices not present in clustering data: "
+            + ", ".join(str(x) for x in missing[:10])
+            + ("..." if len(missing) > 10 else "")
+        )
+    return forced_unique
+
+
+def _assign_to_representatives(data, data_scaled, representative_indices):
+    data_scaled_arr = np.asarray(data_scaled)
+    rep_pos = [data.index.get_loc(idx) for idx in representative_indices]
+    rep_scaled = data_scaled_arr[rep_pos, :]
+    diff = data_scaled_arr[:, None, :] - rep_scaled[None, :, :]
+    dist2 = np.sum(diff * diff, axis=2)
+    labels = np.argmin(dist2, axis=1).astype(int)
+    inertia = float(np.sum(dist2[np.arange(len(labels)), labels]))
+    return labels, inertia
+
+
 def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterpam', 
                     init='build', max_iter=MAX_ITERATIONS, print_details=False, 
-                    random_state=None, metric='euclidean', scaler_type="robust"):
+                    random_state=None, metric='euclidean', scaler_type="robust", forced_centers=None):
     """
     Perform K-Medoids clustering on the data.
     
@@ -816,24 +860,54 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
     data_scaled, scaler = _prepare_scaled_data(data, scaling_data, scaler_type)
     data_scaled = np.asarray(data_scaled)  # single-point coercion
    
-    # Fit KMedoids on scaled data
-    kmedoids = KMedoids(
-        n_clusters=n_clusters,
-        method=method,
-        init=init,
-        max_iter=max_iter,
-        random_state=random_state,
-        metric=metric
-    )
-    # Time only the actual clustering execution
-    start_time = time.perf_counter()
-    labels = kmedoids.fit_predict(data_scaled)
-    time_taken = time.perf_counter() - start_time
-    
-    # Get medoid indices
-    medoid_indices = kmedoids.medoid_indices_
-    # Get cluster centers (medoids) in original scale
-    cluster_centers = data.iloc[medoid_indices].values  
+    forced = _validate_forced_centers(data, n_clusters, forced_centers)
+    if forced:
+        n_remaining = n_clusters - len(forced)
+        start_time = time.perf_counter()
+        learned_indices = []
+        if n_remaining > 0:
+            rest_mask = ~data.index.isin(forced)
+            rest_data = data.loc[rest_mask]
+            if len(rest_data) < n_remaining:
+                raise ValueError(
+                    f"Not enough non-forced samples ({len(rest_data)}) for n_remaining={n_remaining}"
+                )
+            rest_scaled = np.asarray(data_scaled)[np.asarray(rest_mask), :]
+            kmedoids = KMedoids(
+                n_clusters=n_remaining,
+                method=method,
+                init=init,
+                max_iter=max_iter,
+                random_state=random_state,
+                metric=metric
+            )
+            kmedoids.fit(rest_scaled)
+            learned_indices = list(rest_data.index[kmedoids.medoid_indices_])
+        rep_indices = list(forced) + learned_indices
+        labels, inertia = _assign_to_representatives(data, data_scaled, rep_indices)
+        time_taken = time.perf_counter() - start_time
+        cluster_centers = data.loc[rep_indices].values
+    else:
+        # Fit KMedoids on scaled data
+        kmedoids = KMedoids(
+            n_clusters=n_clusters,
+            method=method,
+            init=init,
+            max_iter=max_iter,
+            random_state=random_state,
+            metric=metric
+        )
+        # Time only the actual clustering execution
+        start_time = time.perf_counter()
+        labels = kmedoids.fit_predict(data_scaled)
+        time_taken = time.perf_counter() - start_time
+        
+        # Get medoid indices
+        medoid_indices = kmedoids.medoid_indices_
+        rep_indices = list(data.index[medoid_indices])
+        # Get cluster centers (medoids) in original scale
+        cluster_centers = data.iloc[medoid_indices].values
+        inertia = float(kmedoids.inertia_)
     
     # Print clustering results
     cluster_sizes = pd.Series(labels).value_counts().sort_index().values
@@ -843,8 +917,10 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
         "Method": method,
         "Initialization": init,
         "Metric": metric,
-        "Inertia": kmedoids.inertia_
+        "Inertia": inertia
     }
+    if forced:
+        specific_info["Forced centers"] = [int(x) if isinstance(x, (np.integer, int)) else x for x in forced]
     # Calculate CoV from cluster sizes
     CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
     
@@ -866,11 +942,11 @@ def cluster_Kmedoids(grid, n_clusters, data, scaling_data =None, method='fasterp
         print_clustering_results("K-medoids", n_clusters, specific_info)
     
     data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=medoid_indices)
-    return processed_results, [CoV, kmedoids.inertia_], [data_scaled, labels]
+    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
+    return processed_results, [CoV, inertia], [data_scaled, labels]
 
 
-def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=False, use_medoids=False, scaler_type='robust'):
+def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=False, use_medoids=False, scaler_type='robust', forced_centers=None):
     """
     Perform K-means clustering on the data.
     
@@ -892,33 +968,71 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
     """
     data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
     
-    # Fit KMeans on scaled data (filtered columns)
-    kmeans = KMeans(n_clusters=n_clusters)
-    # Time only the actual clustering execution
-    start_time = time.perf_counter()
-    labels = kmeans.fit_predict(data_scaled)
-    time_taken = time.perf_counter() - start_time
+    forced = []
+    if use_medoids:
+        forced = _validate_forced_centers(data, n_clusters, forced_centers)
+
+    kmeans_inertia = None
+    kmeans_n_iter = None
+    if use_medoids and forced:
+        n_remaining = n_clusters - len(forced)
+        start_time = time.perf_counter()
+        learned_indices = []
+        if n_remaining > 0:
+            rest_mask = ~data.index.isin(forced)
+            rest_data = data.loc[rest_mask]
+            if len(rest_data) < n_remaining:
+                raise ValueError(
+                    f"Not enough non-forced samples ({len(rest_data)}) for n_remaining={n_remaining}"
+                )
+            rest_scaled = np.asarray(data_scaled)[np.asarray(rest_mask), :]
+            kmeans_rest = KMeans(n_clusters=n_remaining)
+            rest_labels = kmeans_rest.fit_predict(rest_scaled)
+            kmeans_inertia = float(kmeans_rest.inertia_)
+            kmeans_n_iter = int(kmeans_rest.n_iter_)
+            for i in range(n_remaining):
+                cluster_data = rest_data[rest_labels == i]
+                from sklearn.metrics import pairwise_distances
+                distances = pairwise_distances(cluster_data)
+                medoid_idx = distances.sum(axis=1).argmin()
+                learned_indices.append(cluster_data.index[medoid_idx])
+        rep_indices = list(forced) + learned_indices
+        labels, forced_inertia = _assign_to_representatives(data, data_scaled, rep_indices)
+        time_taken = time.perf_counter() - start_time
+    else:
+        # Fit KMeans on scaled data (filtered columns)
+        kmeans = KMeans(n_clusters=n_clusters)
+        # Time only the actual clustering execution
+        start_time = time.perf_counter()
+        labels = kmeans.fit_predict(data_scaled)
+        time_taken = time.perf_counter() - start_time
+        kmeans_inertia = float(kmeans.inertia_)
+        kmeans_n_iter = int(kmeans.n_iter_)
     
-    all_centers = []
-    rep_indices = [] if use_medoids else None
-    for i in range(n_clusters):
-        cluster_mask = labels == i
-        cluster_data = data[cluster_mask]
+    if use_medoids and forced:
+        rep_indices = list(rep_indices)
+        cluster_centers = data.loc[rep_indices].values
+    else:
+        all_centers = []
+        rep_indices = [] if use_medoids else None
+        for i in range(n_clusters):
+            cluster_mask = labels == i
+            cluster_data = data[cluster_mask]
+            
+            if use_medoids:
+                # Use medoid (actual data point closest to cluster center)
+                from sklearn.metrics import pairwise_distances
+                distances = pairwise_distances(cluster_data)
+                medoid_idx = distances.sum(axis=1).argmin()
+                cluster_center = cluster_data.iloc[medoid_idx]
+                all_centers.append(cluster_center.values)
+                rep_indices.append(cluster_data.index[medoid_idx])
+            else:
+                # Use mean (centroid)
+                cluster_means = cluster_data.mean()
+                all_centers.append(cluster_means.values)
         
-        if use_medoids:
-            # Use medoid (actual data point closest to cluster center)
-            from sklearn.metrics import pairwise_distances
-            distances = pairwise_distances(cluster_data)
-            medoid_idx = distances.sum(axis=1).argmin()
-            cluster_center = cluster_data.iloc[medoid_idx]
-            all_centers.append(cluster_center.values)
-            rep_indices.append(cluster_data.index[medoid_idx])
-        else:
-            # Use mean (centroid)
-            cluster_means = cluster_data.mean()
-            all_centers.append(cluster_means.values)
-    
-    cluster_centers = np.array(all_centers)
+        cluster_centers = np.array(all_centers)
     
     # Print clustering results
     cluster_label = "K-means-medoids" if use_medoids else "K-means"
@@ -926,10 +1040,12 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
     specific_info = {
         "Scaler": scaler_type,
         "Cluster sizes": cluster_sizes,
-        "Inertia": kmeans.inertia_,
-        "n_iter": kmeans.n_iter_,
+        "Inertia": kmeans_inertia if kmeans_inertia is not None else float('nan'),
+        "n_iter": kmeans_n_iter if kmeans_n_iter is not None else -1,
         "Center type": "medoids" if use_medoids else "means"
     }
+    if use_medoids and forced:
+        specific_info["Forced centers"] = [int(x) if isinstance(x, (np.integer, int)) else x for x in forced]
     # Calculate CoV from cluster sizes
     CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
     
@@ -953,7 +1069,9 @@ def cluster_Kmeans(grid, n_clusters, data, scaling_data=None, print_details=Fals
     data['Cluster'] = labels
     processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
 
-    return processed_results, [CoV, kmeans.inertia_, kmeans.n_iter_], [data_scaled, labels]
+    inertia_out = kmeans_inertia if kmeans_inertia is not None else forced_inertia
+    n_iter_out = kmeans_n_iter if kmeans_n_iter is not None else -1
+    return processed_results, [CoV, inertia_out, n_iter_out], [data_scaled, labels]
 
 def cluster_Ward(grid, n_clusters, data, scaling_data=None, print_details=False, scaler_type='robust'):
     """
@@ -2095,8 +2213,22 @@ def cluster_analysis(grid,clustering_options):
         algo = clustering_options['cluster_algorithm'] if 'cluster_algorithm' in clustering_options else 'Kmeans'
         critical_idx = clustering_options['critical_idx'] if 'critical_idx' in clustering_options else []
         base_critical_ratio = clustering_options['base_critical_ratio'] if 'base_critical_ratio' in clustering_options else 0.5
+        forced_centers = clustering_options.get('forced_centers')
 
-        n_clusters,_,_,_ = cluster_TS(grid, n_clusters= n, time_series=time_series,central_market=central_market,algorithm=algo, cv_threshold=thresholds[0] ,correlation_threshold=thresholds[1],print_details=print_details,correlation_decisions=correlation_decisions,critical_idx=critical_idx,base_critical_ratio=base_critical_ratio)
+        n_clusters,_,_,_ = cluster_TS(
+            grid,
+            n_clusters=n,
+            time_series=time_series,
+            central_market=central_market,
+            algorithm=algo,
+            cv_threshold=thresholds[0],
+            correlation_threshold=thresholds[1],
+            print_details=print_details,
+            correlation_decisions=correlation_decisions,
+            critical_idx=critical_idx,
+            base_critical_ratio=base_critical_ratio,
+            forced_centers=forced_centers,
+        )
                 
         clustering = True
     else:

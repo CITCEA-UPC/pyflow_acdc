@@ -1444,7 +1444,7 @@ def _build_period_scenario_block(
     period_block.scenario_model = pyo.Block(period_block.scenario_frames)
     # Period block only carries shared TEP decisions; full OPF states live in scenario sub-blocks.
     _initialize_MS_STEP_sets_model(period_block, grid)
-    TEP_variables(period_block, grid)
+    TEP_variables(period_block, grid, initiate_max=initiate_max)
 
     _update_grid_investment_period(grid, period_idx)
 
@@ -1457,33 +1457,7 @@ def _build_period_scenario_block(
 
         sc_block = period_block.scenario_model[t]
         sc_block.transfer_attributes_from(base_model.clone())
-        if initiate_max:
-            # Align scenario NP initial guesses with "initiate at max" behavior used by MP vars.
-            if hasattr(sc_block, "NumLinesDCP"):
-                for l in sc_block.lines_DC:
-                    ub = sc_block.NumLinesDCP[l].ub
-                    if ub is not None:
-                        sc_block.NumLinesDCP[l].set_value(ub)
-            if hasattr(sc_block, "np_conv"):
-                for c in sc_block.conv:
-                    ub = sc_block.np_conv[c].ub
-                    if ub is not None:
-                        sc_block.np_conv[c].set_value(ub)
-            if hasattr(sc_block, "NumLinesACP"):
-                for l in sc_block.lines_AC_exp:
-                    ub = sc_block.NumLinesACP[l].ub
-                    if ub is not None:
-                        sc_block.NumLinesACP[l].set_value(ub)
-            if hasattr(sc_block, "np_gen"):
-                for g in sc_block.gen_AC:
-                    ub = sc_block.np_gen[g].ub
-                    if ub is not None:
-                        sc_block.np_gen[g].set_value(ub)
-            if hasattr(sc_block, "np_rsgen"):
-                for r in sc_block.ren_sources:
-                    ub = sc_block.np_rsgen[r].ub
-                    if ub is not None:
-                        sc_block.np_rsgen[r].set_value(ub)
+        
         _modify_parameters(grid, sc_block, Price_Zones)
         sc_obj = OPF_obj(sc_block, grid, weights_def, True)
         sc_block.obj = pyo.Objective(rule=sc_obj, sense=pyo.minimize)
@@ -1588,7 +1562,13 @@ def multi_period_MS_TEP(
 
     base_model = pyo.ConcreteModel()
     OPF_create_NLModel_ACDC(
-        base_model, grid, PV_set=False, Price_Zones=Price_Zones, TEP=True, limit_flow_rate=limit_flow_rate
+        base_model,
+        grid,
+        PV_set=False,
+        Price_Zones=Price_Zones,
+        TEP=True,
+        limit_flow_rate=limit_flow_rate,
+        initiate_max=initiate_max,
     )
 
     for element in grid.Generators + grid.lines_AC_exp + grid.lines_DC + grid.Converters_ACDC + grid.RenSources:

@@ -29,7 +29,7 @@ def get_gen_p_min_eff(gen, np_gen_value, p_load_eff_value=None):
 
     
 
-def OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_rate=True):
+def OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_rate=True,initiate_max=False):
     from .ACDC_OPF import Translate_pyf_OPF 
     
     if limit_flow_rate is True:
@@ -54,7 +54,7 @@ def OPF_create_NLModel_ACDC(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_r
         Converter_variables(model,grid,Conv_info,TEP)
 
     if TEP:
-        TEP_variables(model,grid)
+        TEP_variables(model,grid,initiate_max=initiate_max)
     else:
         TEP_parameters(model,grid,AC_info,DC_info,Conv_info)
 
@@ -1930,7 +1930,7 @@ def TEP_parameters(model,grid,AC_info,DC_info,Conv_info):
         model.np_conv = pyo.Param(model.conv,initialize=np_conv,mutable=True)
 
 
-def TEP_variables(model,grid):
+def TEP_variables(model,grid,initiate_max=False):
 
     from .ACDC_Static_TEP import get_TEP_variables
 
@@ -2087,7 +2087,18 @@ def TEP_variables(model,grid):
             else:
                 return (NP_lineDC[line], NP_lineDC_max[line])
         
-        model.NumLinesDCP = pyo.Var(model.lines_DC, within=pyo.NonNegativeIntegers,bounds=NPline_bounds,initialize=NP_lineDC_model_first_guess)
+        def NP_lineDC_init(model, line):
+            if initiate_max:
+                _, ub = NPline_bounds(model, line)
+                return ub
+            return NP_lineDC_model_first_guess[line]
+
+        model.NumLinesDCP = pyo.Var(
+            model.lines_DC,
+            within=pyo.NonNegativeIntegers,
+            bounds=NPline_bounds,
+            initialize=NP_lineDC_init,
+        )
         model.NumLinesDCP_base  =pyo.Param(model.lines_DC,initialize=NP_lineDC)
        
     if grid.ACmode and grid.DCmode:
@@ -2098,7 +2109,18 @@ def TEP_variables(model,grid):
             else:
                 return (np_conv[conv], np_conv_max[conv])
         
-        model.np_conv = pyo.Var(model.conv, within=pyo.NonNegativeIntegers,bounds=NPconv_bounds,initialize=np_conv_model_first_guess)
+        def NP_conv_init(model, conv):
+            if initiate_max:
+                _, ub = NPconv_bounds(model, conv)
+                return ub
+            return np_conv_model_first_guess[conv]
+
+        model.np_conv = pyo.Var(
+            model.conv,
+            within=pyo.NonNegativeIntegers,
+            bounds=NPconv_bounds,
+            initialize=NP_conv_init,
+        )
         model.np_conv_base  =pyo.Param(model.conv,initialize=np_conv)
 
 
