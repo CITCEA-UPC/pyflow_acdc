@@ -1437,6 +1437,7 @@ def _build_period_scenario_block(
     Hy,
     discount_rate,
     NPV,
+    initiate_max=False,
 ):
     period_block = model.inv_model[period_idx]
     period_block.scenario_frames = pyo.Set(initialize=range(1, n_clusters + 1))
@@ -1456,6 +1457,33 @@ def _build_period_scenario_block(
 
         sc_block = period_block.scenario_model[t]
         sc_block.transfer_attributes_from(base_model.clone())
+        if initiate_max:
+            # Align scenario NP initial guesses with "initiate at max" behavior used by MP vars.
+            if hasattr(sc_block, "NumLinesDCP"):
+                for l in sc_block.lines_DC:
+                    ub = sc_block.NumLinesDCP[l].ub
+                    if ub is not None:
+                        sc_block.NumLinesDCP[l].set_value(ub)
+            if hasattr(sc_block, "np_conv"):
+                for c in sc_block.conv:
+                    ub = sc_block.np_conv[c].ub
+                    if ub is not None:
+                        sc_block.np_conv[c].set_value(ub)
+            if hasattr(sc_block, "NumLinesACP"):
+                for l in sc_block.lines_AC_exp:
+                    ub = sc_block.NumLinesACP[l].ub
+                    if ub is not None:
+                        sc_block.NumLinesACP[l].set_value(ub)
+            if hasattr(sc_block, "np_gen"):
+                for g in sc_block.gen_AC:
+                    ub = sc_block.np_gen[g].ub
+                    if ub is not None:
+                        sc_block.np_gen[g].set_value(ub)
+            if hasattr(sc_block, "np_rsgen"):
+                for r in sc_block.ren_sources:
+                    ub = sc_block.np_rsgen[r].ub
+                    if ub is not None:
+                        sc_block.np_rsgen[r].set_value(ub)
         _modify_parameters(grid, sc_block, Price_Zones)
         sc_obj = OPF_obj(sc_block, grid, weights_def, True)
         sc_block.obj = pyo.Objective(rule=sc_obj, sense=pyo.minimize)
@@ -1580,6 +1608,7 @@ def multi_period_MS_TEP(
             Hy,
             discount_rate,
             NPV,
+            initiate_max=initiate_max,
         )
 
     _initialize_MPTEP_sets_model(model, grid)
