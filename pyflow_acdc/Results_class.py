@@ -1211,16 +1211,20 @@ class Results:
         rows = []
         bp=0
         tcur=0
+        bp_total=0
+        tcur_total=0
         totcost=0
         totcurcost=0
         price=0
         for rs in self.Grid.RenSources:
                 Pgi=rs.PGi_ren*self.Grid.S_base
                 bp+=Pgi
-                cur= (1-rs.gamma)*100
+                cur = (1-rs.gamma)*100 if rs.np_rsgen > 0 else 0
                 tcur+=Pgi*(1-rs.gamma)
                 PGicur=Pgi*(rs.gamma)*rs.np_rsgen
                 QGi=rs.QGi_ren*self.Grid.S_base*rs.np_rsgen
+                bp_total += Pgi * rs.np_rsgen
+                tcur_total += Pgi * (1-rs.gamma) * rs.np_rsgen
                 
                 if not self.Grid.OnlyGen or self.Grid.OPF_Price_Zones_constraints_used:
                    
@@ -1238,7 +1242,7 @@ class Results:
                 if self.Grid.CurtCost==False:
                     curcost=0
                 else:    
-                    curcost= (Pgi-PGicur)*node.price*(self.Grid.sigma)/1000
+                    curcost= (Pgi*rs.np_rsgen-PGicur)*price*(self.Grid.sigma)/1000
                 rows.append({
                     "Name": rs.name,
                     "Bus": rs.Node,
@@ -1254,14 +1258,14 @@ class Results:
                 totcost+=cost
                 totcurcost+=curcost
         
-        PGicur=bp-tcur
-        cur=(tcur)/bp*100 if bp != 0 else 0
+        PGicur=bp_total-tcur_total
+        cur=(tcur_total)/bp_total*100 if bp_total != 0 else 0
         
         rows.append({
             "Name": "Total",
             "Bus": "",
             "Num. gen": "",
-            "Base Power (MW)": np.round(bp, decimals=self.dec),
+            "Base Power (MW)": np.round(bp_total, decimals=self.dec),
             "Curtailment %": np.round(cur, decimals=self.dec),
             "Power Injected (MW)": np.round(PGicur, decimals=self.dec),
             "Reactive Power Injected (MVAR)": "",

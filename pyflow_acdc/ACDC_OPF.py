@@ -1173,6 +1173,14 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         'infeasibleorunbounded',
         'infeasible_or_unbounded',
     )
+    # Hard-fail solver/system errors even when a partial solution payload exists.
+    explicit_error_termination = tc in (
+        'internalsolvererror',
+        'solvererror',
+        'error',
+        'aborted',
+        'invalidproblem',
+    )
     # Guard against false positives from relaxed acceptance logic:
     # unbounded outcomes must always be rejected.
     explicit_unbounded_termination = (
@@ -1184,6 +1192,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     if solver_name_lc == 'ipopt' and tc == 'maxiterations':
         trusted_termination = False
         explicit_infeasible_termination = True
+
+    if (
+        'aborted' in solver_message_lc
+        or 'error in step computation' in solver_message_lc
+        or 'error encountered in optimization' in solver_message_lc
+    ):
+        explicit_error_termination = True
 
         # If callback mode was used, analyze the last Ipopt iteration from the log
         # to measure how close we are to acceptable feasibility with default tolerances.
@@ -1262,6 +1277,9 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     elif explicit_infeasible_termination:
         loaded_solution_feasible = False
         checker_reason = "explicit_infeasible_termination"
+    elif explicit_error_termination:
+        loaded_solution_feasible = False
+        checker_reason = "explicit_error_termination"
     elif trusted_termination:
         loaded_solution_feasible = True
         checker_reason = "trusted_termination"
