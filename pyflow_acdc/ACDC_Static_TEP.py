@@ -602,7 +602,7 @@ def get_TEP_variables(grid):
         }
     }
 
-def _TEP_install_variables(model, grid):
+def _TEP_install_variables(model, grid, initiate_max=False):
     tep_vars = get_TEP_variables(grid)
 
     np_conv = tep_vars['converters']['np_conv']
@@ -632,6 +632,10 @@ def _TEP_install_variables(model, grid):
         allows_decrease = element.allow_planned_decrease
         return -min(planned, max_opt) if allows_decrease else 0
 
+    def init_install_from_bounds(bounds_fn, idx):
+        lb, ub = bounds_fn(model, idx)
+        return ub if initiate_max else 0
+
     if grid.rs_GPR:
         def np_rsgen_install_opt_bounds(model, rs):
             ren_source = grid.RenSources[rs]
@@ -643,7 +647,12 @@ def _TEP_install_variables(model, grid):
             return (min_install_opt(ren_source, np_rsgen_planned_install[rs], max_opt), max_opt)
 
         model.np_rsgen_planned_install = pyo.Param(model.ren_sources, initialize=np_rsgen_planned_install)
-        model.np_rsgen_install_opt = pyo.Var(model.ren_sources, within=pyo.Integers, bounds=np_rsgen_install_opt_bounds, initialize=0)
+        model.np_rsgen_install_opt = pyo.Var(
+            model.ren_sources,
+            within=pyo.Integers,
+            bounds=np_rsgen_install_opt_bounds,
+            initialize=lambda m, rs: init_install_from_bounds(np_rsgen_install_opt_bounds, rs),
+        )
         model.np_rsgen_install = pyo.Expression(
             model.ren_sources,
             rule=lambda m, rs: m.np_rsgen_planned_install[rs] + m.np_rsgen_install_opt[rs],
@@ -660,7 +669,12 @@ def _TEP_install_variables(model, grid):
             return (min_install_opt(gen, np_gen_planned_install[g], max_opt), max_opt)
 
         model.np_gen_planned_install = pyo.Param(model.gen_AC, initialize=np_gen_planned_install)
-        model.np_gen_install_opt = pyo.Var(model.gen_AC, within=pyo.Integers, bounds=np_gen_install_opt_bounds, initialize=0)
+        model.np_gen_install_opt = pyo.Var(
+            model.gen_AC,
+            within=pyo.Integers,
+            bounds=np_gen_install_opt_bounds,
+            initialize=lambda m, g: init_install_from_bounds(np_gen_install_opt_bounds, g),
+        )
         model.np_gen_install = pyo.Expression(
             model.gen_AC,
             rule=lambda m, g: m.np_gen_planned_install[g] + m.np_gen_install_opt[g],
@@ -677,7 +691,12 @@ def _TEP_install_variables(model, grid):
             return (min_install_opt(element, NP_lineAC_planned_install[line], max_opt), max_opt)
 
         model.NumLinesACP_planned_install = pyo.Param(model.lines_AC_exp, initialize=NP_lineAC_planned_install)
-        model.NumLinesACP_install_opt = pyo.Var(model.lines_AC_exp, within=pyo.Integers, bounds=NPline_install_opt_bounds_AC, initialize=0)
+        model.NumLinesACP_install_opt = pyo.Var(
+            model.lines_AC_exp,
+            within=pyo.Integers,
+            bounds=NPline_install_opt_bounds_AC,
+            initialize=lambda m, line: init_install_from_bounds(NPline_install_opt_bounds_AC, line),
+        )
         model.NumLinesACP_install = pyo.Expression(
             model.lines_AC_exp,
             rule=lambda m, line: m.NumLinesACP_planned_install[line] + m.NumLinesACP_install_opt[line],
@@ -694,7 +713,12 @@ def _TEP_install_variables(model, grid):
             return (min_install_opt(gen, np_gen_DC_planned_install[g], max_opt), max_opt)
 
         model.np_gen_DC_planned_install = pyo.Param(model.gen_DC, initialize=np_gen_DC_planned_install)
-        model.np_gen_DC_install_opt = pyo.Var(model.gen_DC, within=pyo.Integers, bounds=np_gen_install_opt_bounds_DC, initialize=0)
+        model.np_gen_DC_install_opt = pyo.Var(
+            model.gen_DC,
+            within=pyo.Integers,
+            bounds=np_gen_install_opt_bounds_DC,
+            initialize=lambda m, g: init_install_from_bounds(np_gen_install_opt_bounds_DC, g),
+        )
         model.np_gen_DC_install = pyo.Expression(
             model.gen_DC,
             rule=lambda m, g: m.np_gen_DC_planned_install[g] + m.np_gen_DC_install_opt[g],
@@ -711,7 +735,12 @@ def _TEP_install_variables(model, grid):
             return (min_install_opt(element, NP_lineDC_planned_install[line], max_opt), max_opt)
 
         model.NumLinesDCP_planned_install = pyo.Param(model.lines_DC, initialize=NP_lineDC_planned_install)
-        model.NumLinesDCP_install_opt = pyo.Var(model.lines_DC, within=pyo.Integers, bounds=NPline_install_opt_bounds, initialize=0)
+        model.NumLinesDCP_install_opt = pyo.Var(
+            model.lines_DC,
+            within=pyo.Integers,
+            bounds=NPline_install_opt_bounds,
+            initialize=lambda m, line: init_install_from_bounds(NPline_install_opt_bounds, line),
+        )
         model.NumLinesDCP_install = pyo.Expression(
             model.lines_DC,
             rule=lambda m, line: m.NumLinesDCP_planned_install[line] + m.NumLinesDCP_install_opt[line],
@@ -728,7 +757,12 @@ def _TEP_install_variables(model, grid):
             return (min_install_opt(element, np_conv_planned_install[conv], max_opt), max_opt)
 
         model.np_conv_planned_install = pyo.Param(model.conv, initialize=np_conv_planned_install)
-        model.np_conv_install_opt = pyo.Var(model.conv, within=pyo.Integers, bounds=NPconv_install_opt_bounds, initialize=0)
+        model.np_conv_install_opt = pyo.Var(
+            model.conv,
+            within=pyo.Integers,
+            bounds=NPconv_install_opt_bounds,
+            initialize=lambda m, conv: init_install_from_bounds(NPconv_install_opt_bounds, conv),
+        )
         model.np_conv_install = pyo.Expression(
             model.conv,
             rule=lambda m, conv: m.np_conv_planned_install[conv] + m.np_conv_install_opt[conv],
@@ -858,6 +892,7 @@ def _prepare_TEP_model(
     discount_rate,
     ObjRule,
     PV_set=False,
+    initiate_max=False,
 ):
 
     analyse_grid(grid)
@@ -871,7 +906,7 @@ def _prepare_TEP_model(
     model.name = "TEP MTDC AC/DC hybrid OPF"
 
     OPF_create_NLModel_ACDC(model,grid,PV_set=PV_set,Price_Zones=PZ,TEP=True)
-    _TEP_install_variables(model, grid)
+    _TEP_install_variables(model, grid, initiate_max=initiate_max)
     _TEP_install_constraints(model, grid)
 
     limits_map = getattr(grid, "current_generation_type_limits", {}) or {}
@@ -948,6 +983,7 @@ def transmission_expansion(
     solver_options=None,
     obj_scaling=1.0,
     nlp_warmstart=False,
+    initiate_max=False,
 ):
     grid.reset_run_flags()
     t1 = time.perf_counter()
@@ -959,6 +995,7 @@ def transmission_expansion(
         discount_rate,
         ObjRule,
         PV_set,
+        initiate_max,
     )
     
     present_value = present_value_factor(Hy, discount_rate, n_years)
@@ -1417,6 +1454,7 @@ def create_scenarios(
     alpha,
     limit_flow_rate,
     obj_scaling=1.0,
+    initiate_max=False,
 ):
        
     
@@ -1450,7 +1488,7 @@ def create_scenarios(
     
     _initialize_MS_STEP_sets_model(model,grid)
     TEP_variables(model,grid)
-    _TEP_install_variables(model, grid)
+    _TEP_install_variables(model, grid, initiate_max=initiate_max)
     _TEP_install_constraints(model, grid)
     
     MS_TEP_constraints(model,grid)
@@ -1489,6 +1527,7 @@ def multi_scenario_TEP(
     obj_scaling=1.0,
     solver_options=None,
     nlp_warmstart=False,
+    initiate_max=False,
 ):
     
     analyse_grid(grid)
@@ -1530,6 +1569,7 @@ def multi_scenario_TEP(
         alpha,
         limit_flow_rate,
         obj_scaling=obj_scaling,
+        initiate_max=initiate_max,
     )
 
     t2 = time.time()  

@@ -377,7 +377,7 @@ def _MP_GEN_balance_constraints(model, grid):
     model.gen_type_balance_constraint = pyo.Constraint(model.gen_types, model.inv_periods, rule=gen_type_balance_rule)
 
 
-def _MP_TEP_variables(model, grid):
+def _MP_TEP_variables(model, grid, initiate_max=False):
     
     tep_vars = get_TEP_variables(grid)
     gen_set = list(model.gen_AC) if hasattr(model, "gen_AC") else []
@@ -453,6 +453,9 @@ def _MP_TEP_variables(model, grid):
             else:
                 return (0,0)  
         def np_rsgen_i(model, rs, i):
+            if initiate_max:
+                _, ub = np_rsgen_bounds(model, rs, i)
+                return ub
             return np_rsgen[rs]
         model.np_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,bounds=np_rsgen_bounds,initialize=np_rsgen_i)
         model.installed_rsgen = pyo.Var(model.ren_sources,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_rsgen_init,bounds=np_rsgen_bounds_install)
@@ -496,6 +499,9 @@ def _MP_TEP_variables(model, grid):
             else:
                 return (0,0)
         def np_gen_i(model, g, i):
+            if initiate_max:
+                _, ub = np_gen_bounds(model, g, i)
+                return ub
             return np_gen[g]
         model.np_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_i)
         model.installed_gen = pyo.Var(model.gen_AC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_gen_init,bounds=np_gen_bounds_install)
@@ -535,6 +541,9 @@ def _MP_TEP_variables(model, grid):
                 else:
                     return (0,0)
             def NP_lineAC_i(model, l, i):
+                if initiate_max:
+                    _, ub = MP_AC_line_bounds(model, l, i)
+                    return ub
                 return NP_lineAC[l]
             model.ACLinesMP = pyo.Var(model.lines_AC_exp,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_AC_line_bounds,initialize=NP_lineAC_i)
             model.installed_ACline = pyo.Var(model.lines_AC_exp,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_ACline_init,bounds=MP_AC_line_bounds_install)
@@ -574,6 +583,9 @@ def _MP_TEP_variables(model, grid):
             else:
                 return (0,0)
         def NP_lineDC_i(model, l, i):
+            if initiate_max:
+                _, ub = MP_DC_line_bounds(model, l, i)
+                return ub
             return NP_lineDC[l]
         model.DCLinesMP = pyo.Var(model.lines_DC,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_DC_line_bounds,initialize=NP_lineDC_i)
         model.installed_DCline = pyo.Var(model.lines_DC,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_DCline_init,bounds=MP_DC_line_bounds_install)
@@ -614,6 +626,9 @@ def _MP_TEP_variables(model, grid):
             else:
                 return (0,0)
         def np_conv_i(model, c, i):
+            if initiate_max:
+                _, ub = MP_Conv_bounds(model, c, i)
+                return ub
             return np_conv[c]
         model.ConvMP = pyo.Var(model.conv,model.inv_periods, within=pyo.NonNegativeIntegers,bounds=MP_Conv_bounds,initialize=np_conv_i)
         model.installed_Conv = pyo.Var(model.conv,model.inv_periods,within=pyo.NonNegativeIntegers,initialize=planned_installation_Conv_init,bounds=MP_Conv_bounds_install)
@@ -772,6 +787,7 @@ def multi_period_transmission_expansion(
     capex_budget=None,
     nlp_warmstart=False,
     build_only=False,
+    initiate_max=False,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -842,7 +858,7 @@ def multi_period_transmission_expansion(
         model.inv_model[i].obj = pyo.Objective(rule=obj_OPF, sense=pyo.minimize)
 
     _initialize_MPTEP_sets_model(model,grid)
-    _MP_TEP_variables(model, grid)
+    _MP_TEP_variables(model, grid, initiate_max=initiate_max)
     _MP_TEP_constraints(model,grid)
     _MP_GEN_balance_constraints(model,grid)
     _MP_TEP_capex_budget_constraint(model,grid,capex_budget=capex_budget)
@@ -1490,6 +1506,7 @@ def multi_period_MS_TEP(
     period_svg_prefix='grid_MP_MS_TEP',
     period_svg_kwargs=None,
     build_only=False,
+    initiate_max=False,
 ):
     grid.reset_run_flags()
     analyse_grid(grid)
@@ -1566,7 +1583,7 @@ def multi_period_MS_TEP(
         )
 
     _initialize_MPTEP_sets_model(model, grid)
-    _MP_TEP_variables(model, grid)
+    _MP_TEP_variables(model, grid, initiate_max=initiate_max)
     _MP_TEP_constraints(model, grid)
     _MP_GEN_balance_constraints(model, grid)
     _MP_TEP_capex_budget_constraint(model, grid, capex_budget=capex_budget)
