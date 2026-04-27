@@ -1,4 +1,4 @@
-from sklearn.cluster import KMeans, DBSCAN, OPTICS, AgglomerativeClustering, SpectralClustering, HDBSCAN
+from sklearn.cluster import KMeans, AgglomerativeClustering
 from sklearn.metrics import pairwise_distances,davies_bouldin_score
 from sklearn.preprocessing import StandardScaler,RobustScaler
 from kmedoids import KMedoids
@@ -21,12 +21,9 @@ __all__ = ['cluster_TS',
            'cluster_Ward',
            'cluster_Kmedoids',
            'cluster_PAM_Hierarchical',
-           'cluster_DBSCAN',
-           'cluster_OPTICS',
-           'cluster_Spectral',
-           'cluster_HDBSCAN',
            'cluster_analysis',
            'run_clustering_analysis_and_plot',
+           'run_elbow_analysis',
            'identify_correlations',
            'load_precomputed_clusters_to_grid']
 
@@ -45,8 +42,6 @@ LEGEND_Y_POSITION = 1.15
 MAX_ITERATIONS = DEFAULT_CLUSTERING_MAX_ITER
 DEFAULT_RANDOM_STATE = 42
 DEFAULT_N_INIT = 10
-DEFAULT_MIN_SAMPLES = 2
-DEFAULT_XI = 0.05
 DEFAULT_GAMMA = 1.0
 
 # Default parameters
@@ -59,13 +54,6 @@ DEFAULT_CORRELATION_THRESHOLD = 0.8
 DEFAULT_CV_THRESHOLD = 0
 DEFAULT_SEASONAL_PERIOD_HOURS = 168
 DEFAULT_TIME_RESOLUTION_HOURS = 1
-
-# DBSCAN/OPTICS constants
-DBSCAN_MAX_EPS = 10.0
-DBSCAN_EPS_MULTIPLIER = 1.1
-DBSCAN_EPS_INCREASE = 1.5
-OPTICS_XI_INCREASE = 1.5
-OPTICS_XI_DECREASE = 0.8
 
 # Plotting constants
 TICK_LENGTH = 3
@@ -623,13 +611,9 @@ def cluster_TS(grid, n_clusters, time_series=None, central_market=None, algorith
         Additional parameters passed to specific clustering algorithms:
         - For kmedoids: method, init, max_iter, random_state, metric
         - For kmeans: random_state, n_init, max_iter
-        - For spectral: affinity, gamma, assign_labels
-        - For dbscan: eps, min_samples
-        - For optics: min_samples, max_eps, xi
-        - For hdbscan: min_cluster_size, min_samples, cluster_selection_method
     """
     algorithm = algorithm.lower()
-    valid_algorithms = {'kmeans','kmeans_medoids','ward','dbscan','optics','spectral','hdbscan','pam_hierarchical','kmedoids'}
+    valid_algorithms = {'kmeans', 'kmeans_medoids', 'ward', 'pam_hierarchical', 'kmedoids'}
 
     if algorithm not in valid_algorithms:
         print(f"Algorithm {algorithm} not found, using Kmeans")
@@ -740,18 +724,8 @@ def _run_clustering_algorithm(grid, n_clusters, data, data_scaled, scaler, print
     elif algorithm == 'pam_hierarchical':
         clusters, returns, data_info = cluster_PAM_Hierarchical(grid, n_clusters, data, [data_scaled, scaler], 
                                                             print_details=print_details, scaler_type=scaler_type, **kwargs)
-    elif algorithm == 'spectral':
-        clusters, returns, data_info = cluster_Spectral(grid, n_clusters, data, [data_scaled, scaler], 
-                                                    print_details=print_details, scaler_type=scaler_type, **kwargs)
-    elif algorithm == 'dbscan':
-        n_clusters, clusters, returns, data_info = cluster_DBSCAN(grid, n_clusters, data, [data_scaled, scaler], 
-                                                                print_details=print_details, scaler_type=scaler_type, **kwargs)
-    elif algorithm == 'optics':
-        n_clusters, clusters, returns, data_info = cluster_OPTICS(grid, n_clusters, data, [data_scaled, scaler], 
-                                                                print_details=print_details, scaler_type=scaler_type, **kwargs)    
-    elif algorithm == 'hdbscan':
-        n_clusters, clusters, returns, data_info = cluster_HDBSCAN(grid, n_clusters, data, [data_scaled, scaler], 
-                                                                print_details=print_details, scaler_type=scaler_type, **kwargs)
+    else:
+        raise ValueError(f"Unsupported clustering algorithm: {algorithm}")
     return n_clusters,clusters, returns, data_info
 
 def _process_clusters(grid, data, cluster_centers, representative_indices=None):
@@ -1497,6 +1471,99 @@ def run_clustering_analysis_and_plot(grid,algorithms=None,n_clusters_list=None,p
     results = run_clustering_analysis(grid,path,algorithms,n_clusters_list,time_series,print_details,ts_options,correlation_decisions,plotting=True, plotting_options=plotting_options,identifier=identifier)
     plot_clustering_results(results,path,format=plotting_options[1],identifier=identifier)
 
+def run_elbow_analysis(
+    grid,
+    n_clusters_list=None,
+    algorithm='kmeans',
+    save_path='clustering_results',
+    time_series=None,
+    print_details=False,
+    ts_options=None,
+    correlation_decisions=None,
+    forced_centers=None,
+    format='svg',
+    identifier=None,
+):
+    """
+    Run elbow analysis (inertia vs number of clusters) and save plot + CSV.
+    """
+    if n_clusters_list is None:
+        n_clusters_list = [2, 4, 6, 8, 12, 16, 24]
+    if time_series is None:
+        time_series = []
+    if ts_options is None:
+        ts_options = [None, 0, 0.8]
+    if correlation_decisions is None:
+        correlation_decisions = [True, '2', True]
+
+    algorithm = algorithm.lower()
+    if algorithm not in {'kmeans', 'kmeans_medoids', 'kmedoids'}:
+        raise ValueError(
+            f"Elbow analysis supports only kmeans, kmeans_medoids, kmedoids. Got: {algorithm}"
+        )
+
+    rows = []
+    for n in n_clusters_list:
+        n_used, _, metrics, _ = cluster_TS(
+            grid,
+            n_clusters=int(n),
+            time_series=time_series,
+            central_market=ts_options[0],
+            algorithm=algorithm,
+            cv_threshold=ts_options[1],
+            correlation_threshold=ts_options[2],
+            print_details=print_details,
+            correlation_decisions=correlation_decisions,
+            forced_centers=forced_centers,
+        )
+        cov_value, inertia_value = metrics[0], metrics[1]
+        latest = getattr(grid, 'Clustering_information', {}).get('latest_technique', {})
+        specific_info = latest.get('specific_info', {}) if isinstance(latest, dict) else {}
+        db_combined = specific_info.get('Davies-Bouldin (combined)')
+        db_value = specific_info.get('Davies-Bouldin (value)')
+        db_seasonal = specific_info.get('Davies-Bouldin (seasonal)')
+        time_taken = latest.get('time taken') if isinstance(latest, dict) else None
+        rows.append(
+            {
+                'algorithm': algorithm,
+                'k_requested': int(n),
+                'n_clusters': int(n_used),
+                'Coefficient of Variation': float(cov_value),
+                'inertia': float(inertia_value),
+                'davies_bouldin_combined': float(db_combined) if db_combined is not None else float('nan'),
+                'davies_bouldin_value': float(db_value) if db_value is not None else float('nan'),
+                'davies_bouldin_seasonal': float(db_seasonal) if db_seasonal is not None else float('nan'),
+                'time_taken_s': float(time_taken) if time_taken is not None else float('nan'),
+            }
+        )
+
+    df_elbow = pd.DataFrame(rows).sort_values('n_clusters').reset_index(drop=True)
+    Path(save_path).mkdir(parents=True, exist_ok=True)
+    suffix = identifier if identifier is not None else algorithm
+    csv_path = Path(save_path) / f'elbow_summary_{suffix}.csv'
+    df_elbow.to_csv(csv_path, index=False)
+
+    plt.style.use('seaborn-v0_8-whitegrid')
+    fig, ax = plt.subplots()
+    ax.plot(
+        df_elbow['n_clusters'],
+        df_elbow['inertia'],
+        marker='o',
+        linewidth=1.5,
+        label=algorithm,
+    )
+    ax.set_xlabel('Number of Clusters')
+    ax.set_ylabel('Inertia')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.grid(True, linestyle='--', alpha=0.3)
+    ax.legend(frameon=False)
+    plt.tight_layout()
+    plot_path = Path(save_path) / f'elbow_plot_{suffix}.{format}'
+    plt.savefig(plot_path, dpi=SAVE_DPI, bbox_inches='tight', pad_inches=0.1)
+    plt.close(fig)
+    return df_elbow
+
 def Time_series_cluster_relationship(grid, ts1_name=None, ts2_name=None,price_zone=None,ts_type=None, algorithm='kmeans', 
                             take_into_account_time_series=None, 
                             number_of_clusters=2, path='clustering_results', 
@@ -1608,398 +1675,6 @@ def plot_clustered_timeseries_single(ts1,ts2,algorithm,n_clusters,path,labels,ts
     plt.close()
 
 
-
-def cluster_OPTICS(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, 
-                  max_eps=np.inf, xi=DEFAULT_XI, print_details=False, scaler_type='robust'):
- 
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
-    
-    # Try different xi values until we get desired number of clusters
-    best_labels = None
-    best_xi = None
-    current_xi = xi
-    
-    # Time only the actual clustering execution (the loop)
-    start_time = time.perf_counter()
-    while current_xi <= 1.0:
-        optics = OPTICS(min_samples=min_samples, max_eps=max_eps, xi=current_xi)
-        labels = optics.fit_predict(data_scaled)
-        
-        actual_clusters = len(set(labels[labels >= 0]))
-        
-        if actual_clusters <= n_clusters and actual_clusters > 0:
-            best_labels = labels
-            best_xi = current_xi
-            break
-        elif actual_clusters > n_clusters:
-            current_xi *= OPTICS_XI_INCREASE  # Increase xi to get fewer clusters
-        else:  # No clusters found
-            current_xi *= OPTICS_XI_DECREASE  # Decrease xi to get more clusters
-    time_taken = time.perf_counter() - start_time
-    
-    if best_labels is None:
-        print("Warning: Could not find suitable clustering. Try adjusting parameters.")
-        return 0, None, None, None
-    
-    # Calculate cluster centers (medoids) from original data
-    all_centers = []
-    rep_indices = []
-    for i in range(actual_clusters):
-        cluster_mask = best_labels == i
-        cluster_data = data[cluster_mask]
-        medoid_idx = find_medoid(cluster_data)
-        all_centers.append(data.loc[medoid_idx])
-        rep_indices.append(medoid_idx)
-    
-    cluster_centers = np.array(all_centers)
-    
-    # Get cluster sizes and noise info
-    # Filter out noise points (label -1) from cluster sizes
-    cluster_counts_series = pd.Series(best_labels).value_counts().sort_index()
-    cluster_counts_series = cluster_counts_series[cluster_counts_series.index >= 0]
-    cluster_sizes = cluster_counts_series.values
-    noise_points = len(data[best_labels == -1])
-    noise_percentage = (noise_points / len(data)) * 100
-    
-    specific_info = {
-        "Scaler": scaler_type,
-        "Cluster sizes": cluster_sizes,
-        "Found clusters": actual_clusters,
-        "Maximum allowed": n_clusters,
-        "Final xi": best_xi,
-        "Noise points": (noise_points, noise_percentage)
-    }
-    # Calculate CoV from cluster sizes
-    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
-    
-    # Evaluate clustering quality
-    try:
-        db_metrics = _evaluate_clustering(data_scaled, best_labels)
-        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
-        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
-        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except ValueError as e:
-        # If evaluation fails, continue without DB metrics
-        if print_details:
-            print(f"Warning: Could not evaluate clustering quality: {e}")
-    
-    # Save clustering results to grid
-    save_clustering_results(grid, "OPTICS", actual_clusters, specific_info, CoV, time_taken)
-    
-    if print_details:
-        print_clustering_results("OPTICS", actual_clusters, specific_info)
-    
-    data['Cluster'] = best_labels
-    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
-    return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
-
-def cluster_DBSCAN(grid, n_clusters, data, scaling_data=None, min_samples=DEFAULT_MIN_SAMPLES, initial_eps=0.5, print_details=False, scaler_type='robust'):
-    """Cluster scaled time series with DBSCAN, adapting epsilon until the cluster count is at most n_clusters."""
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
-    
-    eps = initial_eps
-    best_labels = None
-    best_eps = None
-    
-    # Time only the actual clustering execution (the loop)
-    start_time = time.perf_counter()
-    while eps <= DBSCAN_MAX_EPS:
-        dbscan = DBSCAN(eps=eps, min_samples=min_samples)
-        labels = dbscan.fit_predict(data_scaled)
-        
-        actual_clusters = len(set(labels[labels >= 0]))
-        
-        if actual_clusters > 0:
-            if actual_clusters <= n_clusters:
-                best_labels = labels
-                best_eps = eps
-                break
-            else:
-                eps *= DBSCAN_EPS_MULTIPLIER
-        else:
-            eps *= DBSCAN_EPS_INCREASE
-    time_taken = time.perf_counter() - start_time
-    
-    if best_labels is None:
-        print("Warning: Could not find any meaningful clusters. Try adjusting parameters.")
-        return 0, None, None, None
-    
-    # Calculate cluster centers (medoids) from original data
-    all_centers = []
-    rep_indices = []
-    valid_labels = best_labels[best_labels >= 0]
-    unique_clusters = np.unique(valid_labels)
-    for i in range(len(unique_clusters)):
-        cluster_id = unique_clusters[i]
-        cluster_mask = best_labels == cluster_id
-        cluster_data = data[cluster_mask]
-        medoid_idx = find_medoid(cluster_data)
-        all_centers.append(data.loc[medoid_idx])
-        rep_indices.append(medoid_idx)
-    
-    cluster_centers = np.array(all_centers)
-    
-    # Get cluster sizes and noise info
-    # Filter out noise points (label -1) from cluster sizes
-    cluster_counts_series = pd.Series(best_labels).value_counts().sort_index()
-    cluster_counts_series = cluster_counts_series[cluster_counts_series.index >= 0]
-    cluster_sizes = cluster_counts_series.values
-    noise_points = len(data[best_labels == -1])
-    noise_percentage = (noise_points / len(data)) * 100
-    
-    specific_info = {
-        "Scaler": scaler_type,
-        "Cluster sizes": cluster_sizes,
-        "Found clusters": actual_clusters,
-        "Maximum allowed": n_clusters,
-        "Final eps": best_eps,
-        "Noise points": (noise_points, noise_percentage)
-    }
-    # Calculate CoV from cluster sizes
-    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
-    
-    # Evaluate clustering quality
-    try:
-        db_metrics = _evaluate_clustering(data_scaled, best_labels)
-        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
-        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
-        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except ValueError as e:
-        # If evaluation fails, continue without DB metrics
-        if print_details:
-            print(f"Warning: Could not evaluate clustering quality: {e}")
-    
-    # Save clustering results to grid
-    save_clustering_results(grid, "DBSCAN", actual_clusters, specific_info, CoV, time_taken)
-    
-    if print_details:
-        print_clustering_results("DBSCAN", actual_clusters, specific_info)
-    
-    data['Cluster'] = best_labels
-    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
-    return actual_clusters, processed_results, CoV, [data_scaled, best_labels]
-
-
-def cluster_Spectral(grid, n_clusters, data, scaling_data=None, n_init=10, assign_labels='kmeans', affinity='nearest_neighbors', gamma=1.0, n_neighbors=10, print_details=False, scaler_type='robust'):
-    """
-    Perform Spectral clustering on the data.
-    
-    Parameters:
-    -----------
-    grid : Grid object
-        The grid object to update
-    n_clusters : int
-        Number of clusters
-    data : pandas.DataFrame
-        Data to cluster
-    n_init : int, default=N_INIT
-        Number of times the k-means algorithm will be run with different centroid seeds
-    assign_labels : {'kmeans', 'discretize'}, default='kmeans'
-        Strategy to assign labels in the embedding space
-    affinity : {'rbf', 'nearest_neighbors', 'precomputed'}, default='nearest_neighbors'
-        How to construct the affinity matrix. Use 'nearest_neighbors' for memory efficiency.
-    gamma : float, default=1.0
-        Kernel coefficient for rbf kernel (only used if affinity='rbf')
-    n_neighbors : int, default=10
-        Number of neighbors for nearest_neighbors affinity (only used if affinity='nearest_neighbors')
-    """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
-    
-    # For large datasets, use nearest_neighbors to avoid memory issues
-    # This creates a sparse matrix instead of a dense one
-    if affinity == 'rbf' and len(data) > 5000:
-        if print_details:
-            print(f"Warning: Large dataset ({len(data)} points). Switching to 'nearest_neighbors' affinity for memory efficiency.")
-        affinity = 'nearest_neighbors'
-    
-    # Configure spectral clustering
-    spectral_kwargs = {
-        'n_clusters': n_clusters,
-        'n_init': n_init,
-        'assign_labels': assign_labels,
-        'affinity': affinity,
-        'random_state': DEFAULT_RANDOM_STATE
-    }
-    
-    # Add affinity-specific parameters
-    if affinity == 'rbf':
-        spectral_kwargs['gamma'] = gamma
-    elif affinity == 'nearest_neighbors':
-        spectral_kwargs['n_neighbors'] = n_neighbors
-    
-    spectral = SpectralClustering(**spectral_kwargs)
-    
-    # Time only the actual clustering execution
-    start_time = time.perf_counter()
-    try:
-        labels = spectral.fit_predict(data_scaled)
-        time_taken = time.perf_counter() - start_time
-    except MemoryError as e:
-        if print_details:
-            print(f"Memory error during spectral clustering: {e}")
-            print("Try using affinity='nearest_neighbors' or reducing n_neighbors")
-        raise
-    except Exception as e:
-        if print_details:
-            print(f"Error during spectral clustering: {e}")
-        raise
-    
-    # Calculate cluster centers (medoids) from original data
-    all_centers = []
-    rep_indices = []
-    for i in range(n_clusters):
-        cluster_mask = labels == i
-        cluster_data = data[cluster_mask]
-        medoid_idx = find_medoid(cluster_data)
-        all_centers.append(data.loc[medoid_idx])
-        rep_indices.append(medoid_idx)
-    
-    cluster_centers = np.array(all_centers)
-    
-    # Get cluster sizes and affinity info
-    cluster_sizes = pd.Series(labels).value_counts().sort_index().values
-    
-    # Try to get affinity matrix info (may not be available for all affinity types)
-    try:
-        affinity_matrix = spectral.affinity_matrix_
-        if hasattr(affinity_matrix, 'toarray'):  # Sparse matrix
-            connectivity = (affinity_matrix > 0).sum() / (affinity_matrix.shape[0] * affinity_matrix.shape[1])
-            avg_affinity = float(affinity_matrix.mean())
-        else:  # Dense matrix
-            connectivity = (affinity_matrix > 0).sum() / (affinity_matrix.shape[0] * affinity_matrix.shape[1])
-            avg_affinity = float(affinity_matrix.mean())
-    except AttributeError:
-        connectivity = "N/A"
-        avg_affinity = "N/A"
-    
-    specific_info = {
-        "Scaler": scaler_type,
-        "Cluster sizes": cluster_sizes,
-        "Affinity": affinity,
-        "Label assignment": assign_labels,
-        "Gamma": gamma if affinity == 'rbf' else "N/A",
-        "N neighbors": n_neighbors if affinity == 'nearest_neighbors' else "N/A",
-        "Connectivity density": f"{connectivity:.2%}" if connectivity != "N/A" else "N/A",
-        "Average affinity": f"{avg_affinity:.4f}" if avg_affinity != "N/A" else "N/A"
-    }
-    # Calculate CoV from cluster sizes
-    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
-    
-    # Evaluate clustering quality
-    try:
-        db_metrics = _evaluate_clustering(data_scaled, labels)
-        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
-        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
-        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except ValueError as e:
-        # If evaluation fails, continue without DB metrics
-        if print_details:
-            print(f"Warning: Could not evaluate clustering quality: {e}")
-    
-    # Save clustering results to grid
-    save_clustering_results(grid, "Spectral", n_clusters, specific_info, CoV, time_taken)
-    
-    if print_details:
-        print_clustering_results("Spectral", n_clusters, specific_info)
-    
-    data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
-    return processed_results, CoV, [data_scaled, labels]
-
-def cluster_HDBSCAN(grid, n_clusters, data, scaling_data=None, min_cluster_size=5, min_samples=None, cluster_selection_method='eom', print_details=False, scaler_type='robust'):
-    """
-    Perform HDBSCAN clustering on the data.
-    
-    Parameters:
-    -----------
-    grid : Grid object
-        The grid object to update
-    n_clusters : int
-        Soft constraint on number of clusters (HDBSCAN determines optimal number)
-    data : pandas.DataFrame
-        Data to cluster
-    min_cluster_size : int, default=5
-        The minimum size of clusters
-    min_samples : int, default=None
-        The number of samples in a neighborhood for a point to be a core point
-    cluster_selection_method : {'eom', 'leaf'}, default='eom'
-        The method used to select clusters
-        """
-    data_scaled, scaler = _prepare_scaled_data(data, scaling_data,scaler_type)
-
-  
-    
-    # If min_samples not specified, use min_cluster_size
-    if min_samples is None:
-        min_samples = min_cluster_size
-    
-    # Initialize HDBSCA
-    clusterer = HDBSCAN(
-        min_cluster_size=min_cluster_size,
-        min_samples=min_samples,
-        cluster_selection_method=cluster_selection_method
-    )
-    
-    # Time only the actual clustering execution
-    start_time = time.perf_counter()
-    labels = clusterer.fit_predict(data_scaled)
-    time_taken = time.perf_counter() - start_time
-    actual_clusters = len(set(labels[labels >= 0]))
-    
-    # Calculate cluster centers (medoids) from original data
-    all_centers = []
-    rep_indices = []
-    for i in range(actual_clusters):
-        cluster_mask = labels == i
-        cluster_data = data[cluster_mask]
-        medoid_idx = find_medoid(cluster_data)
-        all_centers.append(data.loc[medoid_idx])
-        rep_indices.append(medoid_idx)
-    
-    cluster_centers = np.array(all_centers)
-    
-    # Get cluster sizes and noise info
-    # Filter out noise points (label -1) from cluster sizes
-    cluster_counts_series = pd.Series(labels).value_counts().sort_index()
-    cluster_counts_series = cluster_counts_series[cluster_counts_series.index >= 0]
-    cluster_sizes = cluster_counts_series.values
-    noise_points = len(data[labels == -1])
-    noise_percentage = (noise_points / len(data)) * 100
-    
-    specific_info = {
-        "Scaler": scaler_type,
-        "Found clusters": actual_clusters,
-        "Target clusters": n_clusters,
-        "Cluster sizes": cluster_sizes,
-        "Noise points": (noise_points, noise_percentage),
-        "Min cluster size": min_cluster_size,
-        "Min samples": min_samples,
-        "Selection method": cluster_selection_method,
-        "Probabilities available": hasattr(clusterer, 'probabilities_')
-    }
-    # Calculate CoV from cluster sizes
-    CoV = np.std(cluster_sizes)/np.mean(cluster_sizes) if len(cluster_sizes) > 0 else 0
-    
-    # Evaluate clustering quality
-    try:
-        db_metrics = _evaluate_clustering(data_scaled, labels)
-        specific_info['Davies-Bouldin (combined)'] = db_metrics['davies_bouldin_combined']
-        specific_info['Davies-Bouldin (value)'] = db_metrics['davies_bouldin_value']
-        specific_info['Davies-Bouldin (seasonal)'] = db_metrics['davies_bouldin_seasonal']
-    except ValueError as e:
-        # If evaluation fails, continue without DB metrics
-        if print_details:
-            print(f"Warning: Could not evaluate clustering quality: {e}")
-    
-    # Save clustering results to grid
-    save_clustering_results(grid, "HDBSCAN", actual_clusters, specific_info, CoV, time_taken)
-    
-    if print_details:
-        print_clustering_results("HDBSCAN", actual_clusters, specific_info)
-    
-    data['Cluster'] = labels
-    processed_results = _process_clusters(grid, data, cluster_centers, representative_indices=rep_indices)
-    return actual_clusters, processed_results, CoV, [data_scaled, labels]
 
 def find_medoid(cluster_data):
     """Helper function to find medoid of a cluster"""
@@ -2185,7 +1860,7 @@ def cluster_analysis(grid,clustering_options):
             'thresholds': [cv_threshold,correlation_threshold],
             'print_details': True/False,
             'correlation_decisions': [correlation_cleaning = True/False,method = '1/2/3',scale_groups = True/False],
-            'cluster_algorithm': 'Kmeans/Ward/DBSCAN/OPTICS/Kmedoids/Spectral/HDBSCAN/PAM_Hierarchical'
+            'cluster_algorithm': 'Kmeans/Ward/Kmedoids/PAM_Hierarchical/Kmeans_Medoids'
             'critical_idx': [], # List of indices of the time series to be considered as critical
             'base_critical_ratio': 0.5 # Ratio of the critical time series to the total time series a value of 0.75 in 8  clusters means
                                         or int means directly the number of clusters to be created for the critical time series.
