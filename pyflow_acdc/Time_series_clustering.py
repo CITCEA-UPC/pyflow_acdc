@@ -1305,7 +1305,7 @@ def run_clustering_analysis(grid, save_path='clustering_results',algorithms=None
                 
                 n_clusters,_,CoV,data_info = cluster_TS(grid, n_clusters= n, time_series=time_series,central_market=ts_options[0],algorithm=algo, cv_threshold=ts_options[1] ,correlation_threshold=ts_options[2],print_details=print_details,correlation_decisions=correlation_decisions)
                 data,data_scaled,labels = data_info
-                if algo == 'kmeans':
+                if algo in ('kmeans', 'kmeans_medoids'):
                     CoV, inertia, n_iter_ = CoV
                 elif algo == 'kmedoids':
                     CoV, inertia = CoV
