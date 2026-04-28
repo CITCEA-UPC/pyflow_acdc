@@ -12,6 +12,7 @@ from .ACDC_OPF import pyomo_model_solve,OPF_obj,obj_w_rule,calculate_objective,c
 from .ACDC_Static_TEP import (
     get_TEP_variables,
     _initialize_MS_STEP_sets_model,
+    identify_standalone_rs_conv_pairs,
     update_grid_scenario_frame,
     ExportACDC_TEP_MS_toPyflowACDC,
 )
@@ -309,6 +310,32 @@ def _MP_TEP_constraints(model,grid):
             else:
                 return model.ConvMP[c,i] == model.installed_Conv[c,i] + model.ConvMP[c,i-1] - model.decomision_Conv[c,i]
         model.MP_Conv_installed_constraint = pyo.Constraint(model.conv, model.inv_periods, rule=MP_Conv_installed)
+
+    if grid.rs_GPR and grid.ACmode and grid.DCmode:
+        ratio = float(getattr(grid, "conv_wind_min_ratio", 0.9))
+        if ratio < 0:
+            raise ValueError("conv_wind_min_ratio must be non-negative.")
+
+        def MP_standalone_conv_wind_min(model, rs, c, i):
+            ren_source = grid.RenSources[rs]
+            conv = grid.Converters_ACDC[c]
+            rs_capacity = ren_source.Max_S
+            conv_capacity = conv.MVA_max / grid.S_base
+            if rs_capacity <= 0:
+                raise ValueError(
+                    f"RenSource '{ren_source.name}' has non-positive Max_S={rs_capacity}"
+                )
+            if conv_capacity <= 0:
+                raise ValueError(
+                    f"Converter '{conv.name}' has non-positive MVA_max={conv_capacity}"
+                )
+            return model.ConvMP[c, i] * conv_capacity >= ratio * model.np_rsgen[rs, i] * rs_capacity
+
+        model.MP_standalone_conv_wind_min_constraint = pyo.Constraint(
+            model.standalone_rs_conv_pairs,
+            model.inv_periods,
+            rule=MP_standalone_conv_wind_min,
+        )
 
 def _MP_GEN_balance_constraints(model, grid):
     # Same logic as static GEN balance, indexed by investment period.
@@ -985,7 +1012,12 @@ def _initialize_MPTEP_sets_model(model,grid):
         model.ren_sources = pyo.Set(
             initialize=[i for i, rs in enumerate(grid.RenSources) if getattr(rs, "np_rsgen_mp", False)]
         )
-
+    standalone_pairs = identify_standalone_rs_conv_pairs(
+        grid,
+        ren_source_ids=model.ren_sources,
+        conv_ids=model.conv if (grid.ACmode and grid.DCmode) else None,
+    )
+    model.standalone_rs_conv_pairs = pyo.Set(dimen=2, initialize=standalone_pairs)
 
 
 def _period_base_cost(element, i):

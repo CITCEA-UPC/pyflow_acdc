@@ -31,12 +31,53 @@ __all__ = [
     'transmission_expansion',
     'linear_transmission_expansion',
     'multi_scenario_TEP',
+    'identify_standalone_rs_conv_pairs',
     'export_TEP_multiScenario_results_to_excel',
     'alpha_pareto',
     'rate_sensitivity',
     'kappa_sensitivity',
     'comprehensive_sensitivity_analysis'
 ]
+
+def identify_standalone_rs_conv_pairs(grid, ren_source_ids=None, conv_ids=None):
+    """
+    Identify standalone AC-node pairs with exactly one RS and one converter.
+
+    Optional filters:
+    - ren_source_ids: iterable of allowed RS indices (rsNumber)
+    - conv_ids: iterable of allowed converter indices (ConvNumber)
+    """
+    if not (grid.ACmode and grid.DCmode):
+        return []
+
+    allowed_rs = None if ren_source_ids is None else set(ren_source_ids)
+    allowed_conv = None if conv_ids is None else set(conv_ids)
+    standalone_pairs = []
+
+    for node in grid.nodes_AC:
+        if not node.stand_alone:
+            continue
+        if len(node.connected_RenSource) != 1:
+            continue
+        if len(node.connected_conv) != 1:
+            continue
+
+        ren_source = node.connected_RenSource[0]
+        conv_idx = next(iter(node.connected_conv))
+        rs_idx = ren_source.rsNumber
+
+        if allowed_rs is not None and rs_idx not in allowed_rs:
+            continue
+        if allowed_conv is not None and conv_idx not in allowed_conv:
+            continue
+        if not ren_source.np_rsgen_opf:
+            continue
+        if not grid.Converters_ACDC[conv_idx].np_conv_opf:
+            continue
+
+        standalone_pairs.append((rs_idx, conv_idx))
+
+    return standalone_pairs
 
 
 def update_grid_scenario_frame(grid,ts,t,n_clusters,clustering):
