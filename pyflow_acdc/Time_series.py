@@ -300,7 +300,9 @@ def _calculate_line_loading_from_model(grid,model,idx):
             load = max(abs(PDC_from[line.lineNumber]), abs(PDC_to[line.lineNumber])) * n_lines_dc[line.lineNumber]
             loadP_DC[G] += load
             line_data[f'DC_Load_{line.name}'] = load * grid.S_base / line.capacity_MW if line.capacity_MW > 0 else 0
-            line_data[f'DC_to_{line.name}']   = PDC_to[line.lineNumber]   * grid.S_base 
+            line_data[f'DC_to_{line.name}'] = (
+                PDC_to[line.lineNumber] * grid.S_base * n_lines_dc[line.lineNumber]
+            )
 
     return line_data, loadS_AC, loadP_DC
 

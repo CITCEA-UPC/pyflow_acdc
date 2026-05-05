@@ -151,6 +151,12 @@ class Grid:
         self.TEP_n_years = DEFAULT_N_YEARS
         self.TEP_discount_rate = DEFAULT_DISCOUNT_RATE
         self.Array_opf = False
+        # Toggle for enforcing minimum converter capacity relative to standalone wind
+        # (added as an MP-MS coupling constraint in ACDC_MultiPeriod_TEP).
+        self.enable_conv_wind_min_constraint = False
+        # Minimum converter-to-standalone-wind sizing ratio (in apparent-power terms).
+        # Used by MP coupling constraint in ACDC_MultiPeriod_TEP.
+        self.conv_wind_min_ratio = 1
         
         self.name = 'Grid'
         

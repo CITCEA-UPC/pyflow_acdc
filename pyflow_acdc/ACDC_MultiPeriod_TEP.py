@@ -311,8 +311,8 @@ def _MP_TEP_constraints(model,grid):
                 return model.ConvMP[c,i] == model.installed_Conv[c,i] + model.ConvMP[c,i-1] - model.decomision_Conv[c,i]
         model.MP_Conv_installed_constraint = pyo.Constraint(model.conv, model.inv_periods, rule=MP_Conv_installed)
 
-    if grid.rs_GPR and grid.ACmode and grid.DCmode:
-        ratio = float(getattr(grid, "conv_wind_min_ratio", 0.9))
+    if grid.enable_conv_wind_min_constraint and grid.rs_GPR and grid.ACmode and grid.DCmode:
+        ratio = float(grid.conv_wind_min_ratio)
         if ratio < 0:
             raise ValueError("conv_wind_min_ratio must be non-negative.")
 
