@@ -508,7 +508,7 @@ def opf_obj(model,grid,weights_def):
         if grid.Generators != []:
             gen = sum(model.PGi_gen[gen] for gen in model.gen_AC)
         if grid.RenSources != []:
-            gen = sum(model.P_renSource[rs]*model.gamma[rs] for rs in model.ren_sources)
+            gen += sum(model.P_renSource[rs]*model.gamma[rs]*model.np_rsgen[rs] for rs in model.ren_sources)
         return (gen - load)*grid.LCoE
 
     def formula_Array_losses():
@@ -530,9 +530,9 @@ def opf_obj(model,grid,weights_def):
         ac_curt=0
         dc_curt=0
         if grid.ACmode:
-            ac_curt= sum((1-model.gamma[rs])*model.P_renSource[rs]*model.price[grid.rs2node['AC'].get(rs, 0)*model.np_rsgen[rs]]*rs.sigma for rs in model.ren_sources)*grid.S_base
+            ac_curt= sum((1-model.gamma[rs])*model.P_renSource[rs]*model.price[node]*model.np_rsgen[rs]*grid.RenSources[rs].sigma for rs, node in grid.rs2node['AC'].items())*grid.S_base
         if grid.DCmode:
-            dc_curt= sum((1-model.gamma[rs])*model.P_renSource[rs]*model.price_DC[grid.rs2node['DC'].get(rs, 0)*model.np_rsgen[rs]]*rs.sigma for rs in model.ren_sources)*grid.S_base
+            dc_curt= sum((1-model.gamma[rs])*model.P_renSource[rs]*model.price_DC[node]*model.np_rsgen[rs]*grid.RenSources[rs].sigma for rs, node in grid.rs2node['DC'].items())*grid.S_base
         return ac_curt+dc_curt
     def formula_CG():
        if weights_def[ObjComponent.PZ_COST_OF_GENERATION]['w']==0:
