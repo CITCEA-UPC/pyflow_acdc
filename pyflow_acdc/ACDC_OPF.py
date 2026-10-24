@@ -503,7 +503,7 @@ def opf_obj(model,grid,weights_def):
         if grid.nodes_AC != []:
             load = sum(model.P_known_AC[node] for node in model.nodes_AC)
         if grid.nodes_DC != []:
-            load = sum(model.P_known_DC[node] for node in model.nodes_DC)
+            load += sum(model.P_known_DC[node] for node in model.nodes_DC)
         gen = 0
         if grid.Generators != []:
             gen = sum(model.PGi_gen[gen] for gen in model.gen_AC)
@@ -1239,9 +1239,9 @@ def calculate_objective(grid,obj):
         ac_curt=0
         dc_curt=0
         if grid.ACmode:
-            ac_curt= sum((1-rs.gamma)*rs.PGi_ren*grid.nodes_AC[grid.rs2node['AC'].get(rs, 0)].price*rs.np_rsgen*rs.sigma for rs in grid.RenSources)*grid.S_base
+            ac_curt= sum((1-grid.RenSources[rs].gamma)*grid.RenSources[rs].PGi_ren*grid.nodes_AC[node].price*grid.RenSources[rs].np_rsgen*grid.RenSources[rs].sigma for rs, node in grid.rs2node['AC'].items())*grid.S_base
         if  grid.DCmode:
-            dc_curt= sum((1-rs.gamma)*rs.PGi_ren*grid.nodes_DC[grid.rs2node['DC'].get(rs, 0)].price*rs.np_rsgen*rs.sigma for rs in grid.RenSources)*grid.S_base
+            dc_curt= sum((1-grid.RenSources[rs].gamma)*grid.RenSources[rs].PGi_ren*grid.nodes_DC[node].price*grid.RenSources[rs].np_rsgen*grid.RenSources[rs].sigma for rs, node in grid.rs2node['DC'].items())*grid.S_base
         return ac_curt+dc_curt
     if obj ==ObjComponent.PZ_COST_OF_GENERATION:
        return sum(pz.a*(pz.PN*grid.S_base)**2+pz.b*(pz.PN*grid.S_base) for pz in grid.Price_Zones)
