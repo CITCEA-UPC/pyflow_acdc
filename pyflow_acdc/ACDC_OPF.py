@@ -424,7 +424,20 @@ def opf_obj(model,grid,weights_def):
 
 
     """
-    np_den_eps = 1e-3
+    np_den_eps = 1e-5
+
+    def np_den(np_comp, g):
+        # Offset only when the count can reach 0: a parameter at 0, or a variable with lower bound 0.
+        np_g = np_comp[g]
+        if np_comp.ctype is pyo.Var:
+            np_min = np_g.lb
+            if np_min is None:
+                raise ValueError(f"{np_g.name} has no lower bound")
+        elif np_comp.ctype is pyo.Param:
+            np_min = pyo.value(np_g)
+        else:
+            raise TypeError(f"{np_comp.name} must be a Var or Param, got {np_comp.ctype}")
+        return np_g + np_den_eps if np_min == 0 else np_g
 
     def formula_Min_Ext_Gen():
         if weights_def[ObjComponent.EXT_GEN]['w']==0:
@@ -439,11 +452,11 @@ def opf_obj(model,grid,weights_def):
         DC= 0
         if grid.ACmode:
             if grid.act_gen:
-                AC= sum((((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/(model.np_gen[gen.genNumber] + np_den_eps)+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc)*model.gen_active[gen.genNumber]) for gen in grid.Generators)
+                AC= sum((((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/np_den(model.np_gen, gen.genNumber)+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc)*model.gen_active[gen.genNumber]) for gen in grid.Generators)
             else:
-                AC= sum(((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/(model.np_gen[gen.genNumber] + np_den_eps)+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc) for gen in grid.Generators)
+                AC= sum(((model.PGi_gen[gen.genNumber]*grid.S_base)**2*gen.qf/np_den(model.np_gen, gen.genNumber)+model.PGi_gen[gen.genNumber]*grid.S_base*model.lf[gen.genNumber]+model.np_gen[gen.genNumber]*gen.fc) for gen in grid.Generators)
         if grid.DCmode:
-            DC= sum(((model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base)**2*gen.qf/(model.np_gen_DC[gen.genNumber_DC] + np_den_eps)+model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base*model.lf_dc[gen.genNumber_DC]+model.np_gen_DC[gen.genNumber_DC]*gen.fc) for gen in grid.Generators_DC)
+            DC= sum(((model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base)**2*gen.qf/np_den(model.np_gen_DC, gen.genNumber_DC)+model.PGi_gen_DC[gen.genNumber_DC]*grid.S_base*model.lf_dc[gen.genNumber_DC]+model.np_gen_DC[gen.genNumber_DC]*gen.fc) for gen in grid.Generators_DC)
 
         REN = 0
         if grid.RenSources:
