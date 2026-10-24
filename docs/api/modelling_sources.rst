@@ -53,6 +53,23 @@ optimised. Reactive power and the apparent-power circle are omitted:
     \gamma_{rg}^{\min} \leq \gamma_{rg} \leq 1
       \qquad \forall rg \in \mathcal{RG}
 
+When the number of units :math:`n_{rg}` is an investment variable and
+:math:`\gamma_{rg}^{\min} < 1`, the product :math:`\gamma_{rg} n_{rg}` is replaced
+by the curtailed unit count :math:`y_{rg}`:
+
+.. math::
+    :label: eq:Rgen_L_y
+
+    \begin{align}
+        \gamma_{rg}^{\min}\, n_{rg} \leq y_{rg} \leq n_{rg}
+          & \qquad \forall rg \in \mathcal{RG} \\
+        P_{rg}^{inj} = P_{rg}\, y_{rg}
+          & \qquad \forall rg \in \mathcal{RG}
+    \end{align}
+
+The curtailment factor is recovered as :math:`\gamma_{rg} = y_{rg} / n_{rg}` for
+:math:`n_{rg} > 0`.
+
 Class Reference: :class:`pyflow_acdc.Classes.Ren_Source`
 
 .. autoclass:: pyflow_acdc.Ren_Source

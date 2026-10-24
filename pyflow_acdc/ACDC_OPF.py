@@ -331,11 +331,10 @@ def opf_obj_l(model,grid,ObjRule):
                 for gen in grid.Generators
             )
             if grid.RenSources:
+                rs_y = model.rs_y if hasattr(model, 'rs_y') else []
                 total += sum(
-                    model.np_rsgen[rs] * (
-                        model.P_renSource[rs] * model.gamma[rs] * grid.S_base
-                        * grid.RenSources[rs].lf
-                    )
+                    (model.y_rs[rs] if rs in rs_y else model.np_rsgen[rs] * model.gamma[rs])
+                    * model.P_renSource[rs] * grid.S_base * grid.RenSources[rs].lf
                     for rs in model.ren_sources
                 )
         if grid.DCmode and grid.Generators_DC:

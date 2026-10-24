@@ -554,70 +554,34 @@ def AC_constraints(model,grid,AC_info):
             return float(ren_source.min_gamma)
         return 1.0
 
-    def _rs_needs_mccormick(rs):
-        # gamma is a free Var only when min_gamma < 1; otherwise gamma is fixed at 1.
+    def _rs_needs_y(rs):
+        # gamma * np_rsgen is bilinear only when np_rsgen is a Var and gamma is free (min_gamma < 1).
         return grid.rs_GPR and _rs_gamma_lb(rs) < 1.0 - 1e-12
 
-    mccormick_rs = [rs for rs in model.ren_sources if _rs_needs_mccormick(rs)]
-    if mccormick_rs:
-        from ..NL_models.ACDC_Static_TEP import get_TEP_variables
-        _tep_rs = get_TEP_variables(grid)['ren_sources']
-        np_rsgen_lb = {}
-        np_rsgen_ub = {}
-        for rs in mccormick_rs:
-            ren_source = grid.RenSources[rs]
-            base = _tep_rs['np_rsgen'][rs]
-            max_n = _tep_rs['np_rsgen_max'][rs]
-            if ren_source.np_rsgen_mp:
-                np_rsgen_lb[rs] = 0
-                np_rsgen_ub[rs] = max_n
-            elif ren_source.np_rsgen_opf:
-                np_rsgen_lb[rs] = base
-                np_rsgen_ub[rs] = max_n
-            else:
-                np_rsgen_lb[rs] = base
-                np_rsgen_ub[rs] = base
+    y_rs_list = [rs for rs in model.ren_sources if _rs_needs_y(rs)]
+    if y_rs_list:
+        # y_rs replaces gamma * np_rsgen; valid only while gamma of these sources is used nowhere else.
+        model.rs_y = pyo.Set(initialize=y_rs_list)
+        model.y_rs = pyo.Var(model.rs_y, within=pyo.NonNegativeReals, initialize=0)
 
-        model.rs_mccormick = pyo.Set(initialize=mccormick_rs)
+        def y_rs_lb_rule(model, rs):
+            return model.y_rs[rs] >= _rs_gamma_lb(rs) * model.np_rsgen[rs]
 
-        def z_rs_bounds(model, rs):
-            gamma_L = _rs_gamma_lb(rs)
-            return (gamma_L * np_rsgen_lb[rs], 1.0 * np_rsgen_ub[rs])
+        def y_rs_ub_rule(model, rs):
+            return model.y_rs[rs] <= model.np_rsgen[rs]
 
-        model.z_rs = pyo.Var(model.rs_mccormick, bounds=z_rs_bounds, initialize=0)
-
-        def z_rs_mccormick_lb1(model, rs):
-            gamma_L = _rs_gamma_lb(rs)
-            n_L = np_rsgen_lb[rs]
-            return model.z_rs[rs] >= gamma_L * model.np_rsgen[rs] + n_L * model.gamma[rs] - gamma_L * n_L
-
-        def z_rs_mccormick_lb2(model, rs):
-            n_U = np_rsgen_ub[rs]
-            return model.z_rs[rs] >= 1.0 * model.np_rsgen[rs] + n_U * model.gamma[rs] - 1.0 * n_U
-
-        def z_rs_mccormick_ub1(model, rs):
-            n_L = np_rsgen_lb[rs]
-            return model.z_rs[rs] <= 1.0 * model.np_rsgen[rs] + n_L * model.gamma[rs] - 1.0 * n_L
-
-        def z_rs_mccormick_ub2(model, rs):
-            gamma_L = _rs_gamma_lb(rs)
-            n_U = np_rsgen_ub[rs]
-            return model.z_rs[rs] <= gamma_L * model.np_rsgen[rs] + n_U * model.gamma[rs] - gamma_L * n_U
-
-        model.z_rs_mccormick_lb1 = pyo.Constraint(model.rs_mccormick, rule=z_rs_mccormick_lb1)
-        model.z_rs_mccormick_lb2 = pyo.Constraint(model.rs_mccormick, rule=z_rs_mccormick_lb2)
-        model.z_rs_mccormick_ub1 = pyo.Constraint(model.rs_mccormick, rule=z_rs_mccormick_ub1)
-        model.z_rs_mccormick_ub2 = pyo.Constraint(model.rs_mccormick, rule=z_rs_mccormick_ub2)
+        model.y_rs_lb = pyo.Constraint(model.rs_y, rule=y_rs_lb_rule)
+        model.y_rs_ub = pyo.Constraint(model.rs_y, rule=y_rs_ub_rule)
 
     def Gen_PREN_rule(model,node):
        nAC = grid.nodes_AC[node]
        terms = []
        for rs in nAC.connected_RenSource:
            r = rs.rsNumber
-           if _rs_needs_mccormick(r):
-               terms.append(model.P_renSource[r] * model.z_rs[r])
+           if _rs_needs_y(r):
+               terms.append(model.P_renSource[r] * model.y_rs[r])
            elif grid.rs_GPR and _rs_gamma_lb(r) >= 1.0 - 1e-12:
-               # gamma fixed at 1: skip McCormick / gamma product
+               # gamma fixed at 1: skip the gamma product
                terms.append(model.P_renSource[r] * model.np_rsgen[r])
            else:
                terms.append(model.P_renSource[r] * model.gamma[r] * model.np_rsgen[r])
@@ -1538,6 +1502,11 @@ def export_acdc_l_model_to_pyflow_acdc(model,grid, solver_results=None, tee=Fals
             gen.PGen = PGen_DC_values[gen.genNumber_DC]
 
     gamma_values = {k: np.float64(pyo.value(v)) for k, v in model.gamma.items()}
+    if hasattr(model, 'rs_y'):
+        for rs in model.rs_y:
+            n_rs = round(pyo.value(model.np_rsgen[rs]))
+            # With no installed units there is nothing to curtail.
+            gamma_values[rs] = np.float64(pyo.value(model.y_rs[rs]) / n_rs) if n_rs > 0 else np.float64(1.0)
     Qren_values  = {k: 0.0 for k in gamma_values.keys()}
     for rs in grid.RenSources:
         rs.gamma = gamma_values[rs.rsNumber]

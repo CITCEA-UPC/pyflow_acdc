@@ -237,6 +237,23 @@ active circuits carry the same reference flow, :math:`\sum_j p_{l,j}` reproduces
 the integer product **exactly**, and the model remains a true MILP solvable by any
 MIP solver.
 
+Renewable unit count and curtailment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+When the renewable unit count :math:`n_{rg}` is an integer investment variable and
+the curtailment factor :math:`\gamma_{rg}` is free, the injection
+:math:`P_{rg}\,\gamma_{rg}\,n_{rg}` is bilinear. The product is replaced by
+:math:`y_{rg}` with
+
+.. math::
+
+   \gamma_{rg}^{\min}\, n_{rg} \le y_{rg} \le n_{rg}
+
+and :math:`P_{rg}\, y_{rg}` enters the node balance and the energy cost. Since
+:math:`\gamma_{rg}` appears only in this product, every :math:`y_{rg}` in the
+interval corresponds to :math:`\gamma_{rg} = y_{rg}/n_{rg} \in [\gamma_{rg}^{\min}, 1]`,
+so the reformulation is **exact**.
+
 Exporting Results
 -----------------
 
