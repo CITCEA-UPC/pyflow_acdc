@@ -1,4 +1,4 @@
-"""System modelling: Adding an electrolyser (``docs/api/modelling_storage_hydrogen.rst``)."""
+"""System modelling: Adding an electrolyser (``docs/api/modelling_flexible_assets.rst``)."""
 import pyflow_acdc as pyf
 
 pyf.initialize_pyflowacdc()

@@ -93,6 +93,11 @@ and MS :func:`~pyflow_acdc.multi_scenario_TEP` on **ipopt**).
 ``test_docs_L_models.py`` runs ``L_models/`` (linearised AC OPF and linear TEP/REC; first
 available LP/MIP solver, else ``build_only``).
 
+Sparse SOCP tests live in ``pyflow_tests/test_socp.py`` (build / solve / window /
+optional NLP compare). They require ``pip install pyflow-acdc[SOCP]`` (``cvxpy`` +
+``clarabel``). If no conic solver is available they are **Skipped**. Coverage CI
+installs ``.[tests,All]``, which includes the SOCP extra.
+
 Not run by ``--docs`` (no runner, or long / optional solvers):
 
 * ``windfarm_loader/`` — no ``test_docs_*.py`` yet

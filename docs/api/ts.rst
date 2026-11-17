@@ -65,7 +65,7 @@ Nonlinear (myopic)
    With H₂ (``grid.H2``): inventory carries within ``H2_mass_max``;
    ``empty_tank_cycle`` empties between solves; economics via
    ``ObjRule['H2_sale']``.
-   Element models: :doc:`modelling_storage_hydrogen`.
+   Element models: :doc:`modelling_flexible_assets`.
    Coupled multi-hour inventory / terminal mass:
    :doc:`window` (API) and :doc:`../usage_window_opf` (workflow).
 

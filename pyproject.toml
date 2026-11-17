@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyflow_acdc"
-version = "0.6.11"
+version = "0.7.0"
 license = {file = "LICENSE"}
 requires-python = ">= 3.10"
 
@@ -80,6 +80,8 @@ LINEAR_ARRAY = ["ortools", "highspy==1.14.0"]
 TEP_pymoo = ["pymoo",
              "pyomo"]
 
+SOCP = ["cvxpy", "clarabel"]
+
 Gurobi = ["gurobipy"]
 
 plotting = ["kaleido"]
@@ -94,7 +96,9 @@ All = ["folium",
        "ortools",
        "highspy==1.14.0",
        "pymoo",
-       "kaleido"]
+       "kaleido",
+       "cvxpy",
+       "clarabel"]
 
 [project.urls]
 Homepage       = "https://github.com/CITCEA-UPC/pyflow_acdc"

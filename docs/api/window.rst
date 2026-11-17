@@ -5,7 +5,7 @@ Coupled multi-hour nonlinear OPF with shared BESS SoC and (when present) H₂
 inventory across frames. Implemented in :mod:`pyflow_acdc.NL_models.window_opf`.
 
 Workflow guide: :doc:`../usage_window_opf`. Element models:
-:doc:`modelling_storage_hydrogen`. Objectives: :ref:`obj_functions`.
+:doc:`modelling_flexible_assets`. Objectives: :ref:`obj_functions`.
 Myopic (uncoupled) sequential hours: :func:`~pyflow_acdc.ts_acdc_opf`
 (:doc:`ts`).
 

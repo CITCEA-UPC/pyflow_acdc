@@ -61,7 +61,7 @@ All
 
    - :ref:`Clustering summary <res_clustering_results>`
 
-   When optimization has run (``res.Grid.OPF_run``):
+   When optimization has run (``res.Grid.OPF_run`` or ``res.Grid.socp_run``):
 
    - :ref:`External generator data <res_ext_gen>`
    - :ref:`Renewable energy sources <res_ext_ren>`

@@ -125,7 +125,7 @@ programming -- a case study based on the Princess Elisabeth Energy Island*,
 *Wind Energy Science*, 11(2), 349–372, 2026,
 doi: `10.5194/wes-11-349-2026 <https://doi.org/10.5194/wes-11-349-2026>`_.
 
-Modelling notes: :doc:`api/modelling_storage_hydrogen` (BESS §3.3, electrolyser
+Modelling notes: :doc:`api/modelling_flexible_assets` (BESS §3.3, electrolyser
 §3.4). Coupled window / rolling: :doc:`api/window` (API),
 :doc:`usage_window_opf` (workflow).
 
@@ -144,4 +144,43 @@ Modelling notes: :doc:`api/modelling_storage_hydrogen` (BESS §3.3, electrolyser
       pages   = {349--372},
       url     = {https://wes.copernicus.org/articles/11/349/2026/},
       doi     = {10.5194/wes-11-349-2026}
+    }
+
+For controllable heat pumps / LEC flexibility:
+
+If you use :class:`~pyflow_acdc.HeatPump` or
+:func:`~pyflow_acdc.add_heat_pump`, please also cite:
+
+M. Montalà-Palau, J. J. Markus, M. Kazemi, M. Cheah-Mañé, C. Papadimitriou,
+and O. Gomis-Bellmunt, *Enhancing Distribution System Resilience through Energy
+Communities*, CIRED 2026 Brussels Workshop, Paper 1361, 2026.
+
+Modelling: :doc:`api/modelling_flexible_assets` (heat-pump section).
+
+Sparse SOCP / AC–DC energy hubs
+--------------------------------
+
+Use when citing :func:`~pyflow_acdc.socp_optimise` /
+:func:`~pyflow_acdc.soc_window_optimisation` (``[SOCP]`` extra).
+
+M. Useche-Arteaga, W. Gil-González, P. Gebraad, M. Cheah-Mane, V. Lacerda, and
+O. Gomis-Bellmunt, *Efficient AC/DC energy hubs operation using sparse SOCP
+relaxation and chance-constrained optimization*, *Sustainable Energy, Grids and
+Networks*, 46, 102217, 2026,
+doi: `10.1016/j.segan.2026.102217 <https://doi.org/10.1016/j.segan.2026.102217>`_.
+
+Plan: ``plans/convex_acdc_socp_plan.md``.
+
+.. code-block:: bibtex
+
+    @article{USECHEARTEAGA2026102217,
+      author  = {Useche-Arteaga, M. and Gil-González, W. and Gebraad, P. and
+                 Cheah-Mane, M. and Lacerda, V. and Gomis-Bellmunt, O.},
+      title   = {Efficient AC/DC energy hubs operation using sparse SOCP
+                 relaxation and chance-constrained optimization},
+      journal = {Sustainable Energy, Grids and Networks},
+      volume  = {46},
+      pages   = {102217},
+      year    = {2026},
+      doi     = {10.1016/j.segan.2026.102217}
     }

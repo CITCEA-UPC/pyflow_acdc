@@ -104,6 +104,23 @@ with affine losses in :math:`P_s`:
           \qquad \forall cn \in \mathcal{C}n
     \end{align}
 
+SOCP model
+----------
+
+In the sparse SOCP stack (:doc:`socp`), converters use AC-side apparent power
+:math:`S_s`, DC injection, and an affine loss epigraph in :math:`|\Re(S_s)|`:
+
+.. math::
+    :label: eq:Conv_SOCP
+
+    \begin{align}
+        \Re(S_{s}) + P_{cn_{DC}} + P_{cn_{loss}} &= 0 \\
+        t &\geq |\Re(S_{s})| \\
+        P_{cn_{loss}} &= a_{conv} + b_{conv}\, t \\
+        \|S_{s}\| &\leq S_{cn_{rating}}
+          \qquad \forall cn \in \mathcal{C}n
+    \end{align}
+
 Class Reference: :class:`pyflow_acdc.Classes.AC_DC_converter`
 
 .. autoclass:: pyflow_acdc.AC_DC_converter

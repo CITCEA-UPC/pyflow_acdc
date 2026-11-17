@@ -124,7 +124,8 @@ class Results:
             self.slack_ac(print_table=print_table)
 
         self.power_loss(print_table=print_table)
-        if self.Grid.OPF_run :
+        opt_run = self.Grid.OPF_run or self.Grid.socp_run
+        if opt_run:
             if self.Grid.Generators != [] or self.Grid.Generators_DC != []:
                 self.ext_gen(print_table=print_table)
             if self.Grid.RenSources:
@@ -133,12 +134,20 @@ class Results:
                 self.ext_storage(print_table=print_table)
             if self.Grid.electrolysers:
                 self.ext_electrolyser(print_table=print_table)
+            if self.Grid.heat_pumps:
+                self.ext_heat_pump(print_table=print_table)
             if getattr(self.Grid, "window_opf_run", False):
                 if self.Grid.storage_elements:
                     self.storage_window(print_table=print_table)
                 if self.Grid.electrolysers:
                     self.hydrogen_window(print_table=print_table)
-            if not self.Grid.TEP_run and not self.Grid.MP_TEP_run:
+                if self.Grid.heat_pumps:
+                    self.heat_pump_window(print_table=print_table)
+            if (
+                self.Grid.OPF_run
+                and not self.Grid.TEP_run
+                and not self.Grid.MP_TEP_run
+            ):
                 self.obj_res(print_table=print_table)
             if self.Grid.Price_Zones != []:
                 self.price_zone(print_table=print_table)
@@ -1523,6 +1532,89 @@ class Results:
             print(pe_df.to_string(index=False))
 
         return m_df, pe_df
+
+    def ext_heat_pump(self, print_table=True):
+        """Report controllable heat-pump dispatch after snapshot NL OPF."""
+        rows = []
+        p_tot = 0.0
+        q_tot = 0.0
+
+        for hp in self.Grid.heat_pumps:
+            p_mw = hp.P_hp * hp.np_hp * self.Grid.S_base
+            q_mvar = hp.Q_hp * hp.np_hp * self.Grid.S_base
+            p_shed_mw = hp.P_shed * self.Grid.S_base
+            q_shed_mvar = hp.Q_shed * self.Grid.S_base
+            p_tot += p_mw
+            q_tot += q_mvar
+            rows.append({
+                "Name": hp.name,
+                "Node": hp.Node_AC,
+                "P served (MW)": np.round(p_mw, decimals=self.dec),
+                "Q served (MVAR)": np.round(q_mvar, decimals=self.dec),
+                "P shed (MW)": np.round(p_shed_mw, decimals=self.dec),
+                "Q shed (MVAR)": np.round(q_shed_mvar, decimals=self.dec),
+                "Energy state (kWh)": np.round(hp.E_state, decimals=self.dec),
+            })
+
+        if rows:
+            rows.append({
+                "Name": "Total",
+                "Node": "",
+                "P served (MW)": np.round(p_tot, decimals=self.dec),
+                "Q served (MVAR)": np.round(q_tot, decimals=self.dec),
+                "P shed (MW)": "",
+                "Q shed (MVAR)": "",
+                "Energy state (kWh)": "",
+            })
+
+        columns = [
+            "Name", "Node", "P served (MW)", "Q served (MVAR)",
+            "P shed (MW)", "Q shed (MVAR)", "Energy state (kWh)",
+        ]
+        df = pd.DataFrame(rows) if rows else pd.DataFrame(columns=columns)
+        self.tables["Ext_heat_pump"] = df
+
+        if print_table:
+            print('--------------')
+            print('Controllable heat pumps')
+            table = pt()
+            table.field_names = columns
+            for _, row in df.iterrows():
+                table.add_row([row[col] for col in columns])
+            print(table)
+
+        return df
+
+    def heat_pump_window(self, print_table=True):
+        """Report heat-pump trajectories after coupled ``window_nl_opf``."""
+        if not getattr(self.Grid, "window_opf_run", False):
+            raise RuntimeError("window_nl_opf has not been run on this grid")
+
+        results = self.Grid.window_opf_results
+        p_df = results['heat_pump_P'].copy()
+        q_df = results['heat_pump_Q'].copy()
+        e_df = results['heat_pump_energy_state'].copy()
+
+        for df in (p_df, q_df, e_df):
+            numeric_cols = df.select_dtypes(include='number').columns
+            df[numeric_cols] = df[numeric_cols].round(self.dec)
+
+        self.tables["HeatPump_window_P"] = p_df
+        self.tables["HeatPump_window_Q"] = q_df
+        self.tables["HeatPump_window_energy_state"] = e_df
+
+        if print_table:
+            print('--------------')
+            print('Heat-pump P served (MW, by frame)')
+            print(p_df.to_string(index=False))
+            print('--------------')
+            print('Heat-pump Q served (MVAR, by frame)')
+            print(q_df.to_string(index=False))
+            print('--------------')
+            print('Heat-pump energy state (kWh, by frame)')
+            print(e_df.to_string(index=False))
+
+        return p_df, e_df
 
     def clustering_results(self, print_table=True):
         self.clustering_time_series_statistics()

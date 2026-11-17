@@ -21,6 +21,7 @@ of `Classes`.
              ACDC_PF                              power flow
              pyomo_model_solve                    generic Pyomo solve
              ACDC_OPF (+ NL_models / L_models)    optimal power flow
+             ACDC_convex (+ convex_model)         SOCP / MI-SOCP (CVXPY)
              Static / STEP / MP TEP (+ pymoo, L)   transmission expansion
              Array_OPT                            wind-array route / CSS
              Time_series(_clustering)             time-series studies
@@ -45,14 +46,14 @@ Lower layers never import from higher layers. `constants` is a leaf module
 - **`Classes.py`** — The data model: `Grid` plus element classes
   (`Node_AC/DC`, `Line_AC/DC` and AC line subclasses, `TF_Line_AC`,
   `AC_DC_converter`, `DCDC_converter`, `Gen_AC/DC`, `Storage` (AC or DC via
-  `connected`), `Electrolyser`, `Ren_Source`, `Price_Zone` and subclasses,
-  `TimeSeries`, `Cable_options` / sizing helpers). Owns per-object state and
-  derived electrical quantities (e.g. `Ybus`).
+  `connected`), `Electrolyser`, `HeatPump` (AC flexible load), `Ren_Source`,
+  `Price_Zone` and subclasses, `TimeSeries`, `Cable_options` / sizing helpers).
+  Owns per-object state and derived electrical quantities (e.g. `Ybus`).
 - **`grid_creator.py`** — Build a `Grid` from data tables, MATPOWER `.mat`
   files, pickles, or a turbine graph. Owns import/parsing.
 - **`grid_modifications.py`** — Add or mutate elements after creation
-  (`add_*`, including `add_storage` / `add_electrolyser`, line-type
-  conversions, time/investment series wiring).
+  (`add_*`, including `add_storage` / `add_electrolyser` / `add_heat_pump`,
+  line-type conversions, time/investment series wiring).
 - **`grid_analysis.py`** — Topology/analysis utilities: `analyse_grid`,
   coordinate transforms (`pol2cart`/`cart2pol`/…), `Cable_parameters`,
   `Converter_parameters`, fuel-mix distribution.
@@ -74,15 +75,23 @@ Lower layers never import from higher layers. `constants` is a leaf module
   Distinct from `solver_utils.py` (environment probe only).
 - **`NL_models/`** — Nonlinear model builders and drivers:
   `ACDC_OPF_NL_model` (full AC/DC Pyomo model, converters, price zones, TEP
-  variables, BESS / H₂), and `window_opf` (coupled / rolling multi-hour NL
-  OPF with SoC / H₂ parent links). TEP drivers in this package are listed
-  under Planning below.
+  variables, BESS / H₂ / heat pumps), and `window_opf` (coupled / rolling
+  multi-hour NL OPF with SoC / H₂ / HP parent links). TEP drivers in this
+  package are listed under Planning below.
 - **`L_models/`** — Linearised (LP/MILP) model builders and drivers — **not
   SOCP**: `AC_OPF_L_model` (AC Bθ; optional hybrid DC linearization + thin
   converters; McCormick cable-type selection; BESS P-only / electrolyser P +
-  mass), `window_l_opf` (coupled / rolling), and `AC_L_CSS_ortools` (array
-  CSS). Linear TEP lives under Planning. Myopic linear TS lives in
-  `Time_series.ts_acdc_l_opf`.
+  mass / heat-pump P-only with `Q_heat_pump` fixed at 0), `window_l_opf`
+  (coupled / rolling), and `AC_L_CSS_ortools` (array CSS). Linear TEP lives
+  under Planning. Myopic linear TS lives in `Time_series.ts_acdc_l_opf`.
+- **`convex_model/`** + **`ACDC_convex.py`** — CVXPY sparse SOCP / MI-SOCP
+  stack (optional `[SOCP]` extra): `build_socp_data` / `socp_model` builders;
+  runners `socp_optimise`, `soc_window_optimisation`, `socp_ccp_optimise`,
+  `socp_ccp_window_optimisation`, `translate_pyf_socp`. Distinct from Pyomo
+  NL/L OPF. Includes BESS (continuous by default; optional MI exclusivity),
+  linear H₂, heat pumps, and chance constraints on wind/price (Paper A §4).
+  Robust box uncertainty (Paper R) is still planned. See
+  `plans/convex_acdc_socp_plan.md` for the full formulation and design decisions.
 
 ## Planning and sizing
 
@@ -113,7 +122,7 @@ Wind-array specific (not general TEP):
 
 - **`Time_series.py`** — Time-series power flow / OPF drivers and result
   aggregation (`ts_acdc_opf` NL myopic; `ts_acdc_l_opf` linear myopic twin;
-  shared parameter update / SoC–H₂ carry helpers; PF setpoint TS for
+  shared parameter update / SoC–H₂–HP carry helpers; PF setpoint TS for
   converters / BESS / electrolyser).
 - **`Time_series_clustering.py`** — Representative-period clustering of
   time-series inputs.
@@ -123,7 +132,8 @@ Wind-array specific (not general TEP):
 ## Output and visualisation
 
 - **`Results_class.py`** — `Results` container and reporting tables
-  (including `ext_storage` / `ext_electrolyser`, window tables).
+  (including `ext_storage` / `ext_electrolyser` / `ext_heat_pump`, window
+  tables).
 - **`Export_files.py`** — Export a grid to runnable Python, MATLAB, or
   pickle; code generation for loaders.
 - **`Graph_and_plot.py`** — Static / Plotly network and result plots.
@@ -142,7 +152,8 @@ Wind-array specific (not general TEP):
 - **`depreciation_methods.py`** — Deprecated mixed-case public aliases that
   warn and forward to snake_case names.
 - **`__init__.py`** — Public API surface (`__all__`), optional-dependency
-  guards, and the `cases` example-grid loader.
+  guards (`HAS_OPF`, `HAS_DASH`, `HAS_SOCP`, …), and the `cases` example-grid
+  loader.
 
 ## Conventions
 

@@ -79,6 +79,23 @@ Wind Energy Science, 11(2), 349–372, 2026,
 doi: 10.5194/wes-11-349-2026.
 ```
 
+**Heat pumps / LEC flexibility** (`HeatPump`, `add_heat_pump`):
+
+```
+M. Montalà-Palau, J. J. Markus, M. Kazemi, M. Cheah-Mañé, C. Papadimitriou,
+and O. Gomis-Bellmunt, Enhancing Distribution System Resilience through Energy
+Communities, CIRED 2026 Brussels Workshop, Paper 1361, 2026.
+```
+
+**Sparse SOCP / AC–DC energy hubs** (`socp_optimise`, ``[SOCP]``):
+
+```
+M. Useche-Arteaga, W. Gil-González, P. Gebraad, M. Cheah-Mane, V. Lacerda, and
+O. Gomis-Bellmunt, Efficient AC/DC energy hubs operation using sparse SOCP
+relaxation and chance-constrained optimization, Sustainable Energy, Grids and
+Networks 46, 102217, 2026, doi: 10.1016/j.segan.2026.102217.
+```
+
 ## Installation
 
 ### Basic Installation
@@ -189,6 +206,7 @@ pip install pyflow-acdc[All]
 # Or install specific optional dependency groups:
 pip install pyflow-acdc[mapping]      # For mapping features (folium, branca)
 pip install pyflow-acdc[OPF]          # For optimal power flow (pyomo)
+pip install pyflow-acdc[SOCP]         # For sparse SOCP (cvxpy)
 pip install pyflow-acdc[Dash]         # For Dash web applications
 pip install pyflow-acdc[LINEAR_ARRAY]  # OR-Tools route MIP + CSS + HiGHS (ortools, highspy)
 pip install pyflow-acdc[TEP_pymoo]    # For TEP with pymoo (pymoo, pyomo)

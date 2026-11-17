@@ -1,6 +1,7 @@
-"""Probe installed Pyomo solvers and OR-Tools backends in the current environment."""
+"""Probe installed Pyomo solvers, CVXPY solvers, and OR-Tools backends."""
 
 import logging
+import warnings
 
 DEFAULT_PYOMO_SOLVERS = [
     "cbc",
@@ -28,6 +29,17 @@ DEFAULT_ORTOOLS_BACKENDS = [
     "XPRESS",
     "GLPK",
 ]
+
+DEFAULT_SOCP_SOLVERS = [
+    "MOSEK",
+    "GUROBI",
+    "SCIP",
+    "CLARABEL",
+    "SCS",
+]
+
+# Subset of ``DEFAULT_SOCP_SOLVERS`` that support SOCP + boolean variables.
+SOCP_MI_CAPABLE_SOLVERS = frozenset({"MOSEK", "GUROBI", "SCIP"})
 
 
 def _normalize_solver_names(pyomo_solvers=None):
@@ -121,6 +133,62 @@ def resolve_pyomo_linear_solver(candidates=None):
         candidates = PYOMO_LINEAR_SOLVERS
     for name in candidates:
         if is_pyomo_solver_available(name):
+            return name
+    return None
+
+
+def cvxpy_available():
+    """Return ``True`` when CVXPY can be imported."""
+    try:
+        __import__("cvxpy")
+    except Exception:
+        return False
+    return True
+
+
+def resolve_socp_solver(candidates=None, mi_required=False, solver=None):
+    """Return a CVXPY SOCP solver name (upper-case).
+
+    If ``solver`` is given, return its upper-case form. Otherwise return the
+    first installed solver from ``candidates`` (default
+    :data:`DEFAULT_SOCP_SOLVERS`).
+
+    When ``mi_required`` is True, prefer the first installed solver in
+    :data:`SOCP_MI_CAPABLE_SOLVERS`. If none are installed, fall back to the
+    first installed solver from the full list and emit a warning. An explicit
+    non-MI ``solver`` with ``mi_required=True`` also emits a warning.
+    """
+    if not cvxpy_available():
+        return None
+
+    if solver is not None:
+        chosen = str(solver).upper()
+        if mi_required and chosen not in SOCP_MI_CAPABLE_SOLVERS:
+            warnings.warn(
+                f"solver {chosen!r} may not support SOCP with boolean variables; "
+                f"bess_mi_exclusivity=True prefers "
+                f"{', '.join(sorted(SOCP_MI_CAPABLE_SOLVERS))}.",
+                stacklevel=2,
+            )
+        return chosen
+
+    import cvxpy as cp
+
+    candidate_names = candidates if candidates is not None else DEFAULT_SOCP_SOLVERS
+    installed = set(cp.installed_solvers())
+    if mi_required:
+        for name in candidate_names:
+            if name in installed and name in SOCP_MI_CAPABLE_SOLVERS:
+                return name
+    for name in candidate_names:
+        if name in installed:
+            if mi_required and name not in SOCP_MI_CAPABLE_SOLVERS:
+                warnings.warn(
+                    f"solver {name!r} may not support SOCP with boolean variables; "
+                    f"bess_mi_exclusivity=True prefers "
+                    f"{', '.join(sorted(SOCP_MI_CAPABLE_SOLVERS))}.",
+                    stacklevel=2,
+                )
             return name
     return None
 

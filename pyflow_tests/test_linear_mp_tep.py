@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 
 import pyomo.environ as pyo
-import pytest
 import pyflow_acdc as pyf
 
 from pyflow_tests._test_solver_deps import require_pyomo

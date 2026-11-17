@@ -76,8 +76,40 @@ active-power balance. Reactive power is not included in the network equations.
         \qquad \forall i \in \mathcal{N}_{ac}^{\mathrm{slack}}
     \end{align}
 
-Optional flexible injections (storage, electrolyser) enter
+Optional flexible injections (storage, electrolyser, heat pump) enter
 :math:`P_{net}^{ac}` with the same sign convention as in the nonlinear model.
+
+SOCP model
+~~~~~~~~~~
+
+In the sparse SOCP stack (:doc:`socp`), the AC node is written on lifted
+variables :math:`h_i = |V_i|^2` and sparse edge products
+:math:`w_{ik} = V_i^{*} V_k` on existing branches:
+
+.. math::
+    :label: eq:PnodeAC_SOCP
+
+    \begin{align}
+      V_{\min}^{2} &\leq h_{i} \leq V_{\max}^{2}
+        \qquad \forall i \in \mathcal{N}_{ac} \\
+      h_{i} &= 1
+        \qquad \forall i \in \mathcal{N}_{ac}^{\mathrm{slack}} \\
+      \left\|
+        \begin{bmatrix}
+          2\Re(w_{ik}) \\
+          2\Im(w_{ik}) \\
+          h_{i}-h_{k}
+        \end{bmatrix}
+      \right\|_{2}
+      &\leq h_{i}+h_{k}
+        \qquad \forall (i,k)\in\mathcal{E}_{ac} \\
+      S_{i}^{*} &= Y_{ii}h_{i}
+        + \sum_{k\neq i} Y_{ik}w_{ik}
+        \qquad \forall i \in \mathcal{N}_{ac}
+    \end{align}
+
+where :math:`S_i` collects the nodal active/reactive injections
+(generators, renewables, loads, converters, and optional flexible assets).
 
 Class Reference: :class:`pyflow_acdc.Classes.Node_AC`
 
@@ -161,6 +193,24 @@ susceptance and voltage-angle difference:
 
 with :math:`B_{ft}=\Im(Y_{ft})` and :math:`B_{tf}=\Im(Y_{tf})` taken from the
 branch admittance matrix.
+
+SOCP model
+~~~~~~~~~~
+
+In the sparse SOCP stack, AC branch flows and thermal limits use the lifted
+edge variables:
+
+.. math::
+    :label: eq:PAC_branch_SOCP
+
+    \begin{align}
+        S_{ik} &= Y_{ik}^{*}\,(h_{i}-w_{ik}) \\
+        S_{ki} &= Y_{ki}^{*}\,(h_{k}-w_{ik}^{*}) \\
+        \|S_{ik}\| &\leq S_{j,\mathrm{rating}}
+          \qquad \forall (i,k)\in\mathcal{E}_{ac} \\
+        \|S_{ki}\| &\leq S_{j,\mathrm{rating}}
+          \qquad \forall (i,k)\in\mathcal{E}_{ac}
+    \end{align}
 
 Class Reference: :class:`pyflow_acdc.Classes.Line_AC`
 

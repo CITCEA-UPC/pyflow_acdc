@@ -56,6 +56,7 @@ API Documentation
 
    api/pf
    api/opf
+   api/socp
    api/L_models
 
 .. toctree::

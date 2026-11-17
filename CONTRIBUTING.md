@@ -12,11 +12,12 @@ pip install -e .
 ```
 
 Requires **Python 3.10+**. Package version is set in `pyproject.toml`
-(this branch is **0.6.9**). Install the optional extras you need (see the
+(this branch is **0.7.0**). Install the optional extras you need (see the
 README for the full list), e.g.:
 
 ```bash
 pip install -e ".[OPF]"            # pyomo for optimal power flow
+pip install -e ".[SOCP]"           # cvxpy for sparse SOCP
 pip install -e ".[LINEAR_ARRAY]"  # ortools + highspy for array MIP/CSS
 pip install -e ".[tests]"          # pytest + pytest-cov
 pip install -e ".[All]"        # everything except gurobipy (needs a license)

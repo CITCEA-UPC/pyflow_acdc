@@ -45,6 +45,7 @@ extensions = [
 # submodules to read signatures/docstrings, so we mock these imports.
 autodoc_mock_imports = [
     "pyomo",
+    "cvxpy",
     "dash",
     "ortools",
     "pymoo",

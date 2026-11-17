@@ -10,6 +10,7 @@ import pytest
 
 import pyflow_acdc as pyf
 from pyflow_acdc.constants import ORTOOLS_LINEAR_SOLVERS, PYOMO_LINEAR_SOLVERS
+from pyflow_acdc.solver_utils import cvxpy_available, resolve_socp_solver
 
 _PYOMO_LINEAR_SKIP = (
     f"no Pyomo MIP/CSS-L solver available "
@@ -21,6 +22,7 @@ _ORTOOLS_LP_SKIP = (
 )
 _MAPPING_SKIP = "mapping extra not installed (pip install pyflow-acdc[mapping])"
 _TEP_PYMOO_SKIP = "TEP_pymoo extra not installed (pip install pyflow-acdc[TEP_pymoo])"
+_SOCP_SKIP = "cvxpy is not installed (pip install pyflow-acdc[SOCP])"
 
 
 def _require(ok, message):
@@ -49,6 +51,29 @@ def pyomo_missing_for_run_test():
 
 def require_pyomo():
     _require(_pyomo_available(), "pyomo is not installed")
+
+
+def require_socp():
+    _require(cvxpy_available() and hasattr(pyf, "socp_optimise"), _SOCP_SKIP)
+
+
+def socp_solver():
+    """Return preferred CVXPY conic solver for SOCP tests."""
+    require_socp()
+    chosen = resolve_socp_solver()
+    if chosen is None:
+        raise RuntimeError("no supported SOCP solver installed (need MOSEK, CLARABEL, or SCS)")
+    return chosen
+
+
+def socp_mi_solver():
+    """Return preferred MI-capable CVXPY conic solver, or skip if none."""
+    require_socp()
+    from pyflow_acdc.solver_utils import SOCP_MI_CAPABLE_SOLVERS, resolve_socp_solver
+    chosen = resolve_socp_solver(mi_required=True)
+    if chosen is None or chosen not in SOCP_MI_CAPABLE_SOLVERS:
+        pytest.skip("no MI-capable SOCP solver (need MOSEK, GUROBI, or SCIP)")
+    return chosen
 
 
 def ipopt_available():

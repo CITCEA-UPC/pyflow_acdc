@@ -184,6 +184,7 @@ ALL_CASES = [
     "test_case39acdc_OPF.py",
     "test_case24_3zones_acdc_OPF.py",
     "test_opf_result_helpers.py",
+    "test_socp.py",
     "test_matlab_loader.py",
     "test_market_coeff.py",
     "test_solver_utils.py",

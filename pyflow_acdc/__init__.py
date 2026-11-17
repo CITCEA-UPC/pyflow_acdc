@@ -42,12 +42,14 @@ __all__ = [
     'Gen_DC',
     'Storage',
     'Electrolyser',
+    'HeatPump',
     'add_gen',
     'add_gen_DC',
     'add_extgrid',
     'add_RenSource',
     'add_storage',
     'add_electrolyser',
+    'add_heat_pump',
     'add_generators',
 
     # Add Zones
@@ -286,6 +288,28 @@ try:
     HAS_CLUSTERING = True
 except ImportError:
     HAS_CLUSTERING = False
+
+# SOCP stack — optional; requires [SOCP] extra (cvxpy)
+try:
+    from .ACDC_convex import (
+        apply_ccp_quantiles,
+        socp_ccp_optimise,
+        socp_ccp_window_optimisation,
+        socp_optimise,
+        soc_window_optimisation,
+        translate_pyf_socp,
+    )
+    __all__.extend([
+        'apply_ccp_quantiles',
+        'socp_ccp_optimise',
+        'socp_ccp_window_optimisation',
+        'socp_optimise',
+        'soc_window_optimisation',
+        'translate_pyf_socp',
+    ])
+    HAS_SOCP = True
+except ImportError:
+    HAS_SOCP = False
 
 # Deprecated mixed-case aliases (snake_case is the default API).
 # Imported last so the legacy names resolve to the deprecation wrappers.

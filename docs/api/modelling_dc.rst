@@ -18,6 +18,9 @@ The DC node is modeled using voltage :math:`U_d` where [1]_:
 Non-linear model
 ~~~~~~~~~~~~~~~~
 
+Non-linear model
+~~~~~~~~~~~~~~~~
+
 .. math::
     :label: eq:PdciSUM
 
@@ -56,6 +59,35 @@ around a voltage reference :math:`U_{d}^{\mathrm{ref}}`:
         U_{\min} &\leq U_{d} \leq U_{\max}
           \qquad \forall d \in \mathcal{N}_{dc}
     \end{align}
+
+SOCP model
+~~~~~~~~~~
+
+In the sparse SOCP stack (:doc:`socp`), DC nodes use lifted variables
+:math:`h_d = U_d^2` and sparse products :math:`w_{df} = U_d U_f`:
+
+.. math::
+    :label: eq:PdciSUM_SOCP
+
+    \begin{align}
+        U_{\min}^{2} &\leq h_{d} \leq U_{\max}^{2}
+          \qquad \forall d \in \mathcal{N}_{dc} \\
+        h_{d} &= 1
+          \qquad \forall d \in \mathcal{N}_{dc}^{\mathrm{slack}} \\
+        \left\|
+          \begin{bmatrix}
+            2 w_{df} \\
+            h_{d}-h_{f}
+          \end{bmatrix}
+        \right\|_{2}
+        &\leq h_{d}+h_{f}
+          \qquad \forall (d,f)\in\mathcal{E}_{dc} \\
+        p_{d}\,P_{flow,d}^{dc} &= P_{cn_d} + P_{flex,d}
+    \end{align}
+
+where :math:`P_{flow,d}^{dc}` is assembled from the DC admittance and the
+lifted variables, and :math:`P_{flex,d}` collects optional DC-side storage or
+electrolyser injections.
 
 Class Reference: :class:`pyflow_acdc.Classes.Node_DC`
 
@@ -118,6 +150,23 @@ fixed voltage reference:
           (U_{f}-U_{d})\, p_{e}\, U_{f}^{\mathrm{ref}}\, \frac{1}{R_{df}} \\
         -P_{e, rating} &\leq P_{to/from} \leq P_{e,rating}
           \qquad \forall e \in \mathcal{B}_{dc}
+    \end{align}
+
+SOCP model
+~~~~~~~~~~
+
+In the sparse SOCP stack, DC branch flows and ratings are:
+
+.. math::
+    :label: eq:PfromDC_SOCP
+
+    \begin{align}
+        P_{df} &= (h_{d}-w_{df})\, Y_{df} \\
+        P_{fd} &= (h_{f}-w_{df})\, Y_{fd} \\
+        |P_{df}| &\leq P_{e,rating}
+          \qquad \forall (d,f)\in\mathcal{E}_{dc} \\
+        |P_{fd}| &\leq P_{e,rating}
+          \qquad \forall (d,f)\in\mathcal{E}_{dc}
     \end{align}
 
 Class Reference: :class:`pyflow_acdc.Classes.Line_DC`
