@@ -14,4 +14,4 @@ The classes are found in :mod:`pyflow_acdc.Classes`.
    modelling_dc
    modelling_acdc_converter
    modelling_sources
-   modelling_storage_hydrogen
+   modelling_flexible_assets

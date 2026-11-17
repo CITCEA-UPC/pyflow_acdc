@@ -42,12 +42,14 @@ __all__ = [
     'Gen_DC',
     'Storage',
     'Electrolyser',
+    'HeatPump',
     'add_gen',
     'add_gen_DC',
     'add_extgrid',
     'add_RenSource',
     'add_storage',
     'add_electrolyser',
+    'add_heat_pump',
     'add_generators',
 
     # Add Zones

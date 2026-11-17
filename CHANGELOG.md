@@ -7,19 +7,46 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 
 > This changelog was introduced during a maintenance/hardening effort; entries
 > for releases prior to its creation are not reconstructed here. The current
-> packaged version is **0.6.11**.
+> packaged version is **0.6.12**.
 
-## [Unreleased]
+## [0.6.12]
+
+Controllable heat pumps (NL + linear P-only twin).
+
+### Added
+- **Controllable heat pumps**: ``HeatPump`` class, ``add_heat_pump``, and NL OPF
+  when ``grid.HP`` (AC-only planning-oriented flexible load: baseline
+  ``P_ref``/``Q_ref``, served ``P_hp``/``Q_hp`` via ``P_shed``/``Q_shed``,
+  cumulative ``E_heat_pump`` in kWh). Myopic carry in ``ts_acdc_opf``; parent
+  energy chain in ``window_nl_opf`` (``window_heat_pump_constraints``). Results
+  ``ext_heat_pump`` / ``heat_pump_window``. TS types ``hp_P_ref``, ``hp_Q_ref``,
+  ``hp_E_min``, ``hp_E_max``. Linear twin (P-only): ``optimal_l_pf`` /
+  ``ts_acdc_l_opf`` / ``window_l_opf`` with ``Q_hp`` fixed at 0. Docs
+  ``api/modelling_flexible_assets`` (heat-pump section) and ``api/grid_mod``;
+  plan ``plans/heat_pump_plan.md``; tests ``test_heat_pump_opf.py``.
+- ``Ren_Source.quadratic_cost_factor`` / ``linear_cost_factor`` (``qf`` / ``lf``);
+  ``add_RenSource(..., quadratic_cost_factor=, linear_cost_factor=)``.
 
 ### Changed
+- **Heat pumps**: optimize explicit ``P_shed`` / ``Q_shed`` with
+  ``P_hp = P_ref - P_shed``, ``Q_hp = Q_ref - Q_shed``; reactive
+  ``Q_shed`` bounds ``-Q_lim_shed <= Q_shed <= Q_lim_shed`` with
+  ``Q_lim_shed = Max_S * Q_shed_lim_frac`` (``Max_S`` in pu, default
+  ``n_units * P_unit_max``; ``add_heat_pump(..., S_rated_MVAR=)``;
+  ``Q_shed_lim_frac`` default ``1``).
+  ``Energy_cost`` penalizes shed vars directly (Montse shedding-sgen pattern):
+  ``P_shed²·qf + P_shed·lf`` and
+  ``Q_shed²·qf_q + Q_shed·lf_q`` (MW/MVAR via ``S_base``); cost kwargs on
+  ``add_heat_pump`` default ``0``.
+- **Window / TS parameter updates**: ``_modify_parameters`` /
+  ``_modify_parameters_l`` and myopic carry include heat-pump ``E_heat_pump_prev``
+  / refs when ``grid.HP``;
+  ``window_block=True`` skips rewriting ``E_heat_pump_prev`` (parent window owns
+  the energy chain).
 - **`Energy_cost`**: removed ``OnlyGen`` flag from OPF runners and ``grid.OnlyGen``;
   renewable sources use per-element ``qf`` / ``lf`` on ``Ren_Source`` (default ``0``),
   with the same MW-scaled quadratic form as generators; converter
   ``P_conv·price`` and nodal ``PGi_ren·price`` terms removed from ``Energy_cost``.
-
-### Added
-- ``Ren_Source.quadratic_cost_factor`` / ``linear_cost_factor`` (``qf`` / ``lf``);
-  ``add_RenSource(..., quadratic_cost_factor=, linear_cost_factor=)``.
 
 ## [0.6.11]
 
@@ -91,7 +118,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 ## [0.6.4]
 
 Linear twin of the 0.6.3 BESS / H₂ operational surface, plus hybrid AC/DC LP
-and related packaging / docs / tooling on this branch.
+and related packaging / docs / tooling.
 
 ### Added
 - **Linear AC(/DC) hybrid OPF stack (LP)**: ``optimal_l_pf``,

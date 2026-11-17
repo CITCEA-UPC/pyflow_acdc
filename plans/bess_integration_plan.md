@@ -267,8 +267,6 @@ No reactive power term (electrolyser is active load only).
 | Snapshot `optimal_pf` (1 frame) | Single-step from `M_initial` | **No** (same policy as snapshot BESS: no terminal SoC) |
 | `window_nl_opf` | Parent `window_h2_links` across `frame_model[t]` | **Yes** @ last frame when set |
 
----
-
 ## 3. Implementation phases
 
 > **Numbering note:** Former **Phase 5** (BESS-only Mario validation) was **deleted** and folded into **Phase 6** (full coupled BESS + H₂ + exports). Phases **0–8** are the original NL track; **Phase 9** adds linear AC OPF operation. **TEP sizing** remains out of scope. **Documentation** is a **concurrent** track at the end of §3 — update docs with each phase, not as a blocking gate.

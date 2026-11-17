@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Coupled linear AC(/DC) window OPF (frame blocks + parent SoC / H₂ links).
+"""Coupled linear AC(/DC) window OPF (frame blocks + parent SoC / H₂ / HP links).
 
 Linear counterpart of :mod:`pyflow_acdc.NL_models.window_opf`. Uses
 :func:`~pyflow_acdc.L_models.AC_OPF_L_model.opf_create_l_model_acdc` per frame
-(BESS P-only; hybrid via ``grid.ACmode`` / ``grid.DCmode``).
+(BESS / HP P-only; hybrid via ``grid.ACmode`` / ``grid.DCmode``).
 """
 
 from __future__ import annotations
@@ -37,6 +37,7 @@ from ..NL_models.window_opf import (
     _ts_inclusive_0based,
     export_window_opf_results,
     window_h2_constraints,
+    window_heat_pump_constraints,
     window_soc_constraints,
 )
 from ..pyomo_model_solve import (
@@ -57,6 +58,7 @@ def _create_l_frame_blocks(model, grid, frames, price_zones, weights_def, ts_bas
     opf_data = translate_pyf_opf(grid, Price_Zones=price_zones)
     storage_info = opf_data['storage_info']
     hydrogen_info = opf_data['hydrogen_info']
+    heat_pump_info = opf_data['heat_pump_info']
 
     for i in frames:
         base_copy = base_model.clone()
@@ -70,7 +72,7 @@ def _create_l_frame_blocks(model, grid, frames, price_zones, weights_def, ts_bas
         if grid.DCmode and any(conv.OPF_fx for conv in grid.Converters_ACDC):
             fx_conv(model.frame_model[i], grid)
 
-    return storage_info, hydrogen_info
+    return storage_info, hydrogen_info, heat_pump_info
 
 
 def _update_l_window_frame_params(model, grid, frames, ts_base, price_zones):
@@ -103,7 +105,7 @@ def window_l_opf(
 
     Inclusive **0-based** absolute TS indices (same as
     :func:`~pyflow_acdc.window_nl_opf`). Hybrid via ``grid.ACmode`` /
-    ``grid.DCmode``. BESS is P-only; no Q / S-circle.
+    ``grid.DCmode``. BESS and heat pumps are P-only; no Q / S-circle.
 
     Rolling may pass ``_reuse`` and ``warm_start_mode`` ``'roll'`` / ``'hard'``.
     """
@@ -114,9 +116,10 @@ def window_l_opf(
     grid.reset_run_flags()
     analyse_grid(grid)
 
-    if not grid.ESS and not grid.H2:
+    if not grid.ESS and not grid.H2 and not grid.HP:
         raise ValueError(
-            "window_l_opf requires at least one storage or electrolyser element"
+            "window_l_opf requires at least one storage, electrolyser, "
+            "or heat-pump element"
         )
     if not grid.Time_series:
         raise ValueError("window_l_opf requires grid.Time_series")
@@ -172,7 +175,7 @@ def window_l_opf(
         model.frame_model = pyo.Block(model.frames)
 
         t1 = time.perf_counter()
-        storage_info, hydrogen_info = _create_l_frame_blocks(
+        storage_info, hydrogen_info, heat_pump_info = _create_l_frame_blocks(
             model, grid, frames, price_zones, weights_def, ts_base
         )
         if grid.ESS:
@@ -187,6 +190,8 @@ def window_l_opf(
                 final_frames=h2_frames_local,
                 final_scale=h2_scale_local,
             )
+        if grid.HP:
+            window_heat_pump_constraints(model, grid, heat_pump_info, frames)
         obj_total = _sum_frame_objectives(model, frames)
         if obj_scaling != 1.0:
             obj_total = obj_total / obj_scaling
@@ -200,6 +205,7 @@ def window_l_opf(
                 'initial_values': initial_values,
                 'storage_info': storage_info,
                 'hydrogen_info': hydrogen_info,
+                'heat_pump_info': heat_pump_info,
                 'price_zones': price_zones,
                 'weights_def': weights_def,
             }
@@ -207,6 +213,7 @@ def window_l_opf(
         model = cache_entry['model']
         storage_info = cache_entry['storage_info']
         hydrogen_info = cache_entry['hydrogen_info']
+        heat_pump_info = cache_entry.get('heat_pump_info')
         price_zones = cache_entry['price_zones']
         weights_def = cache_entry['weights_def']
         t1 = time.perf_counter()
@@ -311,9 +318,10 @@ def rolling_window_l_opf(
         raise ValueError("warm_start_mode must be either 'roll' or 'hard'")
 
     analyse_grid(grid)
-    if not grid.ESS and not grid.H2:
+    if not grid.ESS and not grid.H2 and not grid.HP:
         raise ValueError(
-            "rolling_window_l_opf requires at least one storage or electrolyser"
+            "rolling_window_l_opf requires at least one storage, electrolyser, "
+            "or heat-pump element"
         )
     if not grid.Time_series:
         raise ValueError("rolling_window_l_opf requires grid.Time_series")

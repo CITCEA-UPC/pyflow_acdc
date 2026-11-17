@@ -24,7 +24,7 @@ def matlab_loader(output_dir):
 
     print(nac)
 
-        
+
     model, model_res,timing_info, solver_stats = pyf.optimal_pf(grid,ObjRule=obj)
 
     res.all()

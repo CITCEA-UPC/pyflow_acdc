@@ -6,7 +6,7 @@ inventory across frames — unlike myopic :func:`~pyflow_acdc.ts_acdc_opf`,
 which solves hour-by-hour.
 
 API reference: :doc:`api/window`. Element models:
-:doc:`api/modelling_storage_hydrogen`. Dash: :doc:`api/dash`.
+:doc:`api/modelling_flexible_assets`. Dash: :doc:`api/dash`.
 
 Requires ``ipopt`` and ``pip install "pyflow-acdc[OPF]"`` (add ``Dash`` for
 interactive plots).
@@ -34,7 +34,7 @@ Load with case flags ``storage``, ``hydrogen``, and
 Attach operation-only storage and hydrogen with
 :func:`~pyflow_acdc.add_storage` / :func:`~pyflow_acdc.add_electrolyser`
 (or enable them on the PEI case). Modelling details:
-:doc:`api/modelling_storage_hydrogen`.
+:doc:`api/modelling_flexible_assets`.
 
 ``window_nl_opf`` requires ``grid.ESS`` or ``grid.H2`` (and time series).
 

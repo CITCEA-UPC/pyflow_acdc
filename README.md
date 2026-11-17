@@ -79,6 +79,14 @@ Wind Energy Science, 11(2), 349–372, 2026,
 doi: 10.5194/wes-11-349-2026.
 ```
 
+**Heat pumps / LEC flexibility** (`HeatPump`, `add_heat_pump`):
+
+```
+M. Montalà-Palau, J. J. Markus, M. Kazemi, M. Cheah-Mañé, C. Papadimitriou,
+and O. Gomis-Bellmunt, Enhancing Distribution System Resilience through Energy
+Communities, CIRED 2026 Brussels Workshop, Paper 1361, 2026.
+```
+
 ## Installation
 
 ### Basic Installation

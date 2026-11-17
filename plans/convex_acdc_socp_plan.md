@@ -14,9 +14,9 @@ for before coding.
 **Primary references**
 
 1. M. Useche-Arteaga, W. Gil-González, P. Gebraad, M. Cheah-Mane, V. Lacerda, and
-   O. Gomis-Bellmunt, *Efficient AC/DC energy hubs operation using sparse SOCP relaxation
-   and chance-constrained optimization*, Sustainable Energy, Grids and Networks **46**, 102217
-   (2026). https://doi.org/10.1016/j.segan.2026.102217
+O. Gomis-Bellmunt, *Efficient AC/DC energy hubs operation using sparse SOCP relaxation
+and chance-constrained optimization*, Sustainable Energy, Grids and Networks **46**, 102217
+(2026). https://doi.org/10.1016/j.segan.2026.102217
 
 2. M. Useche-Arteaga, W. Gil-González, O. Gomis-Bellmunt, M. Cheah-Mane, and V. Lacerda,
    *Robust energy management in active distribution networks using mixed-integer convex

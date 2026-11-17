@@ -196,6 +196,10 @@ class TSType(str, Enum):
     PGL_MAX = 'PGL_max'
     PRICE = 'price'
     H2_PRICE = 'h2_price'
+    HP_P_REF = 'hp_P_ref'
+    HP_Q_REF = 'hp_Q_ref'
+    HP_E_MIN = 'hp_E_min'
+    HP_E_MAX = 'hp_E_max'
     LOAD = 'Load'
     # PF setpoint series for ACDC converters (see update_grid_for_pf)
     CONV_P_DC = 'conv_P_DC'

@@ -41,6 +41,7 @@ __all__ = [
     'Gen_DC',
     'Storage',
     'Electrolyser',
+    'HeatPump',
     'Ren_Source',
     'Node_AC',
     'Node_DC',
@@ -195,6 +196,9 @@ class Grid:
             'storage_p_charge': pd.DataFrame(),
             'storage_p_discharge': pd.DataFrame(),
             'storage_q': pd.DataFrame(),
+            'heat_pump_p': pd.DataFrame(),
+            'heat_pump_q': pd.DataFrame(),
+            'heat_pump_energy_state': pd.DataFrame(),
             }
 
         self.Clustering_information = {}
@@ -242,6 +246,7 @@ class Grid:
         self.RenSources =[]
         self.storage_elements = []
         self.electrolysers = []
+        self.heat_pumps = []
         self.rs2node = {'DC': {},
                         'AC': {}}
 
@@ -398,6 +403,10 @@ class Grid:
     @property
     def nelectrolysers(self):
         return len(self.electrolysers) if self.electrolysers is not None else 0
+
+    @property
+    def nheat_pumps(self):
+        return len(self.heat_pumps) if self.heat_pumps is not None else 0
 
     @property
     def tol_scaler(self):
@@ -779,11 +788,14 @@ class Grid:
             # Aggregate connected-generator dispatch the node sees (PGen/QGen are total output).
             node.PGi_opt = sum(gen.PGen for gen in node.connected_gen)
             node.QGi_opt = sum(gen.QGen for gen in node.connected_gen)
-            # BESS / H2 operating setpoints as known PQ (same signs as NL OPF nodal balance).
+            # BESS / H2 / HP operating setpoints as known PQ (same signs as NL OPF nodal balance).
             node.PGi_storage = sum(st.net_P_pu for st in node.connected_storage)
             node.QGi_storage = sum(st.Q for st in node.connected_storage)
             node.PLi_electrolyser = sum(el.P_electrolyser for el in node.connected_electrolyser)
             node.QGi_electrolyser = sum(el.Q_electrolyser for el in node.connected_electrolyser)
+            # Heat pumps: PF uses per-unit baseline * np_hp as known AC loads.
+            node.PLi_heat_pump = sum(hp.P_ref * hp.np_hp for hp in node.connected_heat_pumps)
+            node.QLi_heat_pump = sum(hp.Q_ref * hp.np_hp for hp in node.connected_heat_pumps)
         # # Negative means power leaving the system, positive means injected into the system at a node
 
         self.P_AC = np.vstack([node.PGi
@@ -791,13 +803,16 @@ class Grid:
                                +node.PGi_opt
                                +node.PGi_storage
                                -node.PLi
-                               -node.PLi_electrolyser for node in self.nodes_AC])
+                               -node.PLi_electrolyser
+                               -node.PLi_heat_pump for node in self.nodes_AC])
         self.Q_AC = np.vstack([node.QGi
                                 +node.QGi_ren
                                 +node.QGi_opt
                                 +node.QGi_storage
                                 +node.QGi_electrolyser
-                               -node.QLi +node.Q_s_fx for node in self.nodes_AC])
+                               -node.QLi
+                               -node.QLi_heat_pump
+                               +node.Q_s_fx for node in self.nodes_AC])
         self.Ps_AC = np.vstack([node.P_s for node in self.nodes_AC])
         self.Qs_AC = np.vstack([node.Q_s for node in self.nodes_AC])
 
@@ -1820,6 +1835,192 @@ class Electrolyser:
         Electrolyser.names.add(self.name)
 
 
+class HeatPump:
+    """Controllable AC heat-pump load with cumulative comfort-energy bounds.
+
+    Per-unit electrical ratings (``P_ref``, ``Q_ref``, ``P_unit_max``,
+    ``Q_min``, ``Q_max``, ``Max_S``, ``Q_lim_shed``) are stored in pu on
+    ``S_base`` for one heat-pump unit. ``Q_lim_shed`` bounds the reactive shed
+    actuator ``Q_shed`` (``± Max_S * q_shed_lim_frac``). ``Q_min`` / ``Q_max``
+    bound per-unit served reactive power ``Q_heat_pump`` (not time-series).
+    Per-unit injection is also limited by ``Max_S`` via
+    ``(P_ref - P_shed)² + Q_heat_pump² ≤ Max_S²``. Parallel units follow
+    the ``np_hp`` pattern used by :class:`Gen_AC` / :class:`Ren_Source`; totals
+    scale as ``rating * np_hp``.
+
+    Snapshot attrs are scalars; time variation for multi-hour studies is
+    applied via ``TSType.HP_*`` series in :func:`~pyflow_acdc.update_grid_data`.
+
+    Power flow uses ``P_ref * np_hp`` / ``Q_ref * np_hp`` as known nodal loads
+    (see :meth:`Grid.update_pq_ac`). OPF optimizes per-unit ``P_shed`` /
+    ``Q_shed`` with served power ``P_hp = P_ref - P_shed``,
+    ``Q_hp = Q_ref - Q_shed`` (per unit, pu); nodal totals scale by ``np_hp``.
+    """
+    heatPumpNumber = 0
+    names = set()
+
+    @classmethod
+    def reset_class(cls):
+        cls.heatPumpNumber = 0
+        cls.names = set()
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def S_base(self):
+        return self._S_base
+
+    @property
+    def S_rated(self):
+        return self.Max_S * self.np_hp * self.S_base
+
+    @S_base.setter
+    def S_base(self, new_S_base):
+        if new_S_base <= 0:
+            raise ValueError("S_base must be positive")
+        if hasattr(self, '_S_base'):
+            old_S_base = self._S_base
+            if old_S_base != new_S_base:
+                rate = old_S_base / new_S_base
+                self.P_ref *= rate
+                self.Q_ref *= rate
+                self.Q_min *= rate
+                self.Q_max *= rate
+                self.Q_lim_shed *= rate
+                self.Max_S *= rate
+                self.P_unit_max *= rate
+                self.P_hp *= rate
+                self.Q_hp *= rate
+                self.P_shed *= rate
+                self.Q_shed *= rate
+        self._S_base = new_S_base
+
+    def __init__(
+        self,
+        name,
+        node,
+        P_ref: float,
+        Q_ref: float,
+        P_unit_max: float,
+        E_min: float,
+        E_max: float,
+        np_hp: int = 1,
+        E_state_initial: float = 0.0,
+        dt_hours: float = 1.0,
+        S_base: float = 100,
+        quadratic_cost_factor: float = 0,
+        linear_cost_factor: float = 0,
+        quadratic_cost_factor_q: float = 0,
+        linear_cost_factor_q: float = 0,
+        q_shed_lim_frac: float = 1.0,
+        S_rated: float | None = None,
+        Q_min: float | None = None,
+        Q_max: float | None = None,
+    ):
+        if np_hp <= 0:
+            raise ValueError("np_hp must be positive")
+        if P_unit_max <= 0:
+            raise ValueError("P_unit_max must be positive")
+        if dt_hours <= 0:
+            raise ValueError("dt_hours must be positive")
+        e_min = float(E_min)
+        e_max = float(E_max)
+        if e_min > e_max:
+            raise ValueError("E_min must be <= E_max")
+        if not (e_min <= E_state_initial <= e_max):
+            raise ValueError("E_state_initial must lie within [E_min, E_max]")
+
+        self.heatPumpNumber = HeatPump.heatPumpNumber
+        HeatPump.heatPumpNumber += 1
+        self.connected = AcDcSide.AC
+        self.S_base = S_base
+
+        self.Node = node.name
+        self.Node_AC = node.name
+        self._node = node
+        self.x_coord = node.x_coord
+        self.y_coord = node.y_coord
+        self.geometry = node.geometry
+        self.kV_base = node.kV_base
+        self.PZ = node.PZ
+        self.hover_text = None
+
+        self.P_ref = float(P_ref)
+        self.Q_ref = float(Q_ref)
+        self.P_unit_max = float(P_unit_max)
+        if S_rated is None:
+            self.Max_S = self.P_unit_max
+        else:
+            self.Max_S = float(S_rated)
+        if self.Max_S <= 0:
+            raise ValueError("Max_S must be positive")
+        q_shed_lim_frac = float(q_shed_lim_frac)
+        if q_shed_lim_frac < 0:
+            raise ValueError("q_shed_lim_frac must be >= 0")
+        q_lim = self.Max_S * q_shed_lim_frac
+        self.Q_lim_shed = q_lim
+        self.Q_min = float(Q_min) if Q_min is not None else -self.Max_S
+        self.Q_max = float(Q_max) if Q_max is not None else self.Max_S
+        if self.Q_min > self.Q_max:
+            raise ValueError("Q_min must be <= Q_max")
+
+        self.np_hp_opf = False
+        self.np_hp_mp = False
+        self.planned_installation = 0
+        self.allow_planned_decrease = False
+        self.np_hp_b = int(np_hp)
+        self.np_hp = int(np_hp)
+        self.np_hp_max = int(np_hp) * 3
+        self.lambda_capex = 0
+        self.investment_decisions = {
+            'planned_installation': [self.planned_installation],
+            'planned_decommission': [0],
+            'max_inv': [self.np_hp_max],
+            'np_dynamic': [self.np_hp],
+            'lambda_capex': [self.lambda_capex],
+        }
+
+        self.dt_hours = float(dt_hours)
+        self.E_min = e_min
+        self.E_max = e_max
+        self.E_state_initial = float(E_state_initial)
+        self.E_state = float(E_state_initial)
+
+        self.P_hp = self.P_ref
+        self.Q_hp = self.Q_ref
+        self.P_shed = 0.0
+        self.Q_shed = 0.0
+        self.qf = float(quadratic_cost_factor)
+        self.lf = float(linear_cost_factor)
+        self.qf_q = float(quadratic_cost_factor_q)
+        self.lf_q = float(linear_cost_factor_q)
+
+        self.TS_dict = {
+            'hp_P_ref': None,
+            'hp_Q_ref': None,
+            'hp_E_min': None,
+            'hp_E_max': None,
+        }
+
+        node.connected_heat_pumps.append(self)
+
+        if name in HeatPump.names:
+            count = 1
+            new_name = f"{name}_{count}"
+            while new_name in HeatPump.names:
+                count += 1
+                new_name = f"{name}_{count}"
+            name = new_name
+        if name is None:
+            self._name = f"heat_pump_{node.name}"
+        else:
+            self._name = name
+
+        HeatPump.names.add(self.name)
+
+
 class Ren_Source:
     """Renewable generation source attached to a node.
 
@@ -2170,6 +2371,7 @@ class Node_AC:
         self.connected_RenSource=[]
         self.connected_storage=[]
         self.connected_electrolyser=[]
+        self.connected_heat_pumps=[]
 
         self.connected_toExpLine=[]
         self.connected_fromExpLine=[]
@@ -2453,6 +2655,7 @@ class Node_DC:
         self.connected_RenSource=[]
         self.connected_storage=[]
         self.connected_electrolyser=[]
+        self.connected_heat_pumps=[]
 
         self.PGi_ren = 0
         self.PGi_opt = 0

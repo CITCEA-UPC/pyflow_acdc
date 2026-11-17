@@ -1,14 +1,10 @@
 # Heat-pump flexible load plan for pyflow_acdc
 
-**Repository:** In-repo links target the [`mario_integration`](https://github.com/CITCEA-UPC/pyflow_acdc/tree/mario_integration) branch ([`plans/`](https://github.com/CITCEA-UPC/pyflow_acdc/tree/mario_integration/plans)).
+**Repository:** In-repo links target the [`heat_pumps`](https://github.com/CITCEA-UPC/pyflow_acdc/tree/heat_pumps) branch ([`plans/`](https://github.com/CITCEA-UPC/pyflow_acdc/tree/heat_pumps/plans)).
 
 Implementation plan for controllable **heat pumps** as AC flexible loads in the
-nonlinear AC/DC OPF. Content was split out of an earlier draft that lived under
-the BESS integration plan; this document is the sole plan for HP work.
-
-This extension should reuse the same OPF integration style already used for
-`Storage_*` and `Electrolyser`: explicit classes, nodal hooks, snapshot OPF
-support, and time-coupled state updates in sequential / window modes.
+nonlinear AC/DC OPF. Content was split out of `bess_integration_plan.md`; this
+document is the sole plan for HP work.
 
 **Primary reference**
 
@@ -18,7 +14,7 @@ Communities*, CIRED 2026 Brussels Workshop, Paper 1361, 2026.
 
 - HP flexibility characterization: paper §3
 - Planning-oriented HP + ESS resilience model: paper §4.1
-- Operation-oriented FEL / reserve-envelope model: paper §4.2
+- Operation-oriented FEL / reserve-envelope model: paper §4.2 (**deferred**)
 - Local PDF: `citcea_extras_pyflow/heat_pumps_OPF/CIRED2026_Enhancing_Distribution_System_Resilience_through_Energy_Communities.pdf`
 - Prototype: `citcea_extras_pyflow/heat_pumps_OPF/ILEC_full_code.py` (Montse)
 
@@ -26,190 +22,190 @@ Communities*, CIRED 2026 Brussels Workshop, Paper 1361, 2026.
 
 | Document | Link |
 |----------|------|
-| BESS / H₂ operation (separate) | [bess_integration_plan.md](https://github.com/CITCEA-UPC/pyflow_acdc/blob/mario_integration/plans/bess_integration_plan.md) |
-| Architecture map | [docs/architecture.md](https://github.com/CITCEA-UPC/pyflow_acdc/blob/mario_integration/docs/architecture.md) |
-| Sibling plans | [plans/](https://github.com/CITCEA-UPC/pyflow_acdc/tree/mario_integration/plans) |
+| User guide | `docs/api/modelling_flexible_assets.rst` (heat-pump section) + `docs/usage_window_opf.rst` |
+| API | `docs/api/grid_mod.rst` (`add_heat_pump`) + `docs/api/modelling_flexible_assets.rst` |
+| BESS / H₂ operation (separate) | [bess_integration_plan.md](https://github.com/CITCEA-UPC/pyflow_acdc/blob/heat_pumps/plans/bess_integration_plan.md) |
+| Tests | [pyflow_tests/test_heat_pump_opf.py](https://github.com/CITCEA-UPC/pyflow_acdc/blob/heat_pumps/pyflow_tests/test_heat_pump_opf.py) |
+| Sibling plans | [plans/](https://github.com/CITCEA-UPC/pyflow_acdc/tree/heat_pumps/plans) |
+
+---
+
+## 0. Status
+
+| Item | Status |
+|------|--------|
+| `HeatPump` class + `add_heat_pump` | Done |
+| `grid.HP` / nodal hooks | Done |
+| Snapshot NL OPF (`P_shed`, `Q_shed`, `E_heat_pump`) | Done |
+| Myopic `ts_acdc_opf` energy-state carry | Done |
+| Coupled `window_nl_opf` parent energy chain | Done |
+| `Results.ext_heat_pump` / `heat_pump_window` | Done |
+| Docs (`modelling_flexible_assets`, `grid_mod`) | Done |
+| Tests (`test_heat_pump_opf.py`) | Done |
+| TS types `hp_P_ref` / `hp_Q_ref` / `hp_E_min` / `hp_E_max` | Done |
+| Operation-oriented FEL (`E_flex`, terminal neutrality) | Deferred |
+| Post-solve reserve envelope (`R_up` / `R_down`) | Deferred |
+| Linear OPF (`optimal_l_pf` / `ts_acdc_l_opf` / `window_l_opf`) P-only | Done |
+| DC heat pumps | Out of scope (AC-only) |
+| Inferred thermal / comfort model inside pyflow | Out of scope |
 
 ---
 
 ## 1. Role in the model
 
-- Heat pumps are treated as **controllable electrical loads** connected at AC buses.
-- They provide flexibility through deviations around a **baseline active-power profile** while respecting instantaneous power bounds and a cumulative energy state tied to thermal comfort.
-- In the planning-oriented formulation, HP flexibility reduces the stationary ESS power required during contingencies.
-- In the operation-oriented formulation, HP flexibility is scheduled economically while preserving a **state-dependent remaining reserve**.
+- Heat pumps are **controllable electrical loads** on AC buses.
+- Flexibility is scheduling served demand around a **baseline** (`P_ref`, `Q_ref`) within instantaneous power bounds and a cumulative energy state tied to comfort envelopes supplied by the user.
+- Planning-oriented formulation (v1, shipped): reduces / shifts electrical demand while keeping `E_state` inside `[E_min, E_max]`.
+- Operation-oriented FEL + reserve reporting: paper §4.2 — **not implemented yet**.
 
 ---
 
 ## 2. Observed Montse pattern in `ILEC_full_code.py`
 
-- The prototype keeps the original demand as a regular non-controllable `load`:
-  - `pp.create_load(..., p_mw=P_load, q_mvar=Q_load, controllable=False)`
-- For controllable HP demand, it adds a second controllable actuator named `"<load>_shedding"` implemented as `sgen`:
-  - `pp.create_sgen(..., p_mw=0, q_mvar=0, controllable=True)`
-- Its admissible active-power range is recomputed every step from:
-  - device-level instantaneous shedding capability: `num_con_load * 1.76 kW`
-  - cumulative energy state `LOAD_cap[name]`
-  - time-varying comfort envelopes `e_min_load[t]`, `e_max_load[t]`
-- After OPF, the cumulative state is updated explicitly:
+- Prototype keeps baseline demand as a non-controllable `load` and a controllable `"…_shedding"` `sgen` actuator.
+- Admissible shedding range uses `num_con_load * 1.76 kW`, cumulative `LOAD_cap`, and time-varying `e_min` / `e_max`.
+- Served power: `P_hp = P_baseline - P_shedding` (same for Q).
 
-```text
-LOAD_cap_next = LOAD_cap + P_baseline_served - P_shedding
-```
-
-- Supplied controllable-load power is recovered as:
-
-```text
-P_hp_supplied = P_baseline_load - P_shedding
-Q_hp_supplied = Q_baseline_load - Q_shedding
-```
-
-- This means the controllable part is modeled as a **baseline load plus a bounded flexibility actuator**, not as a single direct optimized load variable.
+**pyflow v1 mapping:** optimize explicit `P_shed` / `Q_shed` with
+`P_hp = P_ref - P_shed`, `Q_hp = Q_ref - Q_shed`. Shed costs in `Energy_cost`
+on the shed vars (Montse shedding-sgen `cp*_loads_C` / `cq*_loads_C` pattern).
 
 ---
 
-## 3. Proposed class and attributes
+## 3. Shipped class and API
 
 ```python
-class HeatPump:
-    hpNumber
+class HeatPump:  # Classes.py
+    heatPumpNumber
     connected = AcDcSide.AC
-    # host: Node_AC
-    # baseline / envelope / cumulative-state metadata
+    # host Node_AC via connected_heat_pumps
 ```
 
-| Attribute | Meaning |
-|-----------|---------|
-| `P_ref` | Baseline active-power profile or current-frame reference power |
-| `Q_ref` | Baseline reactive-power profile or current-frame reference power |
-| `n_units` | Number of controllable HP units behind the aggregate load |
-| `P_unit_max_MW` | Per-unit HP compressor power (Montse code uses `1.76 kW`) |
-| `E_state` | Cumulative electrical-energy state (`LOAD_cap` / `e_d,t`) |
-| `E_min`, `E_max` | Time-varying comfort / thermal bounds on `E_state` |
-| `P_shed_max` | Optional explicit instantaneous shedding cap if precomputed |
-| `P_nom` | Signed normalization power for FEL-style normalized dynamics |
-| `dt_hours` | Time-step duration |
-| `reserve_up`, `reserve_down` | Post-solve remaining reserve outputs |
+| Attribute | Units / meaning |
+|-----------|-----------------|
+| `P_ref`, `Q_ref` | Baseline demand [pu on `S_base`] |
+| `n_units`, `P_unit_max` | Active shed capability → `n_units * P_unit_max` [pu] |
+| `Max_S` | Installed apparent-power rating [pu]; default `n_units * P_unit_max` |
+| `Q_lim_shed` | `Max_S * Q_shed_lim_frac` [pu]; fixed at creation |
+| `qf`, `lf`, `qf_q`, `lf_q` | `Energy_cost` coefficients on `P_shed` / `Q_shed` |
+| `E_state`, `E_state_initial` | Cumulative energy state [kWh] |
+| `E_min`, `E_max` | Comfort bounds on `E_state` [kWh] |
+| `dt_hours` | Timestep duration [h] |
+| `P_hp`, `Q_hp` | Served demand after solve [pu] |
+| `P_shed`, `Q_shed` | Optimized shed after solve [pu] |
+
+Public entry: `add_heat_pump(grid, node, *, P_ref_MW, Q_ref_MVAR=0, n_units, E_min_kWh, E_max_kWh, S_rated_MVAR=, q_shed_lim_frac=1, quadratic_cost_factor=0, …)` → appends to `grid.heat_pumps`. `analyse_grid` sets `grid.HP`.
+
+Multi-hour overrides via `TSType`:
+
+| `TSType` | String key | Units in series |
+|----------|------------|-----------------|
+| `HP_P_REF` | `hp_P_ref` | pu |
+| `HP_Q_REF` | `hp_Q_ref` | pu |
+| `HP_E_MIN` | `hp_E_min` | kWh |
+| `HP_E_MAX` | `hp_E_max` | kWh |
 
 ---
 
-## 4. Planning-oriented interpretation (paper Eq. 4–6 + Montse prototype)
+## 4. Planning-oriented NL model (shipped)
 
-- The implementation should follow Montse’s **baseline + flexibility-actuator** pattern, but expose it through a first-class `HeatPump` API in pyflow.
-- Let `P_ref[d,t]`, `Q_ref[d,t]` be the baseline electrical demand and `P_shed[d,t]`, `Q_shed[d,t]` the flexibility actuator.
-- The actually supplied controllable HP demand becomes:
+### Snapshot / myopic (`window_block=False`)
 
-```text
-P_hp[d,t] = P_ref[d,t] - P_shed[d,t]
-Q_hp[d,t] = Q_ref[d,t] - Q_shed[d,t]
-```
+Decision vars: `P_shed[h]`, `Q_shed[h]`, `E_heat_pump[h]`.
 
-- In Montse’s code, the actuator bounds are:
+Expressions: `P_heat_pump = P_ref - P_shed`, `Q_heat_pump = Q_ref - Q_shed`.
 
-```text
-P_shed_min[d,t] = max(P_ref[d,t] - n_units[d] * P_unit_max[d], E_state[d,t] + P_ref[d,t] - E_max[d,t])
-P_shed_max[d,t] = min(P_ref[d,t], E_state[d,t] + P_ref[d,t] - E_min[d,t])
-```
+Mutable params: `hp_p_ref`, `hp_q_ref`, `hp_e_min`, `hp_e_max`, `E_heat_pump_prev`.
 
-- with `E_state` in energy units consistent with the time step (Montse uses kWh-style accumulation).
-- Reactive flexibility is bounded in a simple envelope around the baseline reactive demand:
+Bounds (every frame):
 
 ```text
-Q_shed_min[d,t] = min(0, -Q_ref[d,t])
-Q_shed_max[d,t] = max(0, -Q_ref[d,t])
+0 <= P_shed <= n_units * P_unit_max
+-Q_lim_shed <= Q_shed <= Q_lim_shed
+E_min <= E <= E_max
 ```
 
-- The cumulative comfort state is then updated from the **served** controllable demand:
+Energy balance and energy-linked P_shed bounds (skip when `window_block`):
 
 ```text
-E_state[d,t+1] = E_state[d,t] + P_hp[d,t] * dt
+E = E_prev + P_hp * S_base * dt_hours          # E in kWh; P_hp in pu
+P_shed >= E_min/dt - E_prev/dt
+P_shed <= E_max/dt - E_prev/dt
 ```
 
-- As in the paper/prototype, this gives a fail-fast operational envelope rather than an inferred thermal model inside pyflow.
+Nodal load hook (`Gen_Pheatpump_constraint`): subtract `P_heat_pump` / `Q_heat_pump` from AC nodal injection (same load sign as electrolyser / load).
+
+`Energy_cost`: `P_shed²·qf + P_shed·lf` and Q twin (MW/MVAR via `S_base`).
+
+### Window (`window_nl_opf`)
+
+- Each frame built with `window_block=True` → instantaneous P/Q/E bounds only; no in-block `E_prev` balance.
+- Parent `window_heat_pump_constraints` chains `E_heat_pump` across `frame_model[t]` from `hp_energy_initial` (current `hp.E_state`).
+
+### Time series (`ts_acdc_opf`)
+
+- Each hour: update TS (`hp_*`), set `E_heat_pump_prev` from carried `hp.E_state`, solve, export / carry `E_state`.
+
+### Linear OPF (P-only, shipped)
+
+Same `P_shed` / `E_heat_pump` formulation as NL on `optimal_l_pf` / `ts_acdc_l_opf` / `window_l_opf`
+(`heat_pump_variables_l` / `heat_pump_constraints_l`). Differences:
+
+- `Q_shed` fixed at `Q_ref` (Param) → `Q_hp = 0`; no Q nodal injection.
+- Only `P_shed` linear/quadratic costs in `Energy_cost`.
+- Parent chain reuses `window_heat_pump_constraints`.
 
 ---
 
-## 5. Operation-oriented FEL interpretation (paper Eq. 11–19)
+## 5. Results
 
-- Use a normalized deviation state around the baseline:
-
-```text
-E_flex[d,t+1] = E_flex[d,t] + dt * ((P_hp[d,t] - P_ref[d,t]) / |P_nom[d]|)
-```
-
-- Enforce:
-
-```text
-P_low[d,t] <= P_hp[d,t] <= P_high[d,t]
-E_min[d] <= E_flex[d,t] <= E_max[d]
-E_flex[d,t0] = E_flex[d,tn] = 0
-```
-
-- After solving, derive actionable reserve exactly as a **post-processing output** from scheduled `P_hp` and `E_flex`, not as a new optimization variable:
-  - instantaneous headroom from power bounds
-  - comfort headroom converted to power-equivalent reserve
-  - aggregate `R_up`, `R_down` over all HPs on the LEC / grid area
+| API | When |
+|-----|------|
+| `Results.ext_heat_pump()` | After snapshot OPF — P/Q served, shed, energy state |
+| `Results.heat_pump_window()` | After `window_nl_opf` / `window_l_opf` — P/Q/E trajectories |
+| `grid.time_series_results['heat_pump_p' / 'heat_pump_energy_state']` | After `ts_acdc_opf` / `ts_acdc_l_opf` |
 
 ---
 
-## 6. Implementation choice for pyflow_acdc
-
-- For the **first implementation**, prefer the **planning-oriented Montse pattern** because it maps cleanly onto the existing pyflow architecture:
-  - baseline demand already exists in nodal balances
-  - the flexible part can be modeled as an explicit controllable HP actuator
-  - the energy state can be updated in the same snapshot / time-coupled style already used for storage and H₂
-- Keep the future FEL variant as a second step once the planning-oriented class is stable.
-
-### Nodal balance
-
-- In pyflow terms, the **net controllable HP demand** should still behave as a load at the connected AC node:
-
-```text
-P_var[node] -= P_hp[d,t]
-Q_var[node] -= Q_hp[d,t]
-```
-
-- If implemented internally as baseline demand plus a flexibility actuator, the equivalent nodal contribution is:
-
-```text
-P_var[node] -= P_ref[d,t] - P_shed[d,t]
-Q_var[node] -= Q_ref[d,t] - Q_shed[d,t]
-```
-
-- This keeps the sign convention aligned with existing `Load` / `Electrolyser` handling while matching Montse’s prototype.
-
-### Implementation notes
-
-- Add a dedicated `HeatPump` class instead of overloading `Load` or `Storage`.
-- Prefer **explicit baseline + envelope inputs** from preprocessing / external thermal simulation, matching the PDF workflow and `ILEC_full_code.py`.
-- Start with **AC-only** support.
-- Keep reserve computation explicit in `Results_class.py` / reporting, rather than hiding it in OPF internals.
-- Do not infer house-level thermal dynamics inside pyflow_acdc unless a later plan explicitly asks for that scope.
-- Store the **cumulative state in physical energy units** for the planning-oriented variant, since that is how Montse’s implementation updates `LOAD_cap`.
-
----
-
-## 7. File touch list
+## 6. File touch list (shipped)
 
 | File | Changes |
 |------|---------|
 | `Classes.py` | `HeatPump`, `Grid.heat_pumps`, `Node_AC.connected_heat_pumps` |
-| `grid_modifications.py` | `add_heat_pump()` with baseline / flexibility envelope inputs |
-| `ACDC_OPF_NL_model.py` | HP active/reactive load vars, flexibility-state constraints, AC nodal load hook |
-| `window_opf.py`, `Time_series.py` | sequential / coupled `E_flex` / `E_state` updates and terminal neutrality rules |
-| `Results_class.py` | HP schedule, comfort-state, and reserve-envelope reporting |
-| `__init__.py` | Export new symbols |
-| Docs | dedicated flexibility / heat-pump usage page with CIRED 2026 citation and Montse prototype mapping |
-| Tests | reproduce Montse’s bound logic on a tiny one-bus / one-HP case before scaling to network cases |
+| `grid_modifications.py` | `add_heat_pump()`, HP TS association |
+| `grid_analysis.py` | `grid.HP` |
+| `grid_creator.py` | init `heat_pumps` / `connected_heat_pumps` |
+| `constants.py` | `TSType.HP_P_REF` / `HP_Q_REF` / `HP_E_MIN` / `HP_E_MAX` |
+| `ACDC_OPF_NL_model.py` | `heat_pump_variables` / `heat_pump_constraints`, nodal hook, export |
+| `ACDC_OPF.py` | `heat_pump_info` in OPF translate |
+| `window_opf.py` | `window_heat_pump_constraints`, export frames |
+| `Time_series.py` | HP TS update, myopic `E` carry, TS result keys |
+| `AC_OPF_L_model.py` | `heat_pump_variables_l` / `heat_pump_constraints_l`, P nodal, export |
+| `window_l_opf.py` | HP gate + `window_heat_pump_constraints` |
+| `Time_series.py` | `_modify_parameters_l` HP params; `ts_acdc_l_opf` carry / TS keys |
+| `Results_class.py` | `ext_heat_pump`, `heat_pump_window` |
+| `__init__.py` | export `HeatPump`, `add_heat_pump` |
+| `docs/api/modelling_flexible_assets.rst`, `docs/api/grid_mod.rst` | user + API docs |
+| `pyflow_tests/test_heat_pump_opf.py` | bounds + TS + window smoke |
 
 ---
 
-## 8. Suggested work package
+## 7. Deferred (paper §4.2 / Montse reserve)
 
-1. `Classes.py`: add `HeatPump`, `Grid.heat_pumps`, `Node_AC.connected_heat_pumps`.
-2. `grid_modifications.py`: add `add_heat_pump(...)` with hard validation of baseline `P_ref` / `Q_ref`, `n_units`, and `E_min` / `E_max` envelopes.
-3. `ACDC_OPF_NL_model.py`: add either explicit `P_heat_pump`, `Q_heat_pump` vars or an internal `P_shed`, `Q_shed` actuator representation with equivalent nodal hooks.
-4. `Time_series.py` / `window_opf.py`: support sequential and coupled updates of the cumulative HP state.
-5. `Results_class.py`: add HP schedules, cumulative energy state, and remaining-reserve summaries.
-6. Tests: reproduce Montse’s bound logic on a tiny one-bus / one-HP case before scaling to network cases.
-7. Docs: add a dedicated flexibility / heat-pump usage page with the CIRED 2026 citation and a note on the Montse prototype mapping.
+Not in v1:
+
+- Normalized FEL state `E_flex` with terminal neutrality `E_flex[t0] = E_flex[tn] = 0`
+- Post-solve reserve envelopes `R_up` / `R_down` from power + comfort headroom
+
+Keep planning-oriented `P_shed`/`Q_shed` model as the stable base; add FEL as a second step if needed.
+
+---
+
+## 8. Implementation notes (locked)
+
+- Dedicated `HeatPump` — do not overload `Load` or `Storage`.
+- Explicit baseline + envelope inputs only; no inferred house thermal dynamics.
+- AC-only.
+- Energy state in **kWh**; electrical powers in **pu** on grid `S_base`.
+- Fail-fast on invalid `n_units`, `P_unit_max`, `dt_hours`, or `E_min > E_max` / initial outside bounds.
+- No `getattr` on Pyomo model objects.

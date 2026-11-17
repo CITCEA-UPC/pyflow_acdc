@@ -76,7 +76,7 @@ active-power balance. Reactive power is not included in the network equations.
         \qquad \forall i \in \mathcal{N}_{ac}^{\mathrm{slack}}
     \end{align}
 
-Optional flexible injections (storage, electrolyser) enter
+Optional flexible injections (storage, electrolyser, heat pump) enter
 :math:`P_{net}^{ac}` with the same sign convention as in the nonlinear model.
 
 Class Reference: :class:`pyflow_acdc.Classes.Node_AC`

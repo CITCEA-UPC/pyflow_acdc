@@ -25,8 +25,9 @@ def opf_create_l_model_acdc(model,grid,TEP=False,window_block=False):
     ``grid.ACmode`` / ``grid.DCmode`` (same flag pattern as the NL builder).
     Mutates ``model`` in place; does not add the objective or solve.
 
-    When ``grid.ESS`` / ``grid.H2``, also adds BESS (P-only, no Q / S-circle)
-    and electrolyser inventory (P load + mass balance) on AC and/or DC.
+    When ``grid.ESS`` / ``grid.H2`` / ``grid.HP``, also adds BESS (P-only,
+    no Q / S-circle), electrolyser inventory (P load + mass balance) on AC
+    and/or DC, and heat pumps (AC P-only flexible load; no Q in the model).
 
     Parameters
     ----------
@@ -38,7 +39,7 @@ def opf_create_l_model_acdc(model,grid,TEP=False,window_block=False):
         Add transmission-expansion (cable-type selection) variables.
         Hybrid ``TEP=True`` with ``grid.DCmode`` is not wired yet (raises).
     window_block : bool, optional
-        If True, omit in-block SoC / H₂ ``*_prev`` balance (parent window
+        If True, omit in-block SoC / H₂ / HP ``*_prev`` balance (parent window
         links own inventory). Used by :func:`~pyflow_acdc.window_l_opf`.
 
     Examples
@@ -59,6 +60,7 @@ def opf_create_l_model_acdc(model,grid,TEP=False,window_block=False):
     gen_info = opf_data['gen_info']
     storage_info = opf_data['storage_info']
     hydrogen_info = opf_data['hydrogen_info']
+    heat_pump_info = opf_data['heat_pump_info']
 
     Generation_variables(model, grid, gen_info, TEP)
 
@@ -66,6 +68,9 @@ def opf_create_l_model_acdc(model,grid,TEP=False,window_block=False):
         storage_variables_l(model, grid, storage_info, window_block=window_block)
     if grid.H2:
         hydrogen_variables_l(model, grid, hydrogen_info, window_block=window_block)
+    if grid.HP:
+        heat_pump_variables_l(
+            model, grid, heat_pump_info, window_block=window_block)
 
     if grid.ACmode:
         AC_variables(model, grid, AC_info)
@@ -85,6 +90,9 @@ def opf_create_l_model_acdc(model,grid,TEP=False,window_block=False):
         storage_constraints_l(model, grid, storage_info, window_block=window_block)
     if grid.H2:
         hydrogen_constraints_l(model, grid, hydrogen_info, window_block=window_block)
+    if grid.HP:
+        heat_pump_constraints_l(
+            model, grid, heat_pump_info, window_block=window_block)
 
     if grid.ACmode:
         AC_constraints(model, grid, AC_info)
@@ -233,6 +241,117 @@ def hydrogen_constraints_l(model, grid, hydrogen_info, window_block=False):
 
     model.mass_H2_balance_constraint = pyo.Constraint(
         model.electrolyser, rule=mass_h2_balance_rule)
+
+
+def heat_pump_variables_l(model, grid, heat_pump_info, window_block=False):
+    """Heat pump for linear OPF: served P + energy state only (no Q)."""
+    if heat_pump_info is None:
+        raise ValueError("heat_pump_info is required when grid.HP is True")
+    lista_heat_pumps, heat_pump_by_number = heat_pump_info
+    if not lista_heat_pumps:
+        raise ValueError("heat_pump_info is empty but grid.HP is True")
+
+    model.heat_pumps = pyo.Set(initialize=lista_heat_pumps)
+    model.np_hp = pyo.Param(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].np_hp for h in lista_heat_pumps},
+        mutable=False,
+    )
+    model.hp_p_ref = pyo.Param(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].P_ref for h in lista_heat_pumps},
+        mutable=True,
+    )
+    model.hp_e_min = pyo.Param(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].E_min for h in lista_heat_pumps},
+        mutable=True,
+    )
+    model.hp_e_max = pyo.Param(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].E_max for h in lista_heat_pumps},
+        mutable=True,
+    )
+    model.hp_p_shed_cap = pyo.Param(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].P_unit_max for h in lista_heat_pumps},
+        mutable=False,
+    )
+
+    model.P_shed = pyo.Var(model.heat_pumps, initialize=0.0)
+    model.P_heat_pump = pyo.Var(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].P_ref for h in lista_heat_pumps},
+    )
+    model.E_heat_pump = pyo.Var(
+        model.heat_pumps,
+        initialize={h: heat_pump_by_number[h].E_state for h in lista_heat_pumps},
+    )
+    if not window_block:
+        model.E_heat_pump_prev = pyo.Param(
+            model.heat_pumps,
+            initialize={
+                h: heat_pump_by_number[h].E_state for h in lista_heat_pumps
+            },
+            mutable=True,
+        )
+
+
+def heat_pump_constraints_l(model, grid, heat_pump_info, window_block=False):
+    """Planning-oriented HP P/E bounds and energy balance for linear OPF.
+
+    Instantaneous P/E bounds apply on every frame (including ``window_block``).
+    Energy balance and E_prev-linked P reformulations are skipped for window
+    blocks; the parent window owns the energy chain.
+    """
+    if heat_pump_info is None:
+        raise ValueError("heat_pump_info is required when grid.HP is True")
+    lista_heat_pumps, heat_pump_by_number = heat_pump_info
+    if not lista_heat_pumps:
+        raise ValueError("heat_pump_info is empty but grid.HP is True")
+
+    def hp_p_shed_cap_rule(model, h):
+        return model.P_shed[h] <= model.hp_p_shed_cap[h]
+
+    def hp_p_shed_nonneg_rule(model, h):
+        return model.P_shed[h] >= 0
+
+    def hp_p_link_rule(model, h):
+        return model.P_heat_pump[h] == model.hp_p_ref[h] - model.P_shed[h]
+
+    def hp_e_min_rule(model, h):
+        return model.E_heat_pump[h] >= model.hp_e_min[h]
+
+    def hp_e_max_rule(model, h):
+        return model.E_heat_pump[h] <= model.hp_e_max[h]
+
+    model.heat_pump_p_shed_cap_constraint = pyo.Constraint(model.heat_pumps, rule=hp_p_shed_cap_rule)
+    model.heat_pump_p_shed_nonneg_constraint = pyo.Constraint(model.heat_pumps, rule=hp_p_shed_nonneg_rule)
+    model.heat_pump_p_link_constraint = pyo.Constraint(model.heat_pumps, rule=hp_p_link_rule)
+    model.heat_pump_e_min_constraint = pyo.Constraint(
+        model.heat_pumps, rule=hp_e_min_rule)
+    model.heat_pump_e_max_constraint = pyo.Constraint(
+        model.heat_pumps, rule=hp_e_max_rule)
+
+    if window_block:
+        return
+
+    def e_heat_pump_balance_rule(model, h):
+        hp = heat_pump_by_number[h]
+        return model.E_heat_pump[h] == model.E_heat_pump_prev[h] + model.P_heat_pump[h] * model.np_hp[h] * hp.S_base * hp.dt_hours
+
+    def hp_p_shed_energy_upper_rule(model, h):
+        hp = heat_pump_by_number[h]
+        return model.P_shed[h] <= model.hp_e_max[h] / hp.dt_hours - model.E_heat_pump_prev[h] / hp.dt_hours
+
+    def hp_p_shed_energy_lower_rule(model, h):
+        hp = heat_pump_by_number[h]
+        return model.P_shed[h] >= model.hp_e_min[h] / hp.dt_hours - model.E_heat_pump_prev[h] / hp.dt_hours
+
+    model.heat_pump_p_shed_energy_upper_constraint = pyo.Constraint(model.heat_pumps, rule=hp_p_shed_energy_upper_rule)
+    model.heat_pump_p_shed_energy_lower_constraint = pyo.Constraint(model.heat_pumps, rule=hp_p_shed_energy_lower_rule)
+    model.heat_pump_energy_state_constraint = pyo.Constraint(
+        model.heat_pumps, rule=e_heat_pump_balance_rule)
 
 
 def Generation_variables(model,grid,gen_info,TEP):
@@ -386,6 +505,16 @@ def AC_variables(model,grid,AC_info):
         model.PGi_electrolyser = pyo.Var(
             model.nodes_AC, bounds=Pelectrolyser_bounds, initialize=0)
 
+    if grid.HP:
+        def Pheatpump_bounds(model, node):
+            nAC = grid.nodes_AC[node]
+            if not nAC.connected_heat_pumps:
+                return (0, 0)
+            return (None, None)
+
+        model.PGi_heat_pump = pyo.Var(
+            model.nodes_AC, bounds=Pheatpump_bounds, initialize=0)
+
     def make_opt_bounds(attribute_name):
         def bounds_func(model, node):
             nAC = grid.nodes_AC[node]
@@ -500,6 +629,8 @@ def AC_constraints(model,grid,AC_info):
             P_var += model.PGi_storage[node]
         if grid.H2:
             P_var -= model.PGi_electrolyser[node]
+        if grid.HP:
+            P_var -= model.PGi_heat_pump[node]
         if grid.DCmode:
             P_var += model.P_conv_AC[node]
 
@@ -547,6 +678,18 @@ def AC_constraints(model,grid,AC_info):
 
         model.Gen_Pelectrolyser_constraint = pyo.Constraint(
             model.nodes_AC, rule=Gen_Pelectrolyser_rule)
+
+    if grid.HP:
+        def Gen_Pheatpump_rule(model, node):
+            nAC = grid.nodes_AC[node]
+            p_hp = sum(
+                model.P_heat_pump[hp.heatPumpNumber] * model.np_hp[hp.heatPumpNumber]
+                for hp in nAC.connected_heat_pumps
+            )
+            return model.PGi_heat_pump[node] == p_hp
+
+        model.Gen_Pheatpump_constraint = pyo.Constraint(
+            model.nodes_AC, rule=Gen_Pheatpump_rule)
 
     def _rs_gamma_lb(rs):
         ren_source = grid.RenSources[rs]
@@ -1564,6 +1707,17 @@ def export_acdc_l_model_to_pyflow_acdc(model,grid, solver_results=None, tee=Fals
             el.P_electrolyser = P_e_values[e]
             el.Q_electrolyser = 0.0
             el.mass_H2 = mass_h2_values[e]
+
+    if grid.HP:
+        p_shed_values = {
+            k: np.float64(pyo.value(v)) for k, v in model.P_shed.items()}
+        e_hp_values = {
+            k: np.float64(pyo.value(v)) for k, v in model.E_heat_pump.items()}
+        for hp in grid.heat_pumps:
+            h = hp.heatPumpNumber
+            hp.P_shed = p_shed_values[h]
+            hp.P_hp = float(pyo.value(model.P_heat_pump[h]))
+            hp.E_state = e_hp_values[h]
 
     if grid.ACmode:
         B = np.imag(grid.Ybus_AC)

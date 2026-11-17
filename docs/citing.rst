@@ -125,7 +125,7 @@ programming -- a case study based on the Princess Elisabeth Energy Island*,
 *Wind Energy Science*, 11(2), 349–372, 2026,
 doi: `10.5194/wes-11-349-2026 <https://doi.org/10.5194/wes-11-349-2026>`_.
 
-Modelling notes: :doc:`api/modelling_storage_hydrogen` (BESS §3.3, electrolyser
+Modelling notes: :doc:`api/modelling_flexible_assets` (BESS §3.3, electrolyser
 §3.4). Coupled window / rolling: :doc:`api/window` (API),
 :doc:`usage_window_opf` (workflow).
 
@@ -145,3 +145,14 @@ Modelling notes: :doc:`api/modelling_storage_hydrogen` (BESS §3.3, electrolyser
       url     = {https://wes.copernicus.org/articles/11/349/2026/},
       doi     = {10.5194/wes-11-349-2026}
     }
+
+For controllable heat pumps / LEC flexibility:
+
+If you use :class:`~pyflow_acdc.HeatPump` or
+:func:`~pyflow_acdc.add_heat_pump`, please also cite:
+
+M. Montalà-Palau, J. J. Markus, M. Kazemi, M. Cheah-Mañé, C. Papadimitriou,
+and O. Gomis-Bellmunt, *Enhancing Distribution System Resilience through Energy
+Communities*, CIRED 2026 Brussels Workshop, Paper 1361, 2026.
+
+Modelling: :doc:`api/modelling_flexible_assets` (heat-pump section).

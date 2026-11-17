@@ -258,6 +258,35 @@ def window_h2_constraints(
         )
 
 
+def window_heat_pump_constraints(model, grid, heat_pump_info, frames):
+    """Parent-level cumulative HP energy-state chain across ``frame_model`` blocks."""
+    ordered = list(frames)
+    hp_ids, heat_pump_by_number = heat_pump_info
+    if not hp_ids:
+        return
+
+    model.hp_energy_initial = pyo.Param(
+        hp_ids,
+        mutable=True,
+        initialize={h: float(heat_pump_by_number[h].E_state) for h in hp_ids},
+    )
+    model.window_heat_pump_constraint = pyo.ConstraintList()
+
+    for i, t in enumerate(ordered):
+        block = model.frame_model[t]
+        for h, hp in heat_pump_by_number.items():
+            delta = block.P_heat_pump[h] * hp.np_hp * hp.S_base * hp.dt_hours
+            if i == 0:
+                model.window_heat_pump_constraint.add(
+                    block.E_heat_pump[h] == model.hp_energy_initial[h] + delta
+                )
+            else:
+                t_prev = ordered[i - 1]
+                model.window_heat_pump_constraint.add(
+                    block.E_heat_pump[h] == model.frame_model[t_prev].E_heat_pump[h] + delta
+                )
+
+
 def _snapshot_var_values(model_obj):
     values = {}
     for var_obj in model_obj.component_objects(pyo.Var, active=True):
@@ -288,6 +317,7 @@ def _create_frame_blocks(
     opf_data = translate_pyf_opf(grid, Price_Zones=price_zones)
     storage_info = opf_data['storage_info']
     hydrogen_info = opf_data['hydrogen_info']
+    heat_pump_info = opf_data['heat_pump_info']
 
     for i in frames:
         base_copy = base_model.clone()
@@ -301,7 +331,7 @@ def _create_frame_blocks(
         if grid.nn_DC != 0 and any(conv.OPF_fx for conv in grid.Converters_ACDC):
             fx_conv(model.frame_model[i], grid)
 
-    return storage_info, hydrogen_info
+    return storage_info, hydrogen_info, heat_pump_info
 
 
 def _update_window_frame_params(model, grid, frames, ts_base, price_zones):
@@ -323,6 +353,9 @@ def _set_window_state_params(model, grid):
             model.h2_mass_initial[el.electrolyserNumber].set_value(
                 float(el.H2_mass_initial)
             )
+    if hasattr(model, 'hp_energy_initial'):
+        for hp in grid.heat_pumps:
+            model.hp_energy_initial[hp.heatPumpNumber].set_value(float(hp.E_state))
 
 
 def export_window_opf_results(model, grid, frames, ts_base=0):
@@ -422,6 +455,38 @@ def export_window_opf_results(model, grid, frames, ts_base=0):
             rows_pe.append(row_pe)
         results['hydrogen_mass_H2'] = pd.DataFrame(rows_m)
         results['hydrogen_P_e'] = pd.DataFrame(rows_pe)
+
+    if grid.heat_pumps:
+        rows_hp_p = []
+        rows_hp_q = []
+        rows_hp_e = []
+        if ordered:
+            row_e0 = {'frame': _abs_frame(ordered[0]) - 1}
+            for hp in grid.heat_pumps:
+                row_e0[hp.name] = np.float64(hp.E_state)
+            rows_hp_e.append(row_e0)
+        for t in ordered:
+            block = model.frame_model[t]
+            abs_t = _abs_frame(t)
+            row_p = {'frame': abs_t}
+            row_q = {'frame': abs_t}
+            row_e = {'frame': abs_t}
+            for hp in grid.heat_pumps:
+                h = hp.heatPumpNumber
+                row_p[hp.name] = np.float64(pyo.value(block.P_heat_pump[h])) * hp.np_hp * grid.S_base
+                if hasattr(block, "Q_heat_pump"):
+                    row_q[hp.name] = (
+                        np.float64(pyo.value(block.Q_heat_pump[h])) * hp.np_hp * grid.S_base
+                    )
+                else:
+                    row_q[hp.name] = 0.0
+                row_e[hp.name] = np.float64(pyo.value(block.E_heat_pump[h]))
+            rows_hp_p.append(row_p)
+            rows_hp_q.append(row_q)
+            rows_hp_e.append(row_e)
+        results['heat_pump_P'] = pd.DataFrame(rows_hp_p)
+        results['heat_pump_Q'] = pd.DataFrame(rows_hp_q)
+        results['heat_pump_energy_state'] = pd.DataFrame(rows_hp_e)
 
     if ordered and (grid.Generators or grid.Generators_DC):
         rows_gp = []
@@ -634,9 +699,9 @@ def window_nl_opf(
     grid.reset_run_flags()
     analyse_grid(grid)
 
-    if not grid.ESS and not grid.H2:
+    if not grid.ESS and not grid.H2 and not grid.HP:
         raise ValueError(
-            "window_nl_opf requires at least one storage or electrolyser element")
+            "window_nl_opf requires at least one storage, electrolyser, or heat-pump element")
 
     if not grid.Time_series:
         raise ValueError("window_nl_opf requires grid.Time_series")
@@ -690,7 +755,7 @@ def window_nl_opf(
         model.frame_model = pyo.Block(model.frames)
 
         t1 = time.perf_counter()
-        storage_info, hydrogen_info = _create_frame_blocks(
+        storage_info, hydrogen_info, heat_pump_info = _create_frame_blocks(
             model,
             grid,
             frames,
@@ -712,6 +777,8 @@ def window_nl_opf(
                 final_frames=h2_frames_local,
                 final_scale=h2_scale_local,
             )
+        if grid.HP:
+            window_heat_pump_constraints(model, grid, heat_pump_info, frames)
         obj_total = _sum_frame_objectives(model, frames)
         if obj_scaling != 1.0:
             obj_total = obj_total / obj_scaling
@@ -725,6 +792,7 @@ def window_nl_opf(
                 'initial_values': initial_values,
                 'storage_info': storage_info,
                 'hydrogen_info': hydrogen_info,
+                'heat_pump_info': heat_pump_info,
                 'price_zones': price_zones,
                 'weights_def': weights_def,
             }
@@ -732,6 +800,7 @@ def window_nl_opf(
         model = cache_entry['model']
         storage_info = cache_entry['storage_info']
         hydrogen_info = cache_entry['hydrogen_info']
+        heat_pump_info = cache_entry.get('heat_pump_info')
         price_zones = cache_entry['price_zones']
         weights_def = cache_entry['weights_def']
         t1 = time.perf_counter()
