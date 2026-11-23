@@ -269,6 +269,7 @@ html_extra_path = ['_static']
 
 import importlib.util
 
+
 def _run_doc_generator(script_name: str) -> None:
     path = os.path.join(os.path.dirname(__file__), script_name)
     spec = importlib.util.spec_from_file_location(script_name.replace(".py", ""), path)

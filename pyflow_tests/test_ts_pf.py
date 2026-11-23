@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Time-series power flow and build-only TS-OPF smoke tests."""
 
 import pandas as pd
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_tests._test_solver_deps import pyomo_missing_for_run_test, require_pyomo
 
 TS_FACTORS = [1.0, 0.9, 0.8, 0.9, 1.0]

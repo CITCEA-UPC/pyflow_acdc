@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 """Unified MIP path graph on alpha_ventus (OR-Tools backend)."""
 import time
 
 import pyflow_acdc as pyf
-
 from pyflow_acdc.constants import MIPBackend
 from pyflow_tests._test_solver_deps import (
     ortools_missing_for_run_test,

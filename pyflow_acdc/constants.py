@@ -2,7 +2,6 @@
 
 from enum import Enum
 
-
 # ── String enums ────────────────────────────────────────────────────────
 
 class NodeType(str, Enum):
@@ -269,6 +268,7 @@ DEFAULT_GEN_TYPE = 'Other'
 # ── General ──────────────────────────────────────────────────────────────
 """ Classes, grid_creator, grid_modifications, Results_class, grid_analysis """
 import math
+
 SQRT_3 = math.sqrt(3)
 
 """ Classes, Time_series, Results_class, AC_L_CSS_*, ACDC_Static_TEP,

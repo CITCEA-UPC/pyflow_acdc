@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """build_only tests for linear static rs_GPR and linear multi-period TEP."""
 
 import importlib.util
@@ -6,8 +5,8 @@ import sys
 from pathlib import Path
 
 import pyomo.environ as pyo
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_tests._test_solver_deps import require_pyomo
 
 

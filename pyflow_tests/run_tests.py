@@ -1,10 +1,10 @@
-import sys
-from pathlib import Path
-import importlib.util
-from io import StringIO
 import contextlib
-from typing import Dict, List, Tuple
+import importlib.util
+import sys
 import time
+from io import StringIO
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 from pyflow_tests.test_constants import (
     ALL_CASES,

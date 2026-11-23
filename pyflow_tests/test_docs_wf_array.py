@@ -1,8 +1,7 @@
-# -*- coding: utf-8 -*-
 """Run all examples in doc_examples/wf_array/."""
 
-from pyflow_tests.run_doc_examples import run_doc_examples
 from pyflow_tests._test_solver_deps import pyomo_missing_for_run_test, require_pyomo
+from pyflow_tests.run_doc_examples import run_doc_examples
 
 FOLDER = "wf_array"
 

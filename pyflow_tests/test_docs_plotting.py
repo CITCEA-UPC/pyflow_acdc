@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run all examples in doc_examples/plotting/."""
 
 

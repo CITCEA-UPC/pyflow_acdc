@@ -1,39 +1,38 @@
-# -*- coding: utf-8 -*-
 """
 Created on Thu Oct 24 09:06:32 2024
 
 @author: BernardoCastro
 """
 
-import networkx as nx
-import pandas as pd
-import numpy as np
-
-import yaml
 from pathlib import Path
 
+import networkx as nx
+import numpy as np
+import pandas as pd
+import yaml
+
 from .constants import (
-    SQRT_3,
-    HOURS_PER_YEAR,
-    DEFAULT_V_MIN_DC,
-    DEFAULT_V_MAX_DC,
     DEFAULT_DISCOUNT_RATE,
+    DEFAULT_GEN_TYPE,
+    DEFAULT_GENERATION_TYPES,
     DEFAULT_N_YEARS,
-    NodeType,
+    DEFAULT_RENEWABLE_TYPES,
+    DEFAULT_V_MAX_DC,
+    DEFAULT_V_MIN_DC,
+    HOURS_PER_YEAR,
+    SQRT_3,
+    AcDcSide,
+    CableType,
     ConverterDCType,
+    ConverterOpfFxType,
+    LinkCost,
+    NodeType,
     Polarity,
     PowerLossModel,
-    CableType,
-    ConverterOpfFxType,
     PricingStrategy,
-    LinkCost,
     default_obj_weights,
-    DEFAULT_GENERATION_TYPES,
-    DEFAULT_RENEWABLE_TYPES,
-    DEFAULT_GEN_TYPE,
-    AcDcSide,
 )
-from .grid_analysis import pol2cartz, cartz2pol
+from .grid_analysis import cartz2pol, pol2cartz
 
 __all__ = [
     'Grid',
@@ -631,16 +630,12 @@ class Grid:
                 if node.type == ConverterDCType.SLACK:
                     self.num_slackDC[i] += 1
 
-            s = 1
             if self.num_slackDC[i] == 0:
                 print(
                     f'For Grid DC {i+1} no slack bus found, results may not be accurate')
 
             if self.num_slackDC[i] > 1:
                 print(f'For Grid DC {i+1} more than one slack bus found, results may not be accurate')
-
-
-        s = 1
 
 
     def update_graph_ac(self):
@@ -673,9 +668,6 @@ class Grid:
 
         self.Graph_AC_unused_nodes = [
             node for node in self.nodes_AC if not node.used]
-
-        s = 1
-
 
         "Creating Graphs to differentiate Grids"
         for line in self.lines_AC + self.lines_AC_exp + self.lines_AC_rec + self.lines_AC_tf + self.lines_AC_ct:
@@ -720,14 +712,11 @@ class Grid:
                     self.num_slackAC[i] += 1
             if self.num_slackAC[i] == 0 and self.lines_AC != []:
                 print(f'For Grid AC {i+1} no slack bus found.')
-                print(f'Please set one before any calculations')
+                print('Please set one before any calculations')
                 # sys.exit()
             if self.num_slackAC[i] > 1:
                 print(
                     f'For Grid AC {i+1} more than one slack bus found, results may not be accurate')
-
-
-        s = 1
 
     def get_linesAC_by_node(self, nodeNumber):
         lines = [line for line in self.lines_AC if
@@ -766,7 +755,6 @@ class Grid:
                                 for node in self.nodes_DC])
         self.Pconv_DC = np.vstack([node.Pconv for node in self.nodes_DC])
 
-        s=1
     def update_pq_ac(self):
         for node in self.nodes_AC:
             node.Q_s_fx=sum(self.Converters_ACDC[conv].Q_AC for conv  in node.connected_conv if self.Converters_ACDC[conv].AC_type==NodeType.PQ)
@@ -800,8 +788,6 @@ class Grid:
                                -node.QLi +node.Q_s_fx for node in self.nodes_AC])
         self.Ps_AC = np.vstack([node.P_s for node in self.nodes_AC])
         self.Qs_AC = np.vstack([node.Q_s for node in self.nodes_AC])
-
-        s = 1
 
     def create_Ybus_AC(self):
 
@@ -966,9 +952,7 @@ class Grid:
                 if self.nn_DC-node_count == 2:
                     g=self.Graph_node_to_Grid_index_DC[DC_node.nodeNumber]
 
-                    if any(node.type == ConverterDCType.SLACK for node in self.Grids_DC[g]):
-                        s=1
-                    else:
+                    if not any(node.type == ConverterDCType.SLACK for node in self.Grids_DC[g]):
                         conv.type = ConverterDCType.SLACK
                         DC_node.type = ConverterDCType.SLACK
                         print(f"Changing converter {conv.name} to Slack")
@@ -1022,7 +1006,7 @@ class Grid:
         """
         try:
             V_cart = pol2cartz(self.V_AC, self.Theta_V_AC)
-        except (ValueError, AttributeError) as e:
+        except (ValueError, AttributeError):
             # Initialize voltage arrays if not available
             self.V_AC = np.zeros(self.nn_AC)
             self.Theta_V_AC = np.zeros(self.nn_AC)
@@ -1094,7 +1078,6 @@ class Grid:
         Iij = np.zeros((self.nn_DC, self.nn_DC), dtype=float)
         Pij_DC = np.zeros((self.nn_DC, self.nn_DC), dtype=float)
 
-        s = 1
         for line in self.lines_DC:
             i = line.fromNode.nodeNumber
             j = line.toNode.nodeNumber
@@ -1124,7 +1107,6 @@ class Grid:
         self.Pij_DC = Pij_DC
 
         self.Iij_DC = Iij
-        s = 1
 
 
 
@@ -2621,7 +2603,7 @@ class Line_AC:
                 data_dict = {}
                 # Read all YAML files in the directory
                 for yaml_file in cable_dir.glob('*.yaml'):
-                    with open(yaml_file, 'r', encoding='latin-1') as f:
+                    with open(yaml_file, encoding='latin-1') as f:
                         cable_data = yaml.safe_load(f)
                         if cable_data:
                             # Each file has one cable
@@ -3236,7 +3218,7 @@ class Cable_options:
                 data_dict = {}
                 # Read all YAML files in the directory
                 for yaml_file in cable_dir.glob('*.yaml'):
-                    with open(yaml_file, 'r', encoding='latin-1') as f:
+                    with open(yaml_file, encoding='latin-1') as f:
                         cable_data = yaml.safe_load(f)
                         if cable_data:
                             # Each file has one cable
@@ -3459,7 +3441,7 @@ class Line_DC:
                 data_dict = {}
                 # Read all YAML files in the directory
                 for yaml_file in cable_dir.glob('*.yaml'):
-                    with open(yaml_file, 'r', encoding='latin-1') as f:
+                    with open(yaml_file, encoding='latin-1') as f:
                         cable_data = yaml.safe_load(f)
                         if cable_data:
                             # Each file has one cable
@@ -3817,7 +3799,7 @@ class AC_DC_converter:
             else:
                 self.Zf = 0
 
-            if self.r_t != 0:
+            if self.Ztf != 0:
                 self.Y_tf = 1/self.Ztf
                 self.Gtf = np.real(self.Y_tf)
                 self.Btf = np.imag(self.Y_tf)
@@ -3825,7 +3807,7 @@ class AC_DC_converter:
                 self.Gtf = 0
                 self.Btf = 0
 
-            if self.pr_r != 0:
+            if self.Zc != 0:
                 self.Y_c = 1/self.Zc
                 self.Gc = np.real(self.Y_c)
                 self.Bc = np.imag(self.Y_c)
@@ -4588,7 +4570,7 @@ class MTDCPrice_Zone(Price_Zone):
     @price.setter
     def price(self, value):
         # Price is managed by linked price_zones, so don't allow manual setting
-        s=1
+        pass
     # Allow for manual override if desired
     def override_price(self, value):
         self._price = value

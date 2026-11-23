@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 OR-Tools (linear_solver) linear AC OPF model for cable size selection (CSS).
 
@@ -10,22 +9,23 @@ belong to the path MIP in ``Array_OPT``.
 Uses CBC via ``ortools.linear_solver`` (no Pyomo/Gurobi license required).
 """
 
-import numpy as np
 import time
+
+import numpy as np
 
 __all__ = ['optimal_l_css_ortools']
 
-from ..ACDC_OPF import obj_w_rule, calculate_objective
-from ..grid_analysis import get_gen_p_min_eff, analyse_grid
+from ..ACDC_OPF import calculate_objective, obj_w_rule
 from ..constants import (
-    HOURS_PER_YEAR,
+    CT_SELECTION_THRESHOLD,
     DEFAULT_DISCOUNT_RATE,
     DEFAULT_TIME_LIMIT,
-    present_value_factor,
-    ObjComponent,
-    CT_SELECTION_THRESHOLD,
+    HOURS_PER_YEAR,
     ORTOOLS_LINEAR_SOLVERS,
+    ObjComponent,
+    present_value_factor,
 )
+from ..grid_analysis import analyse_grid, get_gen_p_min_eff
 
 try:
     from ortools.linear_solver import pywraplp
@@ -186,7 +186,7 @@ def solve_ortools_model(solver, grid, tee=False):
             'nodes': solver.nodes(),
             'feasible_solutions': [],
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 (returned as status 'error' with the message)
         model_res = {
             'status': 'error',
             'error_message': str(e),
@@ -662,8 +662,7 @@ def export_acdc_l_model_to_pyflow_acdc_ortools(solver, grid, gen_vars, ac_vars,
     if (time_limit is not None
             and solver.wall_time() >= int(time_limit * 1000 * 0.99)):
         try:
-            from .AC_OPF_L_model import (analyze_oversizing_issues_grid,
-                                          apply_oversizing_fixes_grid)
+            from .AC_OPF_L_model import analyze_oversizing_issues_grid, apply_oversizing_fixes_grid
             oversizing_type1, oversizing_type2 = analyze_oversizing_issues_grid(
                 grid, tee=tee)
             apply_oversizing_fixes_grid(grid, oversizing_type1,

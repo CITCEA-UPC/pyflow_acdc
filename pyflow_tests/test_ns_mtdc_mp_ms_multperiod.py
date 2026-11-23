@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Multi-period multi-scenario TEP tests on NS_MTDC_2025 (build-only; no solver runs)."""
 
 import pytest

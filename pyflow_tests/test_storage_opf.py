@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Snapshot NL OPF with AC and DC BESS (Phase 2). Myopic TS + soft soc_ref (Phase 8)."""
 
 import pandas as pd
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_acdc.constants import ObjComponent
 from pyflow_tests._test_solver_deps import require_pyomo
 

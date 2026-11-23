@@ -1,7 +1,6 @@
 import pytest
 
 import pyflow_acdc as pyf
-
 from pyflow_tests._test_solver_deps import pyomo_missing_for_run_test, require_pyomo, tep_solver
 
 

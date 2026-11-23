@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Linear AC OPF with AC BESS (P-only) and AC electrolyser."""
 
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_acdc.constants import ObjComponent
 from pyflow_tests._test_solver_deps import (
     lopf_solver,

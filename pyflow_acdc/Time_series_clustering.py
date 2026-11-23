@@ -7,23 +7,25 @@ Owns: clustering algorithms, cluster evaluation, and writing clusters onto the
 grid.
 Does not own: time-series power flow / OPF execution (see ``Time_series``).
 """
-from sklearn.cluster import KMeans, AgglomerativeClustering
-from sklearn.metrics import pairwise_distances,davies_bouldin_score
-from sklearn.preprocessing import StandardScaler,RobustScaler
-from kmedoids import KMedoids
-import os
 import json
+import os
+
+from kmedoids import KMedoids
+from sklearn.cluster import AgglomerativeClustering, KMeans
+from sklearn.metrics import davies_bouldin_score, pairwise_distances
+from sklearn.preprocessing import RobustScaler, StandardScaler
+
 if 'MPLBACKEND' not in os.environ:
     os.environ['MPLBACKEND'] = 'Agg'
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
 import time as time
 from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from sklearn.decomposition import PCA
 
 from .constants import DEFAULT_CLUSTERING_MAX_ITER
-
 
 __all__ = ['cluster_TS',
            'cluster_Kmeans',
@@ -781,7 +783,6 @@ def _process_clusters(grid, data, cluster_centers, representative_indices=None):
         optionally the representative index.
     """
     new_columns = [col for col in data.columns if col != 'Cluster']
-    n_clusters = len(cluster_centers)
     # Create DataFrame with cluster centers
     clusters = pd.DataFrame(cluster_centers, columns=new_columns)
 
@@ -1410,7 +1411,7 @@ def run_clustering_analysis(grid, save_path='clustering_results',algorithms=None
 
                 print(f"    Time: {time_taken:.2f}s")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 (exploratory loop, try the next algorithm)
                 print(f"    Error with {algo}, n={n}: {str(e)}")
                 continue
 
@@ -1940,7 +1941,7 @@ def compare_kmedoids_methods(grid, n_clusters, data, scaling_data=None,
                 'inertia': method_results[1][1],
                 'time': time_taken
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (exploratory loop, try the next method)
             print(f"Error with method {method}: {e}")
             results[method] = None
 
@@ -2023,7 +2024,7 @@ def load_precomputed_clusters_to_grid(grid, precomputed=None, precomputed_path=N
     if precomputed is None:
         if precomputed_path is None:
             raise ValueError("Either 'precomputed' or 'precomputed_path' must be provided")
-        with open(precomputed_path, 'r', encoding='utf-8') as fh:
+        with open(precomputed_path, encoding='utf-8') as fh:
             precomputed = json.load(fh)
 
     n = int(precomputed.get('n_clusters', fallback_n_clusters))

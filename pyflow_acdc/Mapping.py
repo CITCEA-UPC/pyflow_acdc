@@ -6,26 +6,26 @@ geometry derived from element coordinates.
 Owns: folium map generation and geographic styling.
 Does not own: non-geographic plots (see ``Graph_and_plot``).
 """
-import networkx as nx
-import numpy as np
+import colorsys
 import os
+import webbrowser
 from datetime import datetime, timedelta
 from importlib import resources
-import colorsys
 
-import geopandas as gpd
-import pandas as pd
-import folium
 import branca
-from folium.plugins import Draw,MarkerCluster,AntPath,TimestampedGeoJson
-import webbrowser
+import folium
+import geopandas as gpd
+import networkx as nx
+import numpy as np
+import pandas as pd
+from folium.plugins import AntPath, Draw, MarkerCluster, TimestampedGeoJson
 
-from .Graph_and_plot import (
-    update_hovertexts,
-    create_subgraph_color_dict,
-    create_geometries_from_coords,
-)
 from .Classes import Node_AC
+from .Graph_and_plot import (
+    create_geometries_from_coords,
+    create_subgraph_color_dict,
+    update_hovertexts,
+)
 
 __all__ = [
     'darken_color',
@@ -592,7 +592,6 @@ def plot_folium_network(
                     opacity=0.8,
                     popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
                 ).add_to(tech_name)
-        s=1
     # Calculate map center from node coordinates
     if not gdf_nodes_AC.empty:
         # Get bounds of all nodes
@@ -651,7 +650,7 @@ def plot_folium_network(
     def add_load_markers(gdf, tech_name):
         try:
             load_icon_path = str(resources.files('pyflow_acdc').joinpath('folium_images').joinpath('load.png'))
-        except Exception:
+        except (ModuleNotFoundError, AttributeError, TypeError):
             load_icon_path = os.path.join(os.path.dirname(__file__), 'folium_images', 'load.png')
         load_icon_px = int(round(BASE_ICON_SIZE))
         for _, row in gdf.iterrows():
@@ -672,7 +671,7 @@ def plot_folium_network(
     try:
         base_icon_dir = resources.files('pyflow_acdc').joinpath('folium_images')
         use_importlib_resources = True
-    except Exception:
+    except (ModuleNotFoundError, AttributeError, TypeError):
         base_icon_dir = os.path.join(os.path.dirname(__file__), 'folium_images')
         use_importlib_resources = False
 
@@ -867,7 +866,7 @@ def _ts_index_to_iso_strings(index):
         try:
             offset = int(float(val))
             ts = base_time + timedelta(hours=offset)
-        except Exception:
+        except (TypeError, ValueError, OverflowError):
             ts = base_time + timedelta(hours=i)
         iso_times.append(ts.isoformat())
     return iso_times
@@ -924,7 +923,7 @@ def plot_folium_ts_results(
                 line_loading_df = line_loading_df.loc[start:]
             else:
                 line_loading_df = line_loading_df.loc[:end]
-        except Exception:
+        except (KeyError, TypeError):
             start_i = 0 if start is None else int(start)
             end_i = len(line_loading_df) if end is None else int(end) + 1
             line_loading_df = line_loading_df.iloc[start_i:end_i]

@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
+
+import tempfile
+from pathlib import Path
 
 import pyflow_acdc as pyf
-from pathlib import Path
-import tempfile
-
 from pyflow_tests._test_solver_deps import pyomo_missing_for_run_test, require_pyomo
 
 

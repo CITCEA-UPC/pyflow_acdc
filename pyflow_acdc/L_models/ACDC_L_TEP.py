@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Linear (MILP) static and multi-period transmission-expansion drivers."""
 
 import time
@@ -7,19 +6,23 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 
-from .AC_OPF_L_model import opf_create_l_model_acdc, export_acdc_l_model_to_pyflow_acdc
 from ..ACDC_OPF import (
+    calculate_objective,
+    obj_w_rule,
     opf_obj_l,
     opf_obj_l_array_losses,
-    obj_w_rule,
-    calculate_objective,
     translate_pyf_opf,
 )
-from ..NL_models.ACDC_Static_TEP import _TEP_install_variables, _TEP_install_constraints, tep_obj
-from ..constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
+from ..constants import (
+    DEFAULT_DISCOUNT_RATE,
+    DEFAULT_TIME_LIMIT,
+    HOURS_PER_YEAR,
+    present_value_factor,
+)
 from ..grid_analysis import analyse_grid, current_fuel_type_distribution
-from ..pyomo_model_solve import pyomo_model_solve, build_only_solver_stats
-
+from ..NL_models.ACDC_Static_TEP import _TEP_install_constraints, _TEP_install_variables, tep_obj
+from ..pyomo_model_solve import build_only_solver_stats, pyomo_model_solve
+from .AC_OPF_L_model import export_acdc_l_model_to_pyflow_acdc, opf_create_l_model_acdc
 
 __all__ = [
     'linear_transmission_expansion',
@@ -93,9 +96,9 @@ def _post_process_l_mptep_with_nl_opf(
     Failed NL OPFs do not export onto ``grid`` (``export_if_feasible=True``).
     ``optimal_pf`` clears run flags, so ``MP_TEP_run`` is restored at the end.
     """
+    from ..ACDC_OPF import calculate_objective_from_model, optimal_pf
+    from ..Graph_and_plot import create_geometries_from_layout, save_network_svg
     from ..NL_models.ACDC_MultiPeriod_TEP import _set_grid_to_multiperiod_state
-    from ..ACDC_OPF import optimal_pf, calculate_objective_from_model
-    from ..Graph_and_plot import save_network_svg, create_geometries_from_layout
 
     df_lin = grid.MP_TEP_obj_res
     if df_lin is None or df_lin.empty:
@@ -393,20 +396,20 @@ def linear_multi_period_transmission_expansion(
         ``(model, model_results, timing_info, solver_stats)``.
     """
     from ..NL_models.ACDC_MultiPeriod_TEP import (
-        _fill_investment_decisions,
-        _validate_grid_for_MP_TEP,
-        _deactivate_non_pre_existing_loads,
         _calculate_decomision_period,
-        _update_grid_investment_period,
+        _deactivate_non_pre_existing_loads,
+        _fill_investment_decisions,
         _initialize_MPTEP_sets_model,
-        _MP_TEP_variables,
-        _MP_TEP_constraints,
+        _inv_decision,
         _MP_GEN_balance_constraints,
         _MP_TEP_capex_budget_constraint,
+        _MP_TEP_constraints,
         _MP_TEP_obj,
-        _inv_decision,
-        export_mp_tep_results_to_pyflow_acdc,
+        _MP_TEP_variables,
         _save_inv_models,
+        _update_grid_investment_period,
+        _validate_grid_for_MP_TEP,
+        export_mp_tep_results_to_pyflow_acdc,
         save_MP_TEP_period_svgs,
     )
 
@@ -472,7 +475,7 @@ def linear_multi_period_transmission_expansion(
     model = pyo.ConcreteModel()
     model.name = "Dynamic TEP linear AC OPF"
 
-    model.inv_periods = pyo.Set(initialize=list(range(0, n_periods)))
+    model.inv_periods = pyo.Set(initialize=list(range(n_periods)))
     grid.TEP_n_periods = n_periods
     model.inv_model = pyo.Block(model.inv_periods)
 

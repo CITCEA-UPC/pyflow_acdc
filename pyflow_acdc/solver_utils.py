@@ -89,7 +89,7 @@ def check_pyomo_solvers(pyomo_solvers=None, verbose=True):
                 pyomo_available.append(solver)
             else:
                 pyomo_errors[solver] = f"Solver ({solver}) not available"
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 (availability probe)
             pyomo_errors[solver] = str(exc)
 
     return {
@@ -142,7 +142,7 @@ def check_ortools_backends(verbose=True):
             "ortools_available": [],
             "ortools_error": None,
         }
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 (availability probe)
         return {
             "ortools_installed": False,
             "ortools_available": [],
@@ -159,7 +159,7 @@ def check_ortools_backends(verbose=True):
             solver = pywraplp.Solver.CreateSolver(backend)
             if solver is not None:
                 ortools_available.append(backend)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 (availability probe)
             if ortools_error is None:
                 ortools_error = str(exc)
 

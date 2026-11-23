@@ -3,7 +3,6 @@
 import logging
 import math
 import re
-import time
 import warnings
 
 import pandas as pd
@@ -53,8 +52,9 @@ def build_only_solver_stats(solver=None, model=None):
 
 def log_infeasible_constraints_limited(model, max_per_type=5, tol=1e-6):
     """Print violated constraints in Pyomo-style ``INFO: CONSTR ... =/= 0.0`` form."""
-    from pyomo.core import Constraint
     from collections import defaultdict
+
+    from pyomo.core import Constraint
 
     def _as_float(val):
         if val is None:
@@ -177,7 +177,7 @@ def _gurobi_callback(model, feasible_solutions, bound_solutions, time_limit=None
             try:
                 grb_model.setParam(param_name, param_value)
             except Exception as e:
-                logger.warning(f"Could not set Gurobi parameter {param_name}={param_value}: {e}")
+                logger.warning(f"Could not set Gurobi parameter {param_name}={param_value}: {e}", exc_info=True)
 
     grb_model.optimize(my_callback)
 
@@ -236,12 +236,10 @@ def _parse_bonmin_log(log_path, bonmin_algorithm='B-BB'):
     last_cbc0010_best_solution = None
 
     try:
-        with open(log_path, 'r') as f:
-            pending_header = False
+        with open(log_path) as f:
             for line in f:
                 # Detect NLP table header; don't infer anything here
                 if line.startswith('NLP0012I'):
-                    pending_header = True
                     continue
                 # Look for integer solution lines like:
                 # Cbc0004I Integer solution of 1.5954776e+10 found after 1563 iterations and 63 nodes (5.62 seconds)
@@ -350,11 +348,10 @@ def _parse_bonmin_log(log_path, bonmin_algorithm='B-BB'):
                             solution_data = [cumulative_time, objective, cumulative_iterations, nlp_call_num, False]
                             all_solutions.append(solution_data)
                             last_nlp_call = nlp_call_num
-                            pending_header = False
 
                         except (ValueError, TypeError, IndexError):
                             continue
-    except (FileNotFoundError, IOError):
+    except (OSError, FileNotFoundError):
         pass
     return feasible_solutions, all_solutions, bound_solutions
 
@@ -389,7 +386,7 @@ def _parse_highs_log(log_path):
     bound_solutions = []
 
     try:
-        with open(log_path, 'r') as f:
+        with open(log_path) as f:
             header_found = False
             for line in f:
                 # Look for the header line to know when data starts
@@ -416,7 +413,6 @@ def _parse_highs_log(log_path):
 
                 try:
                     # Determine if Src column exists (T or L) or is empty
-                    src_idx = 0
                     if parts[0] in ['T', 'L']:
                         # Src column present
                         src = parts[0]
@@ -471,10 +467,10 @@ def _parse_highs_log(log_path):
                         if objective < last_obj:  # Better solution found
                             feasible_solutions.append(solution_data)
 
-                except (ValueError, IndexError, TypeError) as e:
+                except (ValueError, IndexError, TypeError):
                     continue
 
-    except (FileNotFoundError, IOError):
+    except (OSError, FileNotFoundError):
         pass
 
     return feasible_solutions, all_solutions, bound_solutions
@@ -489,13 +485,11 @@ def _parse_ipopt_log(log_path):
       - Final solution: captured from the EXIT line and summary statistics
     """
     progress_events = []
-    final_objective = None
-    final_iteration = None
     exit_acceptable = False
     exit_optimal = False
 
     try:
-        with open(log_path, 'r') as f:
+        with open(log_path) as f:
             for line in f:
                 # Look for Ipopt iteration lines like:
                 # iter    objective    inf_pr   inf_du lg(mu)  ||d||  lg(rg) alpha_du alpha_pr  ls
@@ -521,8 +515,6 @@ def _parse_ipopt_log(log_path):
                             )
 
                             progress_events.append((iteration, objective, is_feasible, inf_pr, inf_du))
-                            final_objective = objective
-                            final_iteration = iteration
                         except (ValueError, IndexError):
                             continue
 
@@ -531,7 +523,7 @@ def _parse_ipopt_log(log_path):
                     exit_optimal = True
                 elif 'EXIT: Solved To Acceptable Level' in line:
                     exit_acceptable = True
-    except (FileNotFoundError, IOError):
+    except (OSError, FileNotFoundError):
         pass
 
     # If IPOPT declared optimal or acceptable, ensure the final point is marked feasible
@@ -590,8 +582,6 @@ def _solver_progress(
                 continue
             opt.options[param_name] = param_value
 
-    start = time.perf_counter()
-
     # Always write to log file, use Pyomo's tee to control console output.
     # For Bonmin/HiGHS, disable autoload so Pyomo does not raise when no
     # solution is available to load. We then load manually if a solution exists.
@@ -615,9 +605,7 @@ def _solver_progress(
                     results.solver.status = original_status
         except Exception as exc:
             if tee_console:
-                logger.warning(f"Could not load incumbent solution from solver results: {exc}")
-
-    end = time.perf_counter()
+                logger.warning(f"Could not load incumbent solution from solver results: {exc}", exc_info=True)
 
     # Parse the log file based on solver type
     all_solutions = []
@@ -693,7 +681,7 @@ def _store_pyomo_results_on_grid(grid_obj, model_obj, results_obj, solver_stats)
             decimals=2,
         )
         grid_obj._last_pyomo_model_results_table = df
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Never break solve flow due to reporting persistence.
         pass
 
@@ -795,7 +783,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
     feasible_solutions = []  # Always defined, but only populated if callback is used
     all_solutions = []  # Always defined, but only populated if callback is used
     bound_solutions = []  # Best-bound updates from callback log parsing
-    debug_solution_check = bool((solver_options or {}).pop("debug_solution_check", True))
+    (solver_options or {}).pop("debug_solution_check", None)  # internal flag, not a solver option
 
     # NLP warm-start: solve continuous relaxation with IPOPT first
     if nlp_warmstart and solver in ('bonmin', 'minotaur'):
@@ -843,7 +831,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             else:
                 print("  WARNING: NLP did not converge optimally, but variable values may still help.")
             print("=" * 60)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (warm-start is optional)
             print(f"  NLP warm-start failed: {e}")
             print("  Proceeding with default initialization.")
             print("=" * 60)
@@ -913,7 +901,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             results = opt.solve(model, tee=tee, load_solutions=True)
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Solver crashed: {e}")
+            logger.error(f"Solver crashed: {e}", exc_info=True)
 
             solver_stats = {
                 'solver': solver,
@@ -1052,7 +1040,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         if callback:
             try:
                 events = _parse_ipopt_log('ipopt.log')
-            except Exception:
+            except Exception:  # noqa: BLE001 (log parsing is diagnostic only)
                 events = []
             if events:
                 last_iter, last_obj, last_feas, last_inf_pr, last_inf_du = events[-1]
@@ -1168,13 +1156,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         except OverflowError as exc:
             pyomo_logger.warning("Skipping infeasible-constraint logging due to overflow: %s", exc)
         except Exception as exc:
-            pyomo_logger.warning("Skipping infeasible-constraint logging due to error: %s", exc)
+            pyomo_logger.warning("Skipping infeasible-constraint logging due to error: %s", exc, exc_info=True)
 
     if tee and explicit_infeasible_termination:
         try:
             log_infeasible_constraints_limited(model)
         except Exception as exc:
-            pyomo_logger.warning("Skipping limited infeasible-constraint logging due to error: %s", exc)
+            pyomo_logger.warning("Skipping limited infeasible-constraint logging due to error: %s", exc, exc_info=True)
 
     _store_pyomo_results_on_grid(grid, model, results, solver_stats)
     return results, solver_stats

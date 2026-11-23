@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Nonlinear OPF / TEP model builders and drivers.
 
 Submodules: ``ACDC_OPF_NL_model``, ``ACDC_Static_TEP``,

@@ -1,32 +1,36 @@
-# -*- coding: utf-8 -*-
 """
 Created on Thu Oct 10 14:58:18 2024
 
 @author: BernardoCastro
 """
 
-import numpy as np
-import pyomo.environ as pyo
-import pandas as pd
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from ..grid_analysis import analyse_grid
-from ..constants import HOURS_PER_YEAR, BINARY_THRESHOLD, DEFAULT_DISCOUNT_RATE, present_value_factor, TSType, TS_RENEWABLE_TYPES
+import numpy as np
+import pandas as pd
+import pyomo.environ as pyo
 
-from .ACDC_OPF_NL_model import opf_create_nl_model_acdc, TEP_variables
-from ..pyomo_model_solve import pyomo_model_solve, build_only_solver_stats
 from ..ACDC_OPF import (
-    opf_obj,
-    obj_w_rule,
-    export_acdc_nl_model_to_pyflow_acdc,
     calculate_objective,
-    reset_to_initialize,
     calculate_objective_from_model,
+    export_acdc_nl_model_to_pyflow_acdc,
+    obj_w_rule,
+    opf_obj,
+    reset_to_initialize,
 )
-
+from ..constants import (
+    BINARY_THRESHOLD,
+    DEFAULT_DISCOUNT_RATE,
+    HOURS_PER_YEAR,
+    TS_RENEWABLE_TYPES,
+    TSType,
+    present_value_factor,
+)
 from ..Graph_and_plot import save_network_svg
-
+from ..grid_analysis import analyse_grid
+from ..pyomo_model_solve import build_only_solver_stats, pyomo_model_solve
+from .ACDC_OPF_NL_model import TEP_variables, opf_create_nl_model_acdc
 
 __all__ = [
     'update_grid_scenario_frame',
@@ -797,20 +801,20 @@ def transmission_expansion(
 
 def _initialize_MS_STEP_sets_model(model,grid):
     if grid.DCmode:
-        model.lines_DC    = pyo.Set(initialize=list(range(0, grid.nl_DC)))
+        model.lines_DC    = pyo.Set(initialize=list(range(grid.nl_DC)))
     if grid.ACmode and grid.DCmode:
-        model.conv        = pyo.Set(initialize=list(range(0, grid.nconv)))
+        model.conv        = pyo.Set(initialize=list(range(grid.nconv)))
     if grid.TEP_AC:
-        model.lines_AC_exp= pyo.Set(initialize=list(range(0,grid.nle_AC)))
+        model.lines_AC_exp= pyo.Set(initialize=list(range(grid.nle_AC)))
     if grid.REC_AC:
-        model.lines_AC_rec= pyo.Set(initialize=list(range(0,grid.nlr_AC)))
+        model.lines_AC_rec= pyo.Set(initialize=list(range(grid.nlr_AC)))
     if grid.CT_AC:
-        model.lines_AC_ct = pyo.Set(initialize=list(range(0,grid.nct_AC)))
-        model.ct_set = pyo.Set(initialize=list(range(0,len(grid.Cable_options[0].cable_types))))
+        model.lines_AC_ct = pyo.Set(initialize=list(range(grid.nct_AC)))
+        model.ct_set = pyo.Set(initialize=list(range(len(grid.Cable_options[0].cable_types))))
     if grid.ACmode and grid.n_gen > 0:
-        model.gen_AC = pyo.Set(initialize=list(range(0, grid.n_gen)))
+        model.gen_AC = pyo.Set(initialize=list(range(grid.n_gen)))
     if grid.n_ren > 0:
-        model.ren_sources = pyo.Set(initialize=list(range(0, grid.n_ren)))
+        model.ren_sources = pyo.Set(initialize=list(range(grid.n_ren)))
 
 def alpha_pareto(grid,steps,ObjRule,NPV=True,n_years=25,Hy=HOURS_PER_YEAR,discount_rate=DEFAULT_DISCOUNT_RATE,solver='bonmin',time_limit=None,tee=False,save_name=None,obj_scaling=1.0):
     model, obj_TEP, obj_OPF,weights_def,PZ = _prepare_TEP_model(grid,NPV,n_years,Hy,discount_rate,ObjRule)
@@ -1231,14 +1235,11 @@ def multi_scenario_TEP(
     grid.TEP_discount_rate =discount_rate
     if tee:
         print('Trying clustering')
-    try:
-        from ..Time_series_clustering import cluster_analysis
-        n_clusters,clustering = cluster_analysis(grid,clustering_options)
-        if (clustering_options and clustering_options.get('print_details')) or tee:
-            print('Clustering done')
-    except Exception:
-        n_clusters = len(grid.Time_series[0].data)
-        clustering = False
+    # clustering_options=None gives one frame per time-series row (clustering=False).
+    from ..Time_series_clustering import cluster_analysis
+    n_clusters,clustering = cluster_analysis(grid,clustering_options)
+    if (clustering_options and clustering_options.get('print_details')) or tee:
+        print('Clustering done')
 
     t1 = time.time()
     model = pyo.ConcreteModel()
@@ -1317,7 +1318,6 @@ def multi_scenario_TEP(
 def tep_sub_obj(scenario_model,grid,ObjRule):
     obj_rule= opf_obj(scenario_model,grid,ObjRule)
     scenario_model.obj = pyo.Objective(rule=obj_rule, sense=pyo.minimize)
-    s=1
 
 
 def tep_obj(model,grid,NPV):
@@ -1485,7 +1485,6 @@ def get_price_zone_data(t, model, grid,n_clusters,clustering):
         from ..Classes import Price_Zone
         gen=0
         for node in m.nodes_AC:
-            nAC=node.nodeNumber
             PGi_ren = 0
             PGi_opt = sum(pyo.value(model.scenario_model[t].PGi_gen[gen.genNumber]) for gen in node.connected_gen)
             for rs in node.connected_RenSource:
@@ -1797,8 +1796,6 @@ def export_acdc_tep_ms_to_pyflow_acdc(model,grid,n_clusters,clustering,Price_Zon
         flipped_data_price = data_price.set_index('Time_Frame').T
         flipped_data_pz_lb = data_pz_lb.set_index('Time_Frame').T
         flipped_data_pz_ub = data_pz_ub.set_index('Time_Frame').T
-        flipped_data_a = data_a.set_index('Time_Frame').T
-        flipped_data_b = data_b.set_index('Time_Frame').T
         flipped_data_load = data_load.set_index('Time_Frame').T
 
     else:
@@ -1809,10 +1806,11 @@ def export_acdc_tep_ms_to_pyflow_acdc(model,grid,n_clusters,clustering,Price_Zon
         flipped_data_price = pd.DataFrame()
         flipped_data_pz_lb = pd.DataFrame()
         flipped_data_pz_ub = pd.DataFrame()
-        flipped_data_a = pd.DataFrame()
-        flipped_data_b = pd.DataFrame()
         flipped_data_load = pd.DataFrame()
         data_load = pd.DataFrame()
+        # Read by the not_transposed export below
+        data_PN = data_PZGEN = data_SC = data_price = None
+        data_pz_lb = data_pz_ub = data_a = data_b = None
 
     # These are always created regardless of Price_Zones
     data_curt = pd.DataFrame(data_rows_curt)
@@ -2017,14 +2015,6 @@ def export_TEP_multiScenario_results_to_excel(grid, export):
                 cost = ((opt - ini) * cn.base_cost)  / 1000
                 tot += cost
 
-                if cn.cost_perMVA is not None:
-                    unit_cost= cn.cost_perMVA
-                elif cn.base_cost is not None:
-                    unit_cost= cn.base_cost /cn.MVA_max
-                else:
-                    unit_cost = np.nan
-
-
                 data.append([element, "ACDC Conv", ini, np.round(opt, decimals=2), np.round(pr, decimals=0).astype(int), np.round(cost, decimals=2)])
 
     # Create a pandas DataFrame with the collected data
@@ -2078,9 +2068,7 @@ def export_TEP_multiScenario_results_to_excel(grid, export):
     flipped_LF = Load_factors.T
 
 
-    if export.endswith('.xlsx'):
-        export=export
-    else:
+    if not export.endswith('.xlsx'):
         export=f'{export}.xlsx'
     with pd.ExcelWriter(export) as writer:
         df.to_excel(writer, sheet_name='TEP solution', index=True)

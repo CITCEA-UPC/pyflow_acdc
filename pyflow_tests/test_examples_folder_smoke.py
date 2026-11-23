@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """
 Smoke tests for the top-level examples/ folder.
 """
 
 import os
 import runpy
-from types import SimpleNamespace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_tests._test_solver_deps import require_mapping
 
 EXAMPLES_DIR = Path(__file__).resolve().parents[1] / "examples"

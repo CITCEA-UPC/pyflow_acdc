@@ -1,8 +1,8 @@
-# -*- coding: utf-8 -*-
 """Tests for ``add_grid_thevenin``."""
 
 import numpy as np
 import pytest
+
 import pyflow_acdc as pyf
 from pyflow_acdc.constants import NodeType
 

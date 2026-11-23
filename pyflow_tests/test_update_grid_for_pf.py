@@ -1,12 +1,11 @@
-# -*- coding: utf-8 -*-
 """Tests for update_grid_for_pf converter / BESS / H₂ setpoint wiring."""
 
 import pandas as pd
 import pytest
-import pyflow_acdc as pyf
 
-from pyflow_acdc.constants import AcDcSide, ConverterDCType, NodeType, TSType
+import pyflow_acdc as pyf
 from pyflow_acdc.Classes import TimeSeries
+from pyflow_acdc.constants import AcDcSide, ConverterDCType, NodeType, TSType
 
 
 def _pu_ts(values, column_name):

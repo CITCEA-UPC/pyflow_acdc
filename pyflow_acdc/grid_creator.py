@@ -6,32 +6,50 @@ files, pickles, or a turbine graph.
 Owns: import/parsing of external inputs into the grid data model.
 Does not own: post-creation mutation (see ``grid_modifications``) or analysis.
 """
-from scipy.io import loadmat
-import pandas as pd
-import numpy as np
 import copy
+import gzip
+import pickle
+
+import dill
 import networkx as nx
-from shapely.geometry import Polygon, Point
+import numpy as np
+import pandas as pd
+from scipy.io import loadmat
+from shapely.geometry import Point, Polygon
 from shapely.wkt import loads
 
-from .Results_class import Results
 from .Classes import (
-    AC_DC_converter, Cable_options, DCDC_converter, Exp_Line_AC, Gen_AC, Gen_DC,
-    Grid, Line_AC, Line_DC, Node_AC, Node_DC, Price_Zone, Ren_Source,
-    Ren_source_zone, Size_selection, Storage, Electrolyser, TF_Line_AC, TimeSeries,
+    AC_DC_converter,
+    Cable_options,
+    DCDC_converter,
+    Electrolyser,
+    Exp_Line_AC,
+    Gen_AC,
+    Gen_DC,
+    Grid,
+    Line_AC,
+    Line_DC,
+    Node_AC,
+    Node_DC,
+    Price_Zone,
+    Ren_Source,
+    Ren_source_zone,
+    Size_selection,
+    Storage,
+    TF_Line_AC,
+    TimeSeries,
+)
+from .constants import (
+    DEFAULT_V_MAX_DC,
+    DEFAULT_V_MIN_DC,
+    MAX_RATING_PLACEHOLDER,
+    SQRT_3,
+    DataInput,
+    LinkCost,
 )
 from .grid_analysis import cable_parameters, converter_parameters
 from .grid_modifications import add_gen
-from .constants import (
-    SQRT_3, MAX_RATING_PLACEHOLDER, DEFAULT_V_MIN_DC, DEFAULT_V_MAX_DC, DataInput,
-    LinkCost,
-)
-
-import pickle
-import gzip
-
-import dill
-
+from .Results_class import Results
 
 __all__ = [ # Grid Creation and Import
     'create_grid_from_data',
@@ -807,8 +825,14 @@ def create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=None,
     list
         ``[grid, res]`` — the constructed :class:`Grid` and its :class:`Results`.
     """
-    from .grid_modifications import add_AC_node, add_line_sizing, add_RenSource, add_extgrid, add_cable_option
     from .Classes import Cable_options, Line_AC, Line_DC
+    from .grid_modifications import (
+        add_AC_node,
+        add_cable_option,
+        add_extgrid,
+        add_line_sizing,
+        add_RenSource,
+    )
 
     turbines_df = Data["turbine"]
     substations_df = Data["offshore_substation"] if 'offshore_substation' in Data else Data['transformer_station']
@@ -927,7 +951,6 @@ def create_grid_from_turbine_graph(array_graph,Data,S_base=100,cable_types=None,
 
 
     if 'crossing_pairs' in Data and Data['crossing_pairs']:
-        limit_crossings=True
         for crossing_group in Data['crossing_pairs']:
             line_numbers_group = []
             for edge_key in crossing_group:
@@ -1579,7 +1602,7 @@ def load_pickle(path, use_dill=False):
         try:
             with opener(path, "rb") as f:
                 obj = pickle.load(f)
-        except Exception:
+        except Exception:  # noqa: BLE001 (any pickle failure retries with dill, which raises if the file is bad)
             with opener(path, "rb") as f:
                 obj = dill.load(f)
     else:
@@ -1637,7 +1660,6 @@ def change_S_base(grid, Sbase_new):
     Sbase_old = grid.S_base
     if Sbase_old == Sbase_new:
         return grid
-    rate = Sbase_old / Sbase_new
 
     for line in (
         grid.lines_AC + grid.lines_AC_exp + grid.lines_AC_rec
@@ -1715,7 +1737,6 @@ def create_sub_grid(grid,Area=None, Area_name = None,polygon_coords=None):
         """
         ac_nodes_list=[]
         dc_nodes_list=[]
-        opz=None
         if Area is not None:
             if isinstance(Area, list):
                 for a in Area:
@@ -1772,7 +1793,6 @@ def create_sub_grid(grid,Area=None, Area_name = None,polygon_coords=None):
                     dc_nodes_list.append(converter.Node_DC)
 
         ac_node_names = {node.name for node in ac_nodes_list}
-        dc_node_names = {node.name for node in dc_nodes_list}
 
         G_AC_new = nx.MultiGraph()
 
@@ -1876,8 +1896,6 @@ def create_sub_grid(grid,Area=None, Area_name = None,polygon_coords=None):
             nodes_DC.append(line.fromNode)
         nodes_DC = list(set(nodes_DC))
 
-        new_dc_node_names = {node.name for node in nodes_DC}
-        new_dc_only_names = new_dc_node_names - dc_node_names
 
 
         REN_sources_list = []

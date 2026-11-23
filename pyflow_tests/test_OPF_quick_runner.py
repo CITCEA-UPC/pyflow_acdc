@@ -9,6 +9,7 @@ mode to validate loading and model creation in quick runs.
 import importlib
 
 import pytest
+
 from pyflow_tests._quick_fake_solve import quick_fake_solve_context
 from pyflow_tests.test_constants import FULL_OPF_TEP_CASE_MODULES
 

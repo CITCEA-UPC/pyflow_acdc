@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Grid creation tests: manual build, ``grid_creator`` import/extend/sub-grid."""
 
 import copy
@@ -7,6 +6,7 @@ import pickle
 from pathlib import Path
 
 import pandas as pd
+
 import pyflow_acdc as pyf
 from pyflow_acdc.grid_creator import create_sub_grid
 

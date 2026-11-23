@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 """Sequential CSS on alpha_ventus using OR-Tools for MIP/CSS-L."""
 import time
 
 import pyflow_acdc as pyf
-
 from pyflow_tests._test_solver_deps import (
     ortools_array_stack_missing_for_run_test,
     ortools_missing_for_run_test,

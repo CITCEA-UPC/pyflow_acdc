@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 """Tests for ``grid_modifications``: build-from-empty, CSV templates, cable DB."""
 
 from pathlib import Path
 
 import pandas as pd
 import pytest
+
 import pyflow_acdc as pyf
 from pyflow_acdc.Classes import Cable_options, Line_AC, Line_DC
 

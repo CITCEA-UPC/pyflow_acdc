@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Linear AC window / rolling window OPF (build_only)."""
 
 import pandas as pd
+
 import pyflow_acdc as pyf
 
 

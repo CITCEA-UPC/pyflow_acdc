@@ -1,37 +1,35 @@
-# -*- coding: utf-8 -*-
 """
 Created on Wed Feb 21 15:38:12 2024
 
 @author: BernardoCastro
 """
 
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import numpy as np
 import pandas as pd
-from concurrent.futures import ThreadPoolExecutor
 from scipy import stats as st
 
-import time
-
-from .grid_analysis import analyse_grid, grid_state, get_gen_p_min_eff
-from .ACDC_PF import ac_power_flow, dc_power_flow, acdc_sequential
+from .ACDC_PF import ac_power_flow, acdc_sequential, dc_power_flow
 from .constants import (
-    DEFAULT_TOLERANCE,
-    DEFAULT_PF_MAX_ITER,
     BINARY_THRESHOLD,
+    DEFAULT_PF_MAX_ITER,
+    DEFAULT_TOLERANCE,
     HOURS_PER_YEAR,
-    NodeType,
-    ConverterDCType,
-    ObjComponent,
-    default_obj_weights,
-    TSType,
-    TS_RENEWABLE_TYPES,
     TS_CONV_PF_TYPES,
-    TS_STORAGE_PF_TYPES,
     TS_H2_PF_TYPES,
     TS_PF_TYPES,
+    TS_RENEWABLE_TYPES,
+    TS_STORAGE_PF_TYPES,
     AcDcSide,
+    ConverterDCType,
+    NodeType,
+    ObjComponent,
+    TSType,
+    default_obj_weights,
 )
-
+from .grid_analysis import analyse_grid, get_gen_p_min_eff, grid_state
 
 # Base __all__ with functions that don't require OPF
 __all__ = ['time_series_pf',
@@ -45,27 +43,28 @@ __all__ = ['time_series_pf',
 
 try:
     import pyomo.environ as pyo
-    from .NL_models.ACDC_OPF_NL_model import (
-        opf_create_nl_model_acdc,
-        export_acdc_nl_model_to_pyflow_acdc)
 
     from .ACDC_OPF import (
-        pyomo_model_solve,
+        calculate_objective,
+        check_linear_opf_weights,
+        fx_conv,
+        obj_w_rule,
         opf_obj,
         opf_obj_l,
         opf_step_results,
         opf_step_results_l,
         pack_variables,
-        translate_pyf_opf,
+        pyomo_model_solve,
         reset_to_initialize,
-        calculate_objective,
-        check_linear_opf_weights,
-        fx_conv,
-        obj_w_rule,
+        translate_pyf_opf,
     )
     from .L_models.AC_OPF_L_model import (
-        opf_create_l_model_acdc,
         export_acdc_l_model_to_pyflow_acdc,
+        opf_create_l_model_acdc,
+    )
+    from .NL_models.ACDC_OPF_NL_model import (
+        export_acdc_nl_model_to_pyflow_acdc,
+        opf_create_nl_model_acdc,
     )
     pyomo_imp= True
     # Add OPF-dependent functions to __all__ only if pyomo is available
@@ -139,9 +138,10 @@ def combine_TS(ts_list, rep_year=False):
     if rep_year:
         # Standardize all dataframes to 8760 hours
         processed_dfs = []
-        for df in ts_list:
-            for col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')  # 'coerce' will convert invalid values to NaN
+        for ts_df in ts_list:
+            for col in ts_df.columns:
+                ts_df[col] = pd.to_numeric(ts_df[col], errors='coerce')  # 'coerce' will convert invalid values to NaN
+            df = ts_df
             if len(df) > HOURS_PER_YEAR:
                 # remove 29th feb
                 df = df.drop(df.index[1416:1440])
@@ -1327,7 +1327,6 @@ def ts_acdc_opf(
         end = TS_len
     max_time = min(TS_len, end)
 
-    Time_series_voltages = []
     Time_series_line_res = []
     Time_series_conv_res = []
     Time_series_grid_loading = []
@@ -1936,8 +1935,8 @@ def _save_TS_to_grid (grid,ts_results,infeasible):
         if col in ac_loading:
             max_frac = float(ac_loading[col].max())
             avg_frac = float(ac_loading[col].mean())
-            setattr(line, 'ts_max_loading', max_frac*100)
-            setattr(line, 'ts_avg_loading', avg_frac*100)    # fraction of rating (0..)
+            line.ts_max_loading = max_frac * 100
+            line.ts_avg_loading = avg_frac * 100    # fraction of rating (0..)
 
 
     # DC lines
@@ -1946,8 +1945,8 @@ def _save_TS_to_grid (grid,ts_results,infeasible):
         if col in dc_loading:
             max_frac = float(dc_loading[col].max())
             avg_frac = float(dc_loading[col].mean())
-            setattr(line, 'ts_max_loading', max_frac*100)
-            setattr(line, 'ts_avg_loading', avg_frac*100)
+            line.ts_max_loading = max_frac * 100
+            line.ts_avg_loading = avg_frac * 100
 
 
     grouped_columns_load = {}

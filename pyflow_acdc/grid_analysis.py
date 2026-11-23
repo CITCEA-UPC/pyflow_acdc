@@ -7,7 +7,6 @@ import pandas as pd
 
 from .constants import SQRT_3
 
-
 __all__ = [
     "pol2cart",
     "pol2cartz",

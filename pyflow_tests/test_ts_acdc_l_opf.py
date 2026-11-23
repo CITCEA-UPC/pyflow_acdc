@@ -1,9 +1,8 @@
-# -*- coding: utf-8 -*-
 """Myopic linear TS OPF (Phase 4) — build_only smoke tests."""
 
 import pandas as pd
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_tests._test_solver_deps import require_pyomo
 
 

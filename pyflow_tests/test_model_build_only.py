@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Build-only tests for heavy optimization modules.
 """
@@ -6,11 +5,11 @@ Build-only tests for heavy optimization modules.
 from types import SimpleNamespace
 
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
+from pyflow_acdc.Array_OPT import _create_master_problem_pyomo
 from pyflow_acdc.NL_models.ACDC_MultiPeriod_TEP import multi_period_transmission_expansion
 from pyflow_acdc.NL_models.ACDC_Static_TEP import _prepare_TEP_model, transmission_expansion
-from pyflow_acdc.Array_OPT import _create_master_problem_pyomo
 
 
 def _tiny_array_grid():

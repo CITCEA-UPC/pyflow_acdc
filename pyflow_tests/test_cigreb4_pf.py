@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This grid is based on the CIGRE B4 test system. DCDC converters have been
 simplified to a load and a gain in respective nodes.

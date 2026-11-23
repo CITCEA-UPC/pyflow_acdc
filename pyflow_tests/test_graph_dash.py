@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Graph_Dash unit tests with synthetic time-series results (no OPF solve, no server)."""
 
 import pandas as pd
@@ -33,9 +32,9 @@ if _dash_installed():
         create_mp_ts_dash,
         create_season_compare_dash_app,
         create_window_dash_app,
+        plot_season_family_dash,
         plot_TS_res_dash,
         plot_TS_res_from_ts,
-        plot_season_family_dash,
         plot_window_res_dash,
         resolve_family_df,
         run_dash,

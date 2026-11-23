@@ -1,7 +1,9 @@
 """Docs: api\\ts.rst — Time series"""
-import pyflow_acdc as pyf
 import pandas as pd
+
+import pyflow_acdc as pyf
 from pyflow_tests.test_constants import NS_MTDC_MARKET_PRICES_URL, NS_MTDC_WIND_LOAD_URL
+
 [grid,results] = pyf.cases['NS_MTDC']()
 start = 5990
 end = 6000

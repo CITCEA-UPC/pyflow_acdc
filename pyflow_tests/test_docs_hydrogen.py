@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run hydrogen doc examples in doc_examples/hydrogen/."""
 
 from pyflow_tests.run_doc_examples import run_doc_examples

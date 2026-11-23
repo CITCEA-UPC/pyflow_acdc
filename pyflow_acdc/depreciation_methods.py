@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Deprecated mixed-case aliases for the snake_case public API.
 
 snake_case is the default naming for the public API. This module is the single
@@ -65,17 +64,17 @@ def _register_method(cls, old_name, new_name):
 
 
 # --- Always-available (core) aliases -------------------------------------
-from .ACDC_PF import power_flow, ac_power_flow, dc_power_flow, acdc_sequential
+from .ACDC_PF import ac_power_flow, acdc_sequential, dc_power_flow, power_flow
+from .Graph_and_plot import plot_graph, time_series_prob
+from .grid_analysis import cable_parameters, converter_parameters
 from .grid_creator import (
     create_grid_from_data,
     create_grid_from_mat,
+    create_grid_from_pickle,
     create_grid_from_turbine_graph,
     extend_grid_from_data,
-    create_grid_from_pickle,
 )
-from .grid_analysis import cable_parameters, converter_parameters
-from .Time_series import time_series_pf, ts_acdc_pf, time_series_statistics
-from .Graph_and_plot import plot_graph, time_series_prob
+from .Time_series import time_series_pf, time_series_statistics, ts_acdc_pf
 
 _register(power_flow, 'Power_flow')
 _register(ac_power_flow, 'AC_PowerFlow')
@@ -163,11 +162,11 @@ for _old, _new in _GRID_METHOD_ALIASES.items():
 # --- OPF (requires pyomo) -------------------------------------------------
 try:
     from .ACDC_OPF import (
-        optimal_pf,
-        optimal_l_pf,
-        opf_obj,
         opf_line_res,
+        opf_obj,
         opf_price_price_zone,
+        optimal_l_pf,
+        optimal_pf,
         translate_pyf_opf,
     )
     _register(optimal_pf, 'Optimal_PF')
@@ -196,7 +195,7 @@ except ImportError:
     pass
 
 try:
-    from .Time_series import ts_acdc_opf, results_ts_opf
+    from .Time_series import results_ts_opf, ts_acdc_opf
     _register(ts_acdc_opf, 'TS_ACDC_OPF')
     _register(results_ts_opf, 'results_TS_OPF')
 except ImportError:
