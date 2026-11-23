@@ -71,6 +71,7 @@ __all__ = [
     'add_gen',
     'add_gen_DC',
     'add_extgrid',
+    'add_grid_thevenin',
     'add_RenSource',
     'add_storage',
     'add_electrolyser',
@@ -1704,6 +1705,63 @@ def add_extgrid(grid, node, gen_name=None,lf=0,qf=0,MVAmax=MAX_RATING_PLACEHOLDE
         node.type = 'Slack'
     grid.Generators.append(gen)
     return gen
+
+def add_grid_thevenin(grid, node, SCR, XR, P_rated_MW, name=None):
+    """Connect ``node`` to a Thevenin equivalent of the main grid.
+
+    Adds an infinite bus (slack, 1 p.u. ∠0) with an external grid behind the
+    Thevenin impedance ``Zg``, and turns ``node`` (the point of common coupling)
+    into a PQ bus. ``Zg`` comes from the short-circuit ratio:
+    ``S_sc = SCR * P_rated_MW``, ``|zg| = S_base / S_sc`` (p.u.),
+    ``xg = |zg| * XR / sqrt(1 + XR**2)``, ``rg = xg / XR``.
+
+    The line runs from ``node`` to the source, so its from-end flow
+    (``line.fromS``, ``PAC_from`` / ``QAC_from`` in the OPF) is the power
+    delivered to the grid at the PCC.
+
+    Parameters
+    ----------
+    grid : Grid
+        Grid to modify.
+    node : Node_AC or str
+        Point of common coupling. Must not hold an external grid.
+    SCR : float
+        Short-circuit ratio, ``S_sc / P_rated_MW``.
+    XR : float
+        ``Xg / Rg`` ratio.
+    P_rated_MW : float
+        Rated power at the PCC used for ``S_sc``.
+    name : str, optional
+        Source bus name; defaults to ``'thevenin_<node>'``.
+
+    Returns
+    -------
+    tuple
+        ``(source_node, line, ext_grid)``.
+
+    Examples
+    --------
+    >>> source, zg_line, ext = pyf.add_grid_thevenin(grid, 'pcc', SCR=10, XR=10, P_rated_MW=1000)
+    """
+    node = _look_up_node(grid, node, ac_or_dc="AC")
+    if SCR <= 0 or XR <= 0 or P_rated_MW <= 0:
+        raise ValueError("SCR, XR and P_rated_MW must be positive")
+    if any(getattr(gen, 'is_ext_grid', False) for gen in node.connected_gen):
+        raise ValueError(f"Node {node.name} already holds an external grid; the Thevenin source takes its place")
+    if name is None:
+        name = f'thevenin_{node.name}'
+
+    z = grid.S_base / (SCR * P_rated_MW)
+    x = z * XR / np.sqrt(1 + XR**2)
+    r = x / XR
+
+    node.type = NodeType.PQ
+    source = add_AC_node(grid, node.kV_base, node_type=NodeType.SLACK, Voltage_0=1.0, theta_0=0.0, name=name)
+    ext_grid = add_extgrid(grid, source, MWmin=-MAX_RATING_PLACEHOLDER, MVAmax=MAX_RATING_PLACEHOLDER)
+    line = add_line_AC(grid, node, source, r=r, x=x, MVA_rating=MAX_RATING_PLACEHOLDER, name=f'{name}_Zg')
+    line.is_grid_thevenin = True
+    grid._invalidate_node_caches()
+    return source, line, ext_grid
 
 def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', min_gamma=0, Qrel=0,Qmin=None,Qmax=None,np_rsgen: int = 1, quadratic_cost_factor: float=0, linear_cost_factor: float=0):
     """Append a renewable source to ``grid.RenSources``.

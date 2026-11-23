@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- ``ts_ac_pf``: slack generation in ``PF_results`` no longer fails with
+  ``'float' object has no attribute 'item'`` after an AC-only power flow.
+- PF time series ``grid_loading`` was ``S_base`` times too high: line loads were
+  passed in MVA/MW to ``_calculate_grid_loading``, which expects p.u.
+
 ### Changed
 - **`Energy_cost`**: removed ``OnlyGen`` flag from OPF runners and ``grid.OnlyGen``;
   renewable sources use per-element ``qf`` / ``lf`` on ``Ren_Source`` (default ``0``),
@@ -18,6 +24,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
   ``P_conv·price`` and nodal ``PGi_ren·price`` terms removed from ``Energy_cost``.
 
 ### Added
+- ``add_grid_thevenin``: grid Thevenin equivalent from SCR and X/R. Adds a slack
+  source bus with an external grid behind ``Zg`` and turns the PCC into a PQ bus.
+- ``results_ts_pf``: Excel export of PF time-series results (PF counterpart of ``results_ts_opf``).
 - ``Ren_Source.quadratic_cost_factor`` / ``linear_cost_factor`` (``qf`` / ``lf``);
   ``add_RenSource(..., quadratic_cost_factor=, linear_cost_factor=)``.
 

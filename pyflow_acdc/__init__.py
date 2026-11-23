@@ -45,6 +45,7 @@ __all__ = [
     'add_gen',
     'add_gen_DC',
     'add_extgrid',
+    'add_grid_thevenin',
     'add_RenSource',
     'add_storage',
     'add_electrolyser',
@@ -116,6 +117,7 @@ __all__ = [
     'ts_ac_pf',
     'ts_dc_pf',
     'time_series_statistics',
+    'results_ts_pf',
     'update_grid_data',
     'update_grid_for_pf',
 
