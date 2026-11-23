@@ -1129,6 +1129,7 @@ def _create_scenarios(
     n_clusters,
     clustering,
     limit_flow_rate,
+    scenario_weights=None,
 ):
     """Build one OPF sub-model per scenario frame and return scenario weights."""
     from ..Time_series import _modify_parameters
@@ -1150,6 +1151,8 @@ def _create_scenarios(
         tep_sub_obj(model.scenario_model[t], grid, weights_def)
         if clustering:
             w[t] = float(grid.Clusters[n_clusters]['Weight'][t - 1])
+        elif scenario_weights is not None:
+            w[t] = float(scenario_weights[t - 1])
         elif any(ts.element_name == 'TEP_w' for ts in grid.Time_series):
             w[t] = next(ts.data[t - 1] for ts in grid.Time_series if ts.element_name == 'TEP_w')
         else:
@@ -1175,6 +1178,7 @@ def multi_scenario_TEP(
     nlp_warmstart=False,
     initiate_max=False,
     build_only=False,
+    scenario_weights=None,
 ):
     """Build and solve a multi-scenario (clustered) static TEP.
 
@@ -1220,6 +1224,9 @@ def multi_scenario_TEP(
         Initialise expandable elements at their maximum allowed installation.
     build_only : bool, optional
         Build the Pyomo model and return without solving or exporting results.
+    scenario_weights : sequence of float or None, optional
+        One weight per scenario frame (time-series row) when not clustering, e.g. the
+        probability of each wind bin. Takes the place of a ``TEP_w`` time series.
 
     Returns
     -------
@@ -1240,6 +1247,11 @@ def multi_scenario_TEP(
     n_clusters,clustering = cluster_analysis(grid,clustering_options)
     if (clustering_options and clustering_options.get('print_details')) or tee:
         print('Clustering done')
+    if scenario_weights is not None:
+        if clustering:
+            raise ValueError("scenario_weights cannot be combined with clustering_options")
+        if len(scenario_weights) != n_clusters:
+            raise ValueError(f"scenario_weights has {len(scenario_weights)} values for {n_clusters} scenario frames")
 
     t1 = time.time()
     model = pyo.ConcreteModel()
@@ -1257,6 +1269,7 @@ def multi_scenario_TEP(
         n_clusters,
         clustering,
         limit_flow_rate,
+        scenario_weights,
     )
 
     _initialize_MS_STEP_sets_model(model, grid)
