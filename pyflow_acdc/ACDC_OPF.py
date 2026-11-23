@@ -472,7 +472,7 @@ def opf_obj(model,grid,weights_def):
     def formula_AC_losses():
         if weights_def[ObjComponent.AC_LOSSES]['w']==0:
             return 0
-        loss = sum(model.PAC_line_loss[line] for line in model.lines_AC)
+        loss = sum(model.PAC_line_loss[line] for line in model.lines_AC if not getattr(grid.lines_AC[line], 'is_grid_thevenin', False))
         if grid.TAP_tf:
             loss += sum(model.tf_PAC_line_loss[tf] for tf in model.lines_AC_tf)
         if grid.TEP_AC:
@@ -1206,7 +1206,7 @@ def calculate_objective(grid,obj):
 
 
     if obj ==ObjComponent.AC_LOSSES:
-        return (sum(line.P_loss for line in grid.lines_AC)+
+        return (sum(line.P_loss for line in grid.lines_AC if not getattr(line, 'is_grid_thevenin', False))+
                 sum(tf.P_loss for tf in grid.lines_AC_tf)+
                 sum(line.P_loss for line in grid.lines_AC_exp)+
                 sum(line.P_loss for line in grid.lines_AC_rec)+

@@ -39,6 +39,7 @@ __all__ = ['time_series_pf',
            'ts_ac_pf',
            'ts_dc_pf',
            'time_series_statistics',
+           'results_ts_pf',
            'update_grid_data',
            'update_grid_for_pf']
 
@@ -453,7 +454,7 @@ def _update_ac_nodes(grid, idx):
     row_data = {'time': idx+1}
     for node in grid.nodes_AC:
         if node.type == NodeType.SLACK:
-            PGi = node.gen_P_injection().item()
+            PGi = float(node.gen_P_injection())  # float after AC-only PF, numpy scalar after AC/DC
             QGi = node.gen_Q_injection()
             if node.S_rating !=0:
                 loading = np.sqrt(PGi**2 + QGi**2) / node.S_rating
@@ -494,7 +495,7 @@ def _obtain_line_power_from_grid(grid,idx):
             if active_config is not None and active_config < 0:
                 continue
             G = grid.Graph_line_to_Grid_index_AC[line]
-            load = line.apparent_MVA
+            load = line.apparent_MVA / grid.S_base  # p.u., as _calculate_grid_loading expects
             loadS_AC[G] += load
             line_data[f'AC_Load_{line.name}'] = line.loading
             line_data[f'AC_to_{line.name}']   = np.real(line.toS) * grid.S_base
@@ -502,7 +503,7 @@ def _obtain_line_power_from_grid(grid,idx):
     if grid.DCmode:
         for line in grid.lines_DC:
             G = grid.Graph_line_to_Grid_index_DC[line]
-            load = line.power_MW
+            load = line.power_MW / grid.S_base  # p.u., as _calculate_grid_loading expects
             loadP_DC[G] += load
             line_data[f'DC_Load_{line.name}'] = line.loading
             line_data[f'DC_to_{line.name}']   = line.toP * grid.S_base
@@ -2103,6 +2104,54 @@ def time_series_statistics(grid, curtail=0.99,over_loading=0.9):
     grid.Stats = stats
 
     return stats
+
+def results_ts_pf(grid, excel_file_path, grid_names=None):
+    """Export time-series PF results to an Excel workbook.
+
+    PF counterpart of :func:`results_ts_opf`. Writes only the tables that
+    :func:`ts_ac_pf`, :func:`ts_dc_pf`, or :func:`ts_acdc_pf` produced.
+
+    Parameters
+    ----------
+    grid : Grid
+        Grid with ``time_series_results`` populated by a PF time series run.
+    excel_file_path : str
+        Output ``.xlsx`` path (``.xlsx`` is appended if missing).
+    grid_names : dict, optional
+        Rename columns in the ``grid_loading`` sheet.
+
+    Notes
+    -----
+    Line loadings are already in % in PF (``Line_AC.loading`` /
+    ``Line_DC.loading``), so only converter and grid loading are scaled by 100.
+
+    Examples
+    --------
+    >>> pyf.ts_ac_pf(grid)
+    >>> pyf.results_ts_pf(grid, "results")
+    """
+    excel_file_path = str(excel_file_path)
+    if not excel_file_path.endswith('.xlsx'):
+        excel_file_path = f'{excel_file_path}.xlsx'
+
+    results = grid.time_series_results
+    if grid_names is not None and 'grid_loading' in results:
+        results['grid_loading'] = results['grid_loading'].rename(columns=grid_names)
+
+    sheets = [
+        ('PF_results', 'PF results', 1),
+        ('ac_loading', 'AC line loading', 1),
+        ('dc_loading', 'DC line loading', 1),
+        ('ac_MW_to', 'AC MW to', 1),
+        ('dc_MW_to', 'DC MW to', 1),
+        ('converter_loading', 'Converter loading', 100),
+        ('grid_loading', 'Grid loading', 100),
+    ]
+    with pd.ExcelWriter(excel_file_path) as writer:
+        for key, sheet_name, scale in sheets:
+            if key in results:
+                (results[key] * scale).to_excel(writer, sheet_name=sheet_name, index=True)
+
 
 def results_ts_opf(grid,excel_file_path,grid_names=None,stats=None,times=None):
     """Export time-series OPF results to an Excel workbook.

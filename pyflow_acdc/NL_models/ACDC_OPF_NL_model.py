@@ -9,7 +9,7 @@ import pyomo.environ as pyo
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
-from ..constants import CT_SELECTION_THRESHOLD, BINARY_THRESHOLD, PricingStrategy, AcDcSide, LinkCost
+from ..constants import CT_SELECTION_THRESHOLD, BINARY_THRESHOLD, PricingStrategy, AcDcSide, LinkCost, PowerFactorMode
 
 
 __all__ = [
@@ -1205,6 +1205,26 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
             return model.PGi_gen[g]**2+model.QGi_gen[g]**2 <= (gen.Max_S*model.np_gen[g])**2
 
     model.S_gen_AC_limit_constraint   = pyo.Constraint(model.gen_AC, rule=S_gen_AC_limit_rule)
+
+    # PCC power factor (add_grid_thevenin power_factor). PAC_from/QAC_from on the Thevenin line is the power into the grid.
+    pcc_power_factor_lines = [l.lineNumber for l in grid.lines_AC if getattr(l, 'power_factor_limit', None)]
+
+    def pcc_q_cap(model, line):
+        lim = grid.lines_AC[line].power_factor_limit
+        if lim['mode'] == PowerFactorMode.BAND:
+            return lim['tan_phi'] * lim['P_rated']
+        return lim['tan_phi'] * (model.PAC_from[line] + lim['P_floor'])
+
+    def pcc_power_factor_upper_rule(model, line):
+        return model.QAC_from[line] <= pcc_q_cap(model, line)
+
+    def pcc_power_factor_lower_rule(model, line):
+        return -model.QAC_from[line] <= pcc_q_cap(model, line)
+
+    if pcc_power_factor_lines:
+        model.pcc_power_factor_lines = pyo.Set(initialize=pcc_power_factor_lines)
+        model.pcc_power_factor_upper_constraint = pyo.Constraint(model.pcc_power_factor_lines, rule=pcc_power_factor_upper_rule)
+        model.pcc_power_factor_lower_constraint = pyo.Constraint(model.pcc_power_factor_lines, rule=pcc_power_factor_lower_rule)
 
     # Fix gen_active to 1 for generators where activate_gen_opf is False
     if grid.act_gen:

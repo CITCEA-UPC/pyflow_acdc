@@ -480,6 +480,7 @@ def load_flow_dc(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
     grid.update_p_dc()
     s = 1
     return _as_tol_float(tol), tol_history
+
 def jacobian_ac(grid, Voltages, Angles,P,Q):
     grid.slack_bus_number_AC = []
 
@@ -528,10 +529,6 @@ def jacobian_ac(grid, Voltages, Angles,P,Q):
     J_AC = np.vstack((np.hstack((J_11, J_12)), np.hstack((J_21, J_22))))
 
     return J_AC
-
-
-
-
 
 
 def load_flow_ac(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
@@ -675,6 +672,8 @@ def load_flow_ac(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
     grid.Q_INJ = np.vstack([node.Q_INJ for node in grid.nodes_AC])
     s=1
     return _as_tol_float(tol), tol_history
+
+
 def flow_conv_P_AC(grid, conv):
     Us = conv.Node_AC.V
     th_s = conv.Node_AC.theta
@@ -733,6 +732,7 @@ def flow_conv_P_AC(grid, conv):
     conv.Ic = Ic
     s=1
 
+
 def jacobian_conv_no_transformer(grid, conv, U_c, Pc, Qc, Ps, Qs):
     J_conv = np.zeros((2, 2))
 
@@ -750,6 +750,7 @@ def jacobian_conv_no_transformer(grid, conv, U_c, Pc, Qc, Ps, Qs):
 
     return J_conv
 
+
 def jacobian_conv_no_filter(grid, conv, U_c, Pc, Qc, Ps, Qs):
     J_conv = np.zeros((2, 2))
 
@@ -766,6 +767,7 @@ def jacobian_conv_no_filter(grid, conv, U_c, Pc, Qc, Ps, Qs):
     J_conv[1, 1] = Qs-conv.Bc*conv.U_s*conv.U_s
 
     return J_conv
+
 
 def jacobian_conv(grid, conv, Qcf, Qsf, Pcf, Psf, U_f, U_c, Pc, Qc, Ps, Qs):
     J_conv = np.zeros((4, 4))
@@ -814,6 +816,7 @@ def jacobian_conv(grid, conv, Qcf, Qsf, Pcf, Psf, U_f, U_c, Pc, Qc, Ps, Qs):
 
     return J_conv
 
+
 def flow_conv(grid, conv, tol_lim=CONV_TOLERANCE, maxIter=DEFAULT_CONV_MAX_ITER):
 
     if conv.bf == 0:
@@ -828,6 +831,7 @@ def flow_conv(grid, conv, tol_lim=CONV_TOLERANCE, maxIter=DEFAULT_CONV_MAX_ITER)
         tol = flow_conv_complete(grid,conv, tol_lim, maxIter)
 
     return tol
+
 
 def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
 
@@ -943,6 +947,7 @@ def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
     grid.Ps_AC_new[n] += Ps
     s=1
     return tol2
+
 
 def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
     Uc = conv.U_c

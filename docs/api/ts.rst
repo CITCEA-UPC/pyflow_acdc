@@ -32,6 +32,11 @@ AC/DC
 
 .. autofunction:: pyflow_acdc.ts_acdc_pf
 
+Export
+""""""
+
+.. autofunction:: pyflow_acdc.results_ts_pf
+
 Grid Data Update Helper
 ^^^^^^^^^^^^^^^^^^^^^^^
 

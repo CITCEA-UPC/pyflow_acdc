@@ -28,6 +28,8 @@ from .constants import (
     MAX_RATING_PLACEHOLDER,
     DEFAULT_V_MIN_DC,
     DEFAULT_V_MAX_DC,
+    THEVENIN_SOURCE_V,
+    DEFAULT_PCC_P_FLOOR_FRACTION,
     NodeType,
     ConverterDCType,
     DEFAULT_GEN_TYPE,
@@ -37,6 +39,7 @@ from .constants import (
     AcDcSide,
     PricingStrategy,
     LinkCost,
+    PowerFactorMode,
     TSType,
     TS_RENEWABLE_TYPES,
     TS_CONV_PF_TYPES,
@@ -71,6 +74,8 @@ __all__ = [
     'add_gen',
     'add_gen_DC',
     'add_extgrid',
+    'add_grid_thevenin',
+    'add_statcom',
     'add_RenSource',
     'add_storage',
     'add_electrolyser',
@@ -1703,6 +1708,129 @@ def add_extgrid(grid, node, gen_name=None,lf=0,qf=0,MVAmax=MAX_RATING_PLACEHOLDE
     if not has_slack:
         node.type = 'Slack'
     grid.Generators.append(gen)
+    return gen
+
+def add_grid_thevenin(grid, node, SCR, XR, P_rated_MW, name=None, power_factor=None, power_factor_mode=PowerFactorMode.BAND, P_floor_MW=None):
+    """Connect ``node`` to a Thevenin equivalent of the main grid.
+
+    Adds an infinite bus (slack, 1 p.u. ∠0) with an external grid behind the
+    Thevenin impedance ``Zg``, and turns ``node`` (the point of common coupling)
+    into a PQ bus. ``Zg`` comes from the short-circuit ratio:
+    ``S_sc = SCR * P_rated_MW``, ``|zg| = S_base / S_sc`` (p.u.),
+    ``xg = |zg| * XR / sqrt(1 + XR**2)``, ``rg = xg / XR``.
+
+    The line runs from ``node`` to the source, so its from-end flow
+    (``line.fromS``, ``PAC_from`` / ``QAC_from`` in the OPF) is the power
+    delivered to the grid at the PCC.
+
+    The source voltage is held at 1 p.u. through ``Umin = Umax = 1``, so it stays
+    fixed in OPF/TEP runs that use ``PV_set=False``.
+
+    Parameters
+    ----------
+    grid : Grid
+        Grid to modify.
+    node : Node_AC or str
+        Point of common coupling. Must not hold an external grid.
+    SCR : float
+        Short-circuit ratio, ``S_sc / P_rated_MW``.
+    XR : float
+        ``Xg / Rg`` ratio.
+    P_rated_MW : float
+        Rated power at the PCC used for ``S_sc``.
+    name : str, optional
+        Source bus name; defaults to ``'thevenin_<node>'``.
+    power_factor : float, optional
+        Required power factor at the PCC, on the power into the Thevenin
+        equivalent (net of cables, STATCOM and shunt at the PCC). Active in OPF/TEP.
+    power_factor_mode : PowerFactorMode or str, optional
+        ``'band'``: ``|Q| <= tan φ · P_rated``. ``'per_bin'``: ``|Q| <= tan φ · (P + P_floor)``.
+    P_floor_MW : float, optional
+        Offset on P for ``'per_bin'``, so low or negative P stays feasible.
+        Defaults to ``DEFAULT_PCC_P_FLOOR_FRACTION`` (10 %) of ``P_rated_MW``.
+
+    Returns
+    -------
+    tuple
+        ``(source_node, line, ext_grid)``.
+
+    Examples
+    --------
+    >>> source, zg_line, ext = pyf.add_grid_thevenin(grid, 'pcc', SCR=10, XR=10, P_rated_MW=1000)
+    """
+    # TODO: optional ``source=None`` to connect several PCCs in one island to a shared
+    # source (only the Zg line is added). The grid transfer impedance between PCCs
+    # (multi-port Thevenin) is not modelled.
+    node = _look_up_node(grid, node, ac_or_dc="AC")
+    if SCR <= 0 or XR <= 0 or P_rated_MW <= 0:
+        raise ValueError("SCR, XR and P_rated_MW must be positive")
+    if any(getattr(gen, 'is_ext_grid', False) for gen in node.connected_gen):
+        raise ValueError(f"Node {node.name} already holds an external grid; the Thevenin source takes its place")
+    if name is None:
+        name = f'thevenin_{node.name}'
+
+    z = grid.S_base / (SCR * P_rated_MW)
+    x = z * XR / np.sqrt(1 + XR**2)
+    r = x / XR
+
+    node.type = NodeType.PQ
+    source = add_AC_node(grid, node.kV_base, node_type=NodeType.SLACK, Voltage_0=THEVENIN_SOURCE_V, theta_0=0.0,
+                         Umin=THEVENIN_SOURCE_V, Umax=THEVENIN_SOURCE_V, name=name)
+    ext_grid = add_extgrid(grid, source, MWmin=-MAX_RATING_PLACEHOLDER, MVAmax=MAX_RATING_PLACEHOLDER)
+    line = add_line_AC(grid, node, source, r=r, x=x, MVA_rating=MAX_RATING_PLACEHOLDER, name=f'{name}_Zg')
+    line.is_grid_thevenin = True
+    if power_factor is not None:
+        if not 0 < power_factor <= 1:
+            raise ValueError("power_factor must be in (0, 1]")
+        power_factor_mode = PowerFactorMode(power_factor_mode)  # raises ValueError for unknown modes
+        if P_floor_MW is None:
+            P_floor_MW = DEFAULT_PCC_P_FLOOR_FRACTION * P_rated_MW
+        line.power_factor_limit = {
+            'tan_phi': np.tan(np.arccos(power_factor)),
+            'mode': power_factor_mode,
+            'P_rated': P_rated_MW / grid.S_base,
+            'P_floor': P_floor_MW / grid.S_base,
+        }
+    grid._invalidate_node_caches()
+    return source, line, ext_grid
+
+def add_statcom(grid, node, Q_max_MVAr, installation_cost=0, name=None):
+    """Add a STATCOM as a reactive-only generator with a continuous installed size.
+
+    P = 0 and Q in [-Q_max_MVAr, Q_max_MVAr] per installed unit. In TEP runs
+    (``np_gen_opf = True``) ``np_gen`` goes from 0 to 1, so the installed size is
+    ``np_gen * Q_max_MVAr`` and the capex ``np_gen * installation_cost`` (linear
+    cost). With ipopt ``np_gen`` is continuous. Outside TEP (``np_gen = 0``) the
+    STATCOM is off.
+
+    Parameters
+    ----------
+    grid : Grid
+        Grid to modify.
+    node : Node_AC or str
+        Connection bus.
+    Q_max_MVAr : float
+        Largest size the optimiser may install (MVAr).
+    installation_cost : float, optional
+        Cost of ``Q_max_MVAr`` installed, in the objective's currency.
+    name : str, optional
+        Generator name; defaults to ``'statcom_<node>'``.
+
+    Returns
+    -------
+    Gen_AC
+        STATCOM in ``grid.Generators``.
+    """
+    node = _look_up_node(grid, node, ac_or_dc="AC")
+    if Q_max_MVAr <= 0:
+        raise ValueError("Q_max_MVAr must be positive")
+    if name is None:
+        name = f'statcom_{node.name}'
+    gen = add_gen(grid, node, gen_name=name, MWmax=0, MWmin=0, MVArmin=-Q_max_MVAr, MVArmax=Q_max_MVAr,
+                  Smax=Q_max_MVAr, installation_cost=installation_cost, np_gen=0)
+    gen.np_gen_opf = True
+    gen.np_gen_max = 1
+    gen.is_statcom = True
     return gen
 
 def add_RenSource(grid, node, base_MW, ren_source_name=None, available=1, zone=None, price_zone=None, Offshore=False, MTDC=None, geometry=None, ren_type='Wind', min_gamma=0, Qrel=0,Qmin=None,Qmax=None,np_rsgen: int = 1, quadratic_cost_factor: float=0, linear_cost_factor: float=0):
