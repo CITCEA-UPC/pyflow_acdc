@@ -18,6 +18,12 @@ For step-by-step examples (grid setup, generators, and calling ``optimal_pf``), 
 
 .. autofunction:: pyflow_acdc.optimal_pf
 
+.. autofunction:: pyflow_acdc.multi_scenario_opf
+
+   One OPF per scenario frame, weighted by ``scenario_weights``, solved as one model with every
+   installed amount fixed. Use it to score fixed designs (e.g. reactive compensation sizes) over
+   operating states. Per-frame values are read from ``model.scenario_model[t]``.
+
 .. _model_creation:
 
 Creating the OPF model

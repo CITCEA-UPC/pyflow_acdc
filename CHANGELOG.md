@@ -50,6 +50,9 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 ### Added
 - ``multi_scenario_TEP(..., scenario_weights=)``: one weight per scenario frame when not
   clustering (e.g. wind bin probabilities), instead of a ``TEP_w`` time series.
+- ``multi_scenario_opf``: weighted OPF over scenario frames with every installed amount
+  fixed (the operation part of ``multi_scenario_TEP``), in ``ACDC_OPF``. Per-frame values on
+  ``model.scenario_model[t]``; no export to the grid.
 - ``Line_AC.line_model`` (``LineModel.PI_MODEL`` default, ``LineModel.HYPERBOLIC_PI_MODEL``):
   exact long-line π from per-km data for long AC cables. Set in ``add_line_AC(..., line_model=)``
   or later through the setter (database cables, or custom cables given in real units).

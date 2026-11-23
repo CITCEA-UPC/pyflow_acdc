@@ -1130,14 +1130,18 @@ def _create_scenarios(
     clustering,
     limit_flow_rate,
     scenario_weights=None,
+    TEP=True,
 ):
-    """Build one OPF sub-model per scenario frame and return scenario weights."""
+    """Build one OPF sub-model per scenario frame and return scenario weights.
+
+    With ``TEP=False`` the installed amounts are fixed parameters (plain OPF per frame).
+    """
     from ..Time_series import _modify_parameters
 
     w = {}
 
     base_model = pyo.ConcreteModel()
-    opf_create_nl_model_acdc(base_model, grid, PV_set=False, Price_Zones=Price_Zones, TEP=True, limit_flow_rate=limit_flow_rate)
+    opf_create_nl_model_acdc(base_model, grid, PV_set=False, Price_Zones=Price_Zones, TEP=TEP, limit_flow_rate=limit_flow_rate)
 
     for t in model.scenario_frames:
         base_model_copy = base_model.clone()
@@ -1159,6 +1163,23 @@ def _create_scenarios(
             w[t] = 1 / len(model.scenario_frames)
 
     return w
+
+
+def _scenario_frames(grid, clustering_options, scenario_weights, tee=False):
+    """Number of scenario frames and whether they are clusters; checks ``scenario_weights`` against them."""
+    if tee:
+        print('Trying clustering')
+    # clustering_options=None gives one frame per time-series row (clustering=False).
+    from ..Time_series_clustering import cluster_analysis
+    n_clusters, clustering = cluster_analysis(grid, clustering_options)
+    if (clustering_options and clustering_options.get('print_details')) or tee:
+        print('Clustering done')
+    if scenario_weights is not None:
+        if clustering:
+            raise ValueError("scenario_weights cannot be combined with clustering_options")
+        if len(scenario_weights) != n_clusters:
+            raise ValueError(f"scenario_weights has {len(scenario_weights)} values for {n_clusters} scenario frames")
+    return n_clusters, clustering
 
 def multi_scenario_TEP(
     grid,
@@ -1240,18 +1261,7 @@ def multi_scenario_TEP(
 
     grid.TEP_n_years = n_years
     grid.TEP_discount_rate =discount_rate
-    if tee:
-        print('Trying clustering')
-    # clustering_options=None gives one frame per time-series row (clustering=False).
-    from ..Time_series_clustering import cluster_analysis
-    n_clusters,clustering = cluster_analysis(grid,clustering_options)
-    if (clustering_options and clustering_options.get('print_details')) or tee:
-        print('Clustering done')
-    if scenario_weights is not None:
-        if clustering:
-            raise ValueError("scenario_weights cannot be combined with clustering_options")
-        if len(scenario_weights) != n_clusters:
-            raise ValueError(f"scenario_weights has {len(scenario_weights)} values for {n_clusters} scenario frames")
+    n_clusters, clustering = _scenario_frames(grid, clustering_options, scenario_weights, tee)
 
     t1 = time.time()
     model = pyo.ConcreteModel()

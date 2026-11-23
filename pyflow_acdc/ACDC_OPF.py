@@ -35,6 +35,7 @@ __all__ = [
     'translate_pyf_opf',
     'optimal_l_pf',
     'optimal_pf',
+    'multi_scenario_opf',
     'pyomo_model_solve',
     'opf_update_param',
     'opf_obj',
@@ -283,6 +284,75 @@ def optimal_pf(grid,ObjRule=None,PV_set=False,Price_Zones=False,limit_flow_rate=
         "export": t_modelexport,
     }
     return model, model_res, timing_info, solver_stats
+
+
+def multi_scenario_opf(
+    grid,
+    ObjRule=None,
+    scenario_weights=None,
+    solver='ipopt',
+    tee=False,
+    limit_flow_rate=True,
+    obj_scaling=1.0,
+    solver_options=None,
+    build_only=False,
+):
+    """Weighted OPF over scenario frames (one per time-series row) with nothing to install.
+
+    The operation part of :func:`~pyflow_acdc.multi_scenario_TEP`: installed amounts
+    (``np_*``) stay at their values, and P, Q, V and θ are free in each frame. The
+    objective is the weighted sum of the frame objectives, solved as one model.
+    Results are not exported to ``grid``; per-frame values are on ``model.scenario_model[t]``.
+
+    Parameters
+    ----------
+    grid : Grid
+        Network with time series attached (one frame per row).
+    ObjRule : dict or None, optional
+        Objective-component weights; ``None`` uses the grid defaults.
+    scenario_weights : sequence of float or None, optional
+        One weight per frame, e.g. the probability of each wind bin. Equal weights when ``None``.
+    solver : str, optional
+        Pyomo (NLP) solver name.
+    tee : bool, optional
+        Stream raw solver output.
+    limit_flow_rate : bool, optional
+        Enforce line flow-rate limits.
+    obj_scaling : float, optional
+        Divide the objective by this factor for numerical conditioning.
+    solver_options : dict or None, optional
+        Extra solver options.
+    build_only : bool, optional
+        Build the Pyomo model and return without solving.
+
+    Returns
+    -------
+    tuple
+        ``(model, model_results, timing_info, solver_stats)``.
+    """
+    # Scenario-frame helpers live with multi_scenario_TEP, which imports this module
+    from .NL_models.ACDC_Static_TEP import _create_scenarios, _scenario_frames, weighted_subobj
+
+    analyse_grid(grid)
+    weights_def, Price_Zones = obj_w_rule(grid, ObjRule)
+    n_frames, clustering = _scenario_frames(grid, None, scenario_weights, tee)
+
+    t1 = time.time()
+    model = pyo.ConcreteModel()
+    model.name = "Multi-scenario AC/DC OPF"
+    model.scenario_frames = pyo.Set(initialize=range(1, n_frames + 1))
+    model.scenario_model = pyo.Block(model.scenario_frames)
+    w = _create_scenarios(model, grid, Price_Zones, weights_def, n_frames, clustering, limit_flow_rate, scenario_weights, TEP=False)
+    model.weights = pyo.Param(model.scenario_frames, initialize=w)
+    model.obj = pyo.Objective(rule=weighted_subobj(model, 1) / obj_scaling, sense=pyo.minimize)
+    model.obj_scaling = obj_scaling
+    t_create = time.time() - t1
+
+    if build_only:
+        model_results, solver_stats = build_only_solver_stats(solver, model)
+    else:
+        model_results, solver_stats = pyomo_model_solve(model, grid, solver, tee, solver_options=solver_options)
+    return model, model_results, {"create": t_create, "solve": solver_stats["time"]}, solver_stats
 
 
 def fx_conv(model,grid):
