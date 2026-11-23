@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyflow_acdc"
-version = "0.6.11"
+version = "0.6.12"
 license = {file = "LICENSE"}
 requires-python = ">= 3.10"
 

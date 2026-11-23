@@ -7,17 +7,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 
 > This changelog was introduced during a maintenance/hardening effort; entries
 > for releases prior to its creation are not reconstructed here. The current
-> packaged version is **0.6.11**.
+> packaged version is **0.6.12**.
 
-## [Unreleased]
+## [0.6.12] - 2026-11-23
 
 ### Fixed
 - ``ts_ac_pf``: slack generation in ``PF_results`` no longer fails with
   ``'float' object has no attribute 'item'`` after an AC-only power flow.
 - PF time series ``grid_loading`` was ``S_base`` times too high: line loads were
   passed in MVA/MW to ``_calculate_grid_loading``, which expects p.u.
+- ``multi_scenario_TEP`` with ``clustering_options=None`` no longer reaches the
+  no-clustering path through a ``TypeError``.
 
 ### Changed
+- ``AC_losses`` (objective and results) leaves out the grid Thevenin line
+  (``is_grid_thevenin``), so grid-side losses are not counted.
 - **`Energy_cost`**: removed ``OnlyGen`` flag from OPF runners and ``grid.OnlyGen``;
   renewable sources use per-element ``qf`` / ``lf`` on ``Ren_Source`` (default ``0``),
   with the same MW-scaled quadratic form as generators; converter
@@ -26,6 +30,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 ### Added
 - ``add_grid_thevenin``: grid Thevenin equivalent from SCR and X/R. Adds a slack
   source bus with an external grid behind ``Zg`` and turns the PCC into a PQ bus.
+  Optional power-factor limit at the PCC on the power into the Thevenin equivalent:
+  ``'band'`` (``|Q| <= tan φ · P_rated``) or ``'per_bin'`` (``|Q| <= tan φ · (P + P_floor)``,
+  ``P_floor`` 10 % of ``P_rated`` by default).
+- ``add_statcom``: STATCOM as a reactive-only generator with a continuous installed
+  size (``np_gen`` in [0, 1], linear capex) for TEP runs.
 - ``results_ts_pf``: Excel export of PF time-series results (PF counterpart of ``results_ts_opf``).
 - ``Ren_Source.quadratic_cost_factor`` / ``linear_cost_factor`` (``qf`` / ``lf``);
   ``add_RenSource(..., quadratic_cost_factor=, linear_cost_factor=)``.

@@ -1234,7 +1234,7 @@ def multi_scenario_TEP(
     try:
         from ..Time_series_clustering import cluster_analysis
         n_clusters,clustering = cluster_analysis(grid,clustering_options)
-        if ('print_details' in clustering_options and clustering_options['print_details']) or tee:
+        if (clustering_options and clustering_options.get('print_details')) or tee:
             print('Clustering done')
     except Exception:
         n_clusters = len(grid.Time_series[0].data)

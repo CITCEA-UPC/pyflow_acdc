@@ -46,6 +46,7 @@ __all__ = [
     'add_gen_DC',
     'add_extgrid',
     'add_grid_thevenin',
+    'add_statcom',
     'add_RenSource',
     'add_storage',
     'add_electrolyser',

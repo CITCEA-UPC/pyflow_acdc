@@ -105,6 +105,12 @@ class MIPBackend(str, Enum):
     ORTOOLS = 'ortools'
 
 
+class PowerFactorMode(str, Enum):
+    """PCC power-factor limit mode in `add_grid_thevenin` (``power_factor_mode``)."""
+    BAND = 'band'        # |Q| <= tan φ · P_rated
+    PER_BIN = 'per_bin'  # |Q| <= tan φ · (P + P_floor)
+
+
 # OR-Tools ``linear_solver`` backends (CSS MILP and optional Pyomo path-MIP fallback).
 ORTOOLS_LINEAR_SOLVERS = ('GUROBI', 'SCIP', 'CBC')
 PYOMO_LINEAR_SOLVERS = ('gurobi', 'highs', 'appsi_highs', 'cbc', 'glpk')
@@ -313,6 +319,13 @@ DEFAULT_CLUSTERING_MAX_ITER = 300
 """ Classes (Node_DC), grid_creator, grid_modifications """
 DEFAULT_V_MIN_DC = 0.95
 DEFAULT_V_MAX_DC = 1.05
+
+# ── Grid Thevenin equivalent ─────────────────────────────────────────────
+""" grid_modifications (add_grid_thevenin) """
+# Infinite-bus voltage (p.u.), held through Umin = Umax.
+THEVENIN_SOURCE_V = 1.0
+# P_floor for PowerFactorMode.PER_BIN, as a fraction of P_rated.
+DEFAULT_PCC_P_FLOOR_FRACTION = 0.1
 
 # ── Placeholders / thresholds ────────────────────────────────────────────
 """ grid_creator, grid_modifications, Time_series, ACDC_OPF_NL_model,
