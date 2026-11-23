@@ -1719,6 +1719,9 @@ def add_grid_thevenin(grid, node, SCR, XR, P_rated_MW, name=None):
     (``line.fromS``, ``PAC_from`` / ``QAC_from`` in the OPF) is the power
     delivered to the grid at the PCC.
 
+    The source voltage is held at 1 p.u. through ``Umin = Umax = 1``, so it stays
+    fixed in OPF/TEP runs that use ``PV_set=False``.
+
     Parameters
     ----------
     grid : Grid
@@ -1743,6 +1746,9 @@ def add_grid_thevenin(grid, node, SCR, XR, P_rated_MW, name=None):
     --------
     >>> source, zg_line, ext = pyf.add_grid_thevenin(grid, 'pcc', SCR=10, XR=10, P_rated_MW=1000)
     """
+    # TODO: optional ``source=None`` to connect several PCCs in one island to a shared
+    # source (only the Zg line is added). The grid transfer impedance between PCCs
+    # (multi-port Thevenin) is not modelled.
     node = _look_up_node(grid, node, ac_or_dc="AC")
     if SCR <= 0 or XR <= 0 or P_rated_MW <= 0:
         raise ValueError("SCR, XR and P_rated_MW must be positive")
@@ -1756,7 +1762,7 @@ def add_grid_thevenin(grid, node, SCR, XR, P_rated_MW, name=None):
     r = x / XR
 
     node.type = NodeType.PQ
-    source = add_AC_node(grid, node.kV_base, node_type=NodeType.SLACK, Voltage_0=1.0, theta_0=0.0, name=name)
+    source = add_AC_node(grid, node.kV_base, node_type=NodeType.SLACK, Voltage_0=1.0, theta_0=0.0, Umin=1.0, Umax=1.0, name=name)
     ext_grid = add_extgrid(grid, source, MWmin=-MAX_RATING_PLACEHOLDER, MVAmax=MAX_RATING_PLACEHOLDER)
     line = add_line_AC(grid, node, source, r=r, x=x, MVA_rating=MAX_RATING_PLACEHOLDER, name=f'{name}_Zg')
     line.is_grid_thevenin = True
