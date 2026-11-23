@@ -186,7 +186,7 @@ def solve_ortools_model(solver, grid, tee=False):
             'nodes': solver.nodes(),
             'feasible_solutions': [],
         }
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 (returned as status 'error' with the message)
         model_res = {
             'status': 'error',
             'error_message': str(e),

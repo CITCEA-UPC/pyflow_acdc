@@ -917,7 +917,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
                 # Try to get bound if available (CP-SAT may not provide in callback)
                 try:
                     bound = self.BestObjectiveBound()
-                except Exception:
+                except Exception:  # noqa: BLE001 (bound is optional in CP-SAT)
                     bound = None
 
                 # Calculate relative gap
@@ -949,7 +949,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
             obj_val = solver.ObjectiveValue()
             # If objective is reasonable (not infinity), we have a solution
             feasible_solution_found = obj_val < 1e20
-        except Exception:
+        except Exception:  # noqa: BLE001 (no objective after timeout means no solution)
             feasible_solution_found = False
 
     # Post-solve handling
@@ -1022,7 +1022,7 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
         # Get bound if available
         try:
             bound = solver.BestObjectiveBound()
-        except Exception:
+        except Exception:  # noqa: BLE001 (bound is optional in CP-SAT)
             bound = None
 
         # Calculate relative gap
@@ -1973,10 +1973,7 @@ def _plot_feasible_solutions(results,type='solution', plot_type='MIP', suptitle=
     # Normalize input: accept a single feasible_solutions list, a list of those,
     # a dict with key 'feasible_solutions_MIP', or a list of such dicts
     def _is_pair_list(seq):
-        try:
-            return isinstance(seq, (list, tuple)) and len(seq) > 0 and isinstance(seq[0], (list, tuple)) and len(seq[0]) >= 2
-        except Exception:
-            return False
+        return isinstance(seq, (list, tuple)) and len(seq) > 0 and isinstance(seq[0], (list, tuple)) and len(seq[0]) >= 2
 
     if results is None:
         normalized_results = []

@@ -1602,7 +1602,7 @@ def load_pickle(path, use_dill=False):
         try:
             with opener(path, "rb") as f:
                 obj = pickle.load(f)
-        except Exception:
+        except Exception:  # noqa: BLE001 (any pickle failure retries with dill, which raises if the file is bad)
             with opener(path, "rb") as f:
                 obj = dill.load(f)
     else:

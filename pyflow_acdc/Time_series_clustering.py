@@ -1411,7 +1411,7 @@ def run_clustering_analysis(grid, save_path='clustering_results',algorithms=None
 
                 print(f"    Time: {time_taken:.2f}s")
 
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 (exploratory loop, try the next algorithm)
                 print(f"    Error with {algo}, n={n}: {str(e)}")
                 continue
 
@@ -1941,7 +1941,7 @@ def compare_kmedoids_methods(grid, n_clusters, data, scaling_data=None,
                 'inertia': method_results[1][1],
                 'time': time_taken
             }
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (exploratory loop, try the next method)
             print(f"Error with method {method}: {e}")
             results[method] = None
 

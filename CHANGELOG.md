@@ -33,8 +33,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - Ruff: pinned to 0.17.3 in CI, also checks ``pyflow_tests``. ``I001``, ``F541``,
-  ``B010`` and ``F841`` enforced, plus ``UP009/015/024``, ``PIE808``, ``PLW0127`` and
-  ``PLW2901``. Unused variables and ``s=1`` debug lines removed.
+  ``B010`` and ``F841`` enforced, plus ``BLE``, ``UP009/015/024``, ``PIE808``,
+  ``PLW0127`` and ``PLW2901``. Unused variables and ``s=1`` debug lines removed.
+- Blind ``except Exception`` reviewed: narrowed to the expected errors where possible,
+  solver/reporting handlers log with ``exc_info=True``, deliberate catch-alls marked.
+  ``windfarm_loader`` warns when it skips a feature with invalid geometry.
+- ``multi_scenario_TEP``: errors in ``cluster_analysis`` now raise instead of silently
+  falling back to unclustered frames (``clustering_options=None`` still runs unclustered).
 - ``AC_losses`` (objective and results) leaves out the grid Thevenin line
   (``is_grid_thevenin``), so grid-side losses are not counted.
 - **`Energy_cost`**: removed ``OnlyGen`` flag from OPF runners and ``grid.OnlyGen``;

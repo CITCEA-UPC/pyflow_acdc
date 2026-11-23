@@ -2220,7 +2220,7 @@ def run_ts_opf_for_investment_period(
                 save_format='svg',
                 skip_failed=True,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 (optional plotting)
             print(f"Warning: TS plotting skipped ({exc})")
 
     return times

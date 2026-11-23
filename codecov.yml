@@ -1,12 +1,15 @@
 coverage:
   status:
+    # Report coverage on PRs but never fail them; only failing tests should fail CI.
     project:
       default:
         target: auto
         threshold: 1%
+        informational: true
     patch:
       default:
         target: auto
+        informational: true
 
 ignore:
   - "pyflow_tests/**"

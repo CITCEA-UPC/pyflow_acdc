@@ -177,7 +177,7 @@ def _gurobi_callback(model, feasible_solutions, bound_solutions, time_limit=None
             try:
                 grb_model.setParam(param_name, param_value)
             except Exception as e:
-                logger.warning(f"Could not set Gurobi parameter {param_name}={param_value}: {e}")
+                logger.warning(f"Could not set Gurobi parameter {param_name}={param_value}: {e}", exc_info=True)
 
     grb_model.optimize(my_callback)
 
@@ -605,7 +605,7 @@ def _solver_progress(
                     results.solver.status = original_status
         except Exception as exc:
             if tee_console:
-                logger.warning(f"Could not load incumbent solution from solver results: {exc}")
+                logger.warning(f"Could not load incumbent solution from solver results: {exc}", exc_info=True)
 
     # Parse the log file based on solver type
     all_solutions = []
@@ -681,7 +681,7 @@ def _store_pyomo_results_on_grid(grid_obj, model_obj, results_obj, solver_stats)
             decimals=2,
         )
         grid_obj._last_pyomo_model_results_table = df
-    except Exception:
+    except Exception:  # noqa: BLE001
         # Never break solve flow due to reporting persistence.
         pass
 
@@ -831,7 +831,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             else:
                 print("  WARNING: NLP did not converge optimally, but variable values may still help.")
             print("=" * 60)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 (warm-start is optional)
             print(f"  NLP warm-start failed: {e}")
             print("  Proceeding with default initialization.")
             print("=" * 60)
@@ -901,7 +901,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
             results = opt.solve(model, tee=tee, load_solutions=True)
         except Exception as e:
             error_msg = str(e)
-            logger.error(f"Solver crashed: {e}")
+            logger.error(f"Solver crashed: {e}", exc_info=True)
 
             solver_stats = {
                 'solver': solver,
@@ -1040,7 +1040,7 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         if callback:
             try:
                 events = _parse_ipopt_log('ipopt.log')
-            except Exception:
+            except Exception:  # noqa: BLE001 (log parsing is diagnostic only)
                 events = []
             if events:
                 last_iter, last_obj, last_feas, last_inf_pr, last_inf_du = events[-1]
@@ -1156,13 +1156,13 @@ def pyomo_model_solve(model, grid=None, solver='ipopt', tee=False, time_limit=No
         except OverflowError as exc:
             pyomo_logger.warning("Skipping infeasible-constraint logging due to overflow: %s", exc)
         except Exception as exc:
-            pyomo_logger.warning("Skipping infeasible-constraint logging due to error: %s", exc)
+            pyomo_logger.warning("Skipping infeasible-constraint logging due to error: %s", exc, exc_info=True)
 
     if tee and explicit_infeasible_termination:
         try:
             log_infeasible_constraints_limited(model)
         except Exception as exc:
-            pyomo_logger.warning("Skipping limited infeasible-constraint logging due to error: %s", exc)
+            pyomo_logger.warning("Skipping limited infeasible-constraint logging due to error: %s", exc, exc_info=True)
 
     _store_pyomo_results_on_grid(grid, model, results, solver_stats)
     return results, solver_stats

@@ -2297,7 +2297,7 @@ class Results:
                 elif not isinstance(df, pd.DataFrame):
                     try:
                         df = pd.DataFrame(df)
-                    except Exception:
+                    except (ValueError, TypeError):
                         df = pd.DataFrame([[df]], columns=[category])
 
                 df = df.copy().reset_index(drop=True)
@@ -2858,13 +2858,13 @@ class Results:
             if pgl_min is not None:
                 try:
                     max_import_mw = max(0.0, -float(pgl_min) * self.Grid.S_base)
-                except Exception:
+                except (TypeError, ValueError):
                     max_import_mw = None
             if pgl_max is not None:
                 try:
                     # Allow inf to pass through; prettytable will print it.
                     max_export_mw = max(0.0, float(pgl_max) * self.Grid.S_base)
-                except Exception:
+                except (TypeError, ValueError):
                     max_export_mw = None
             rows.append({
                 "Price_Zone": m.name,

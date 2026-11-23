@@ -394,7 +394,7 @@ class TEPOuterProblem(ElementwiseProblem):
                 out["F"] = [capex,  opex]
 
 
-        except Exception:
+        except Exception:  # noqa: BLE001 (a failed evaluation gets a penalty, the GA keeps going)
             if self.objective_type == 'sum':
                 out["F"] = 1e12
             else:

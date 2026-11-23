@@ -571,7 +571,7 @@ def update_hovertexts(grid,text):
             try:
                 future.result()  # This will block until the task is finished
             except Exception as e:
-                print(f"Error in thread: {e}")
+                logging.warning(f"Hover text update failed: {e}", exc_info=True)
 
 
 def initialize_positions(Grid):

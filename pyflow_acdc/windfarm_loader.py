@@ -8,6 +8,7 @@ Does not own: grid construction (delegates to ``grid_creator``).
 """
 import json
 import os
+import warnings
 from pathlib import Path
 
 from shapely.geometry import LineString, MultiPolygon, Polygon, shape
@@ -91,7 +92,8 @@ def _parse_geojson_context(geojson_path):
 
         try:
             geom_obj = shape(geom)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 (skip one bad feature, keep loading the rest)
+            warnings.warn(f"Skipping feature with invalid {geom_type} geometry: {exc}", stacklevel=2)
             continue
 
         if my_type == "pixel":

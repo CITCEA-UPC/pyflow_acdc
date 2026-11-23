@@ -145,7 +145,7 @@ extend-exclude = ["pyflow_acdc/example_grids"]
 # F/E/W/I/B plus selected UP/PIE/PLW rules — legacy mixed-case API and power-system
 # symbols (P, Q, V) are intentional; pep8-naming (N) and the rest of pyupgrade (UP)
 # are deferred to a rename pass.
-select = ["E", "W", "F", "I", "B", "UP009", "UP015", "UP024", "PIE808", "PLW0127", "PLW2901"]
+select = ["E", "W", "F", "I", "B", "BLE", "UP009", "UP015", "UP024", "PIE808", "PLW0127", "PLW2901"]
 ignore = [
     "E402",   # lazy / optional imports in large modules
     "E501",   # long Pyomo expressions and grid literals (line-length = 100)
@@ -167,6 +167,8 @@ ignore = [
 # try/import availability probes (import tests presence, not the symbol)
 "pyflow_acdc/Array_OPT.py" = ["F401"]
 "pyflow_acdc/Results_class.py" = ["F401"]
+# Test helpers probe optional dependencies and report any failure
+"pyflow_tests/**" = ["BLE001"]
 
 [tool.pytest.ini_options]
 markers = [

@@ -1235,14 +1235,11 @@ def multi_scenario_TEP(
     grid.TEP_discount_rate =discount_rate
     if tee:
         print('Trying clustering')
-    try:
-        from ..Time_series_clustering import cluster_analysis
-        n_clusters,clustering = cluster_analysis(grid,clustering_options)
-        if (clustering_options and clustering_options.get('print_details')) or tee:
-            print('Clustering done')
-    except Exception:
-        n_clusters = len(grid.Time_series[0].data)
-        clustering = False
+    # clustering_options=None gives one frame per time-series row (clustering=False).
+    from ..Time_series_clustering import cluster_analysis
+    n_clusters,clustering = cluster_analysis(grid,clustering_options)
+    if (clustering_options and clustering_options.get('print_details')) or tee:
+        print('Clustering done')
 
     t1 = time.time()
     model = pyo.ConcreteModel()
