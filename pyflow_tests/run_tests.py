@@ -4,8 +4,6 @@ import importlib.util
 from io import StringIO
 import contextlib
 from typing import Dict, List, Tuple
-import warnings
-import re
 import time
 
 from pyflow_tests.test_constants import (
@@ -21,12 +19,12 @@ from pyflow_tests.test_constants import (
 TEST_DIR = Path(__file__).parent
 
 def run_test_case(case: str, show_output: bool = False) -> Tuple[bool, str, List[str], float]:
-    
+
     """Run a test case and return (success, error_message, warnings, elapsed_time)."""
     if show_output:
         print(f"\nRunning test case: {case}")
         print("-" * 70)
-    
+
     # Load the module
     module_path = TEST_DIR / case
     spec = importlib.util.spec_from_file_location(case[:-3], module_path)
@@ -34,12 +32,12 @@ def run_test_case(case: str, show_output: bool = False) -> Tuple[bool, str, List
         error_msg = f"Error: Could not load module {case}"
         print(error_msg)
         return False, error_msg, [], 0
-        
+
     module = importlib.util.module_from_spec(spec)
-    
+
     # Capture warnings
     captured_warnings = []
-    
+
     try:
         if show_output:
             # Run the module directly to see all output
@@ -57,7 +55,7 @@ def run_test_case(case: str, show_output: bool = False) -> Tuple[bool, str, List
                 start_time = time.perf_counter()
                 module.run_test()
                 elapsed_time = time.perf_counter() - start_time
-            
+
             # Check stdout for explicit warning messages
             for line in stdout_capture.getvalue().split('\n'):
                 if 'Warning' in line or 'warning' in line:
@@ -65,7 +63,7 @@ def run_test_case(case: str, show_output: bool = False) -> Tuple[bool, str, List
                     if any(snippet in stripped for snippet in IGNORED_WARNING_SNIPPETS):
                         continue
                     captured_warnings.append(stripped)
-            
+
             stdout_content = stdout_capture.getvalue()
             doc_examples_passed = " doc examples passed" in stdout_content
             if not doc_examples_passed and (
@@ -89,9 +87,9 @@ def main():
     quick_mode = "--quick" in args
     tep_mode = "--tep" in args
     opf_mode = "--opf" in args
-    
+
     docs_mode = "--docs" in args
-    
+
     # Choose which tests to run
     if quick_mode:
         CASES = QUICK_CASES
@@ -108,14 +106,14 @@ def main():
     else:
         CASES = ALL_CASES
         print("Running all tests")
-    
+
     print(f"Running {len(CASES)} test cases")
     if show_output:
         print("Showing full output for each test case")
     print("-" * 70)
-    
+
     results: Dict[str, Tuple[bool, str, List[str], float]] = {}
-    
+
     for case in CASES:
         success, error_msg, warnings, elapsed_time = run_test_case(case, show_output)
         results[case] = (success, error_msg, warnings, elapsed_time)
@@ -128,13 +126,13 @@ def main():
                 print("\nWarnings:")
                 for warning in warnings:
                     print(f"  {warning}")
-    
+
     print("-" * 70)
-    
+
     # Print summary
     success_count = sum(1 for result in results.values() if result[0])
     print(f"Summary: {success_count}/{len(CASES)} tests passed")
-    
+
     # Print detailed error report if any tests failed
     failed_tests = [(case, error, warnings, elapsed_time) for case, (success, error, warnings, elapsed_time) in results.items() if not success]
     if failed_tests:
@@ -151,7 +149,7 @@ def main():
         print('------')
         print('Skipped tests:')
         for case, error, warnings, elapsed_time in failed_tests:
-            if error != "Dependency not available": 
+            if error != "Dependency not available":
                 continue
             print(f"\n{case}:  {error}")
             if warnings:

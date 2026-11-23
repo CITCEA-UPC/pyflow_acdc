@@ -10,12 +10,11 @@ This grid is based on the CIGRE B4 test system. DCDC converters have been simpli
 import time
 import pandas as pd
 import pyflow_acdc as pyf
-import os
 from pathlib import Path
 start_time = time.perf_counter()
 
 S_base=100 #MVAres
- 
+
 beta= 0.0165 #percent
 
 current_file = Path(__file__).resolve()
