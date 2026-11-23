@@ -30,6 +30,8 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
 - ``export_acdc_tep_ms_to_pyflow_acdc(not_transposed=True)`` raised ``NameError``
   without price zones.
 - ``ACDC_TEP_pymoo`` restores the Pyomo logger level after each solve.
+- ``get_gen_p_min_eff`` raised a ``PyomoException`` for an external grid in a TEP
+  model with generator sizing (``np_gen`` a Pyomo variable in ``if pmax_eff == 0``).
 
 ### Changed
 - Ruff: pinned to 0.17.3 in CI, also checks ``pyflow_tests``. ``I001``, ``F541``,

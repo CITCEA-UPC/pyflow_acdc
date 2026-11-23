@@ -2,6 +2,8 @@
 Analysis and utility helpers for pyflow_acdc grids.
 """
 
+import numbers
+
 import numpy as np
 import pandas as pd
 
@@ -232,7 +234,8 @@ def get_gen_p_min_eff(gen, np_gen_value, p_load_eff_value=None):
     if not getattr(gen, 'allow_sell', True):
         return 0
     pmax_eff = gen.Max_pow_gen * np_gen_value
-    if pmax_eff == 0:
+    # np_gen_value is a Pyomo variable in TEP with generator sizing: only a numeric zero can be checked
+    if gen.Max_pow_gen == 0 or (isinstance(np_gen_value, numbers.Number) and np_gen_value == 0):
         return gen.Min_pow_gen * np_gen_value
     p_load_eff = gen.p_load_eff if p_load_eff_value is None else p_load_eff_value
     return -(pmax_eff - p_load_eff)
