@@ -5,7 +5,7 @@ Analysis and utility helpers for pyflow_acdc grids.
 import numpy as np
 import pandas as pd
 
-from .constants import SQRT_3
+from .constants import SQRT_3, LineModel
 
 __all__ = [
     "pol2cart",
@@ -141,7 +141,7 @@ def converter_parameters(S_base, kV_base, T_R_Ohm, T_X_mH, PR_R_Ohm, PR_X_mH, Fi
     return [T_R_pu, T_X_pu, PR_R_pu, PR_X_pu, Filter_pu]
 
 
-def cable_parameters(S_base, R, L_mH, C_uF, G_uS, A_rating, kV_base, km, N_cables=1, f=50):
+def cable_parameters(S_base, R, L_mH, C_uF, G_uS, A_rating, kV_base, km, N_cables=1, f=50, line_model=LineModel.PI_MODEL):
     """Convert cable data to per-unit equivalent parameters and rating.
 
     For DC cables (``L_mH == 0``) ``N_cables`` is forced to 1 and a 2-conductor
@@ -166,6 +166,9 @@ def cable_parameters(S_base, R, L_mH, C_uF, G_uS, A_rating, kV_base, km, N_cable
         Number of parallel cables (default 1).
     f : float, optional
         System frequency in Hz (default 50).
+    line_model : LineModel or str, optional
+        ``'pi'`` (nominal, lumped π, default) or ``'hyperbolic_pi'`` (exact long-line π,
+        recommended for AC cables above ~50 km). DC cables always use the nominal values.
 
     Returns
     -------
@@ -194,8 +197,15 @@ def cable_parameters(S_base, R, L_mH, C_uF, G_uS, A_rating, kV_base, km, N_cable
     Z = R_AC + X * 1j
     Y = G + B * 1j
 
-    Z_pi = Z
-    Y_pi = Y
+    if LineModel(line_model) == LineModel.HYPERBOLIC_PI_MODEL and L_mH != 0 and km > 0:
+        z, y = Z / km, Y / km
+        Z_c = np.sqrt(z / y)
+        theta = np.sqrt(z * y) * km
+        Z_pi = Z_c * np.sinh(theta)
+        Y_pi = 2 * np.tanh(theta / 2) / Z_c
+    else:
+        Z_pi = Z
+        Y_pi = Y
 
     R_1 = np.real(Z_pi)
     X_1 = np.imag(Z_pi)

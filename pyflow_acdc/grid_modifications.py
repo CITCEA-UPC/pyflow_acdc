@@ -58,6 +58,7 @@ from .constants import (
     CableType,
     ConverterDCType,
     DataInput,
+    LineModel,
     LinkCost,
     NodeType,
     Polarity,
@@ -251,7 +252,7 @@ def add_DC_node(grid, kV_base, node_type=ConverterDCType.P, Voltage_0=1.01, Powe
 
     return node
 
-def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm_km=None,L_mH_km=None, C_uF_km=0, G_uS_km=0, A_rating=None ,m=1, shift=0, name=None,tap_changer=False,Expandable=False,N_cables=1,Length_km=1,geometry=None,data_in=DataInput.PU,Cable_type:str =CableType.CUSTOM,update_grid=True):
+def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm_km=None,L_mH_km=None, C_uF_km=0, G_uS_km=0, A_rating=None ,m=1, shift=0, name=None,tap_changer=False,Expandable=False,N_cables=1,Length_km=1,geometry=None,data_in=DataInput.PU,Cable_type:str =CableType.CUSTOM,update_grid=True,line_model=LineModel.PI_MODEL,f=50):
     """Append an AC branch (line, expandable line, or tap transformer).
 
     ``fromNode`` and ``toNode`` may be :class:`~pyflow_acdc.Classes.Node_AC`
@@ -289,6 +290,12 @@ def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm
         Named cable from the bundled database, or ``'Custom'``.
     update_grid : bool, optional
         Rebuild Y-bus and NetworkX graph when True.
+    line_model : LineModel or str, optional
+        π equivalent for per-km data (``data_in='Real'`` or a database ``Cable_type``):
+        ``'pi'`` (nominal, default) or ``'hyperbolic_pi'`` (exact long line). Can be
+        changed later with ``line.line_model``.
+    f : float, optional
+        Frequency in Hz used with per-km data (default 50).
 
     Returns
     -------
@@ -324,7 +331,7 @@ def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm
         Conductance_pu = g*Z_base
         Susceptance_pu = b*Z_base
     elif data_in== DataInput.REAL and Cable_type == CableType.CUSTOM:
-       [Resistance_pu, Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating] = cable_parameters(grid.S_base, R_Ohm_km, L_mH_km, C_uF_km, G_uS_km, A_rating, kV_base, Length_km,N_cables=N_cables)
+       [Resistance_pu, Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating] = cable_parameters(grid.S_base, R_Ohm_km, L_mH_km, C_uF_km, G_uS_km, A_rating, kV_base, Length_km,N_cables=N_cables, f=f, line_model=line_model)
     else:
         Resistance_pu = r if r!=0 else 0.00001
         Reactance_pu  = x if x!=0  else 0.00001
@@ -338,18 +345,22 @@ def add_line_AC(grid, fromNode, toNode,MVA_rating=None, r=0, x=0, b=0, g=0,R_Ohm
         if update_grid:
             grid.update_graph_ac()
     elif Expandable:
-        line = Exp_Line_AC(fromNode, toNode, Resistance_pu,Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating,Length_km,m, shift,N_cables, name,S_base=grid.S_base,Cable_type=Cable_type)
+        line = Exp_Line_AC(fromNode, toNode, Resistance_pu,Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating,Length_km,m, shift,N_cables, name,S_base=grid.S_base,Cable_type=Cable_type,line_model=line_model,f=f)
         grid.lines_AC_exp.append(line)
         if update_grid:
             grid.update_graph_ac()
 
     else:
-        line = Line_AC(fromNode, toNode, Resistance_pu,Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating,Length_km,m, shift,N_cables, name,S_base=grid.S_base,Cable_type=Cable_type)
+        line = Line_AC(fromNode, toNode, Resistance_pu,Reactance_pu, Conductance_pu, Susceptance_pu, MVA_rating,Length_km,m, shift,N_cables, name,S_base=grid.S_base,Cable_type=Cable_type,line_model=line_model,f=f)
 
         grid.lines_AC.append(line)
         if update_grid:
             grid.create_Ybus_AC()
             grid.update_graph_ac()
+
+    # Keep per-km data so line.line_model can rebuild r, x, g, b later
+    if not tap_changer and data_in == DataInput.REAL and Cable_type == CableType.CUSTOM:
+        line.cable_data = {'R_Ohm_km': R_Ohm_km, 'L_mH_km': L_mH_km, 'C_uF_km': C_uF_km, 'G_uS_km': G_uS_km, 'A_rating': A_rating}
 
     if geometry is not None:
        if isinstance(geometry, str):

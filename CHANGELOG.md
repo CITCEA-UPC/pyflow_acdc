@@ -48,6 +48,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
   ``P_conv·price`` and nodal ``PGi_ren·price`` terms removed from ``Energy_cost``.
 
 ### Added
+- ``Line_AC.line_model`` (``LineModel.PI_MODEL`` default, ``LineModel.HYPERBOLIC_PI_MODEL``):
+  exact long-line π from per-km data for long AC cables. Set in ``add_line_AC(..., line_model=)``
+  or later through the setter (database cables, or custom cables given in real units).
+  ``add_line_AC`` and ``cable_parameters`` take the frequency ``f`` (default 50 Hz).
 - ``add_grid_thevenin``: grid Thevenin equivalent from SCR and X/R. Adds a slack
   source bus with an external grid behind ``Zg`` and turns the PCC into a PQ bus.
   Optional power-factor limit at the PCC on the power into the Thevenin equivalent:

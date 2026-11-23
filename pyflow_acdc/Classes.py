@@ -25,6 +25,7 @@ from .constants import (
     CableType,
     ConverterDCType,
     ConverterOpfFxType,
+    LineModel,
     LinkCost,
     NodeType,
     Polarity,
@@ -2668,16 +2669,23 @@ class Line_AC:
         G_uS = cable_data['G_uS_km']
         A_rating = cable_data['A_rating']
 
-        R,X,G,B,MVA_rating = cable_parameters(S_base, R_Ohm, L_mH, C_uF, G_uS, A_rating, kV_base, Length_km,N_cables)
+        # Size_selection inherits this without Line_AC.__init__, so it has no _line_model
+        line_model = getattr(self, '_line_model', LineModel.PI_MODEL)
+        f = getattr(self, 'f', 50)
+        R,X,G,B,MVA_rating = cable_parameters(S_base, R_Ohm, L_mH, C_uF, G_uS, A_rating, kV_base, Length_km,N_cables, f=f, line_model=line_model)
         return R, X, G, B, MVA_rating
 
-    def __init__(self, fromNode: Node_AC, toNode: Node_AC,r: float= 0.001, x: float=0.001, g: float=0, b: float=0, MVA_rating: float=9999,Length_km:float=1.0,m:float=1, shift:float=0,N_cables=1, name=None,geometry=None,isTf=False,S_base:float=100,Cable_type:str = CableType.CUSTOM):
+    def __init__(self, fromNode: Node_AC, toNode: Node_AC,r: float= 0.001, x: float=0.001, g: float=0, b: float=0, MVA_rating: float=9999,Length_km:float=1.0,m:float=1, shift:float=0,N_cables=1, name=None,geometry=None,isTf=False,S_base:float=100,Cable_type:str = CableType.CUSTOM, line_model=LineModel.PI_MODEL, f:float=50):
         self.lineNumber = Line_AC.lineNumber
         Line_AC.lineNumber += 1
 
         self.S_base = S_base
         self.Length_km = Length_km
         self.N_cables = N_cables
+        # π model and frequency used when r, x, g, b come from per-km data (Cable_type or cable_data)
+        self._line_model = LineModel(line_model)
+        self.f = f
+        self.cable_data = None  # per-km data for custom cables given in real units (add_line_AC sets it)
 
         self.fromNode = fromNode
         self.toNode = toNode
@@ -2761,6 +2769,26 @@ class Line_AC:
             self.r, self.x, self.g, self.b, self.MVA_rating = self.get_cable_parameters(
                 new_type, self.S_base, self.Length_km, self.N_cables,self.kV_base)
             self._calculate_Ybus_branch()
+
+    @property
+    def line_model(self):
+        return self._line_model
+
+    @line_model.setter
+    def line_model(self, value):
+        """Rebuild r, x, g, b with the chosen π model. Needs per-km data (database cable or add_line_AC in real units)."""
+        self._line_model = LineModel(value)
+        if self._Cable_type != CableType.CUSTOM:
+            self.Cable_type = self._Cable_type
+        elif self.cable_data is not None:
+            from .grid_analysis import cable_parameters
+            d = self.cable_data
+            self.r, self.x, self.g, self.b, self.MVA_rating = cable_parameters(
+                self.S_base, d['R_Ohm_km'], d['L_mH_km'], d['C_uF_km'], d['G_uS_km'], d['A_rating'],
+                self.kV_base, self.Length_km, self.N_cables, f=self.f, line_model=self._line_model)
+            self._calculate_Ybus_branch()
+        else:
+            raise ValueError(f"Line {self.name}: line_model needs per-km data (Cable_type or R_Ohm_km/L_mH_km/C_uF_km)")
 
     def _calculate_Ybus_branch(self):
         """

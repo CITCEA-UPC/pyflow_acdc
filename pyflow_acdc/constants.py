@@ -110,6 +110,12 @@ class PowerFactorMode(str, Enum):
     PER_BIN = 'per_bin'  # |Q| <= tan φ · (P + P_floor)
 
 
+class LineModel(str, Enum):
+    """π equivalent built from per-km cable data (``Line_AC.line_model``)."""
+    PI_MODEL = 'pi'                        # nominal π, lumped: Z = z·l, Y = y·l (default)
+    HYPERBOLIC_PI_MODEL = 'hyperbolic_pi'  # exact long-line π: Z = Zc·sinh(θ), Y/2 = tanh(θ/2)/Zc
+
+
 # OR-Tools ``linear_solver`` backends (CSS MILP and optional Pyomo path-MIP fallback).
 ORTOOLS_LINEAR_SOLVERS = ('GUROBI', 'SCIP', 'CBC')
 PYOMO_LINEAR_SOLVERS = ('gurobi', 'highs', 'appsi_highs', 'cbc', 'glpk')
