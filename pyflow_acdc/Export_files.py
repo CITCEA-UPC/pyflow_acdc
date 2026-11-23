@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Grid export and loader code generation.
 
 Exports a :class:`~pyflow_acdc.Classes.Grid` to runnable Python, MATLAB, or
@@ -9,17 +8,18 @@ Does not own: the in-memory data model (see ``Classes``).
 """
 
 import enum
+import os
 
 import numpy as np
-import os
+
 from .Classes import MTDCPrice_Zone, OffshorePrice_Zone
 from .constants import (
-    NodeType,
-    ConverterDCType,
     AcDcSide,
+    ConverterDCType,
     DataInput,
-    PriceZoneCategory,
     LinkCost,
+    NodeType,
+    PriceZoneCategory,
 )
 
 
@@ -28,8 +28,8 @@ def _enum_value(value):
         return value.value
     return value
 
-import pickle
 import gzip
+import pickle
 
 import dill
 
@@ -714,8 +714,6 @@ def gather_grid_data(grid):
     line_dc_data = []
     if grid.lines_DC is not None:
         for line in grid.lines_DC:
-            pol = line.pol
-
             line_dc_data.append({
                 "fbusdc": line.fromNode.nodeNumber+1,
                 "tbusdc": line.toNode.nodeNumber+1,
@@ -757,7 +755,7 @@ def gather_grid_data(grid):
                 "Vtar": 1,
                 "rtf": conv.r_t/conv.np_conv,
                 "xtf": conv.x_t/conv.np_conv,
-                "transformer": 1 if conv.r_t != 0 else 0,
+                "transformer": 1 if conv.Ztf != 0 else 0,
                 "tm": 1,
                 "bf": conv.bf*conv.np_conv,
                 "filter": 1 if conv.bf != 0 else 0,

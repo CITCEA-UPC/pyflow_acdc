@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Coupled window NL OPF with BESS and electrolyser (frame blocks + parent links)."""
 
 import math
@@ -16,7 +15,6 @@ from ..ACDC_OPF import (
     opf_obj,
     translate_pyf_opf,
 )
-from .ACDC_OPF_NL_model import export_acdc_nl_model_to_pyflow_acdc, opf_create_nl_model_acdc
 from ..constants import AcDcSide
 from ..grid_analysis import analyse_grid
 from ..pyomo_model_solve import (
@@ -29,6 +27,7 @@ from ..Time_series import (
     _modify_parameters,
     update_grid_data,
 )
+from .ACDC_OPF_NL_model import export_acdc_nl_model_to_pyflow_acdc, opf_create_nl_model_acdc
 
 __all__ = ['window_nl_opf', 'rolling_window_nl_opf']
 

@@ -8,57 +8,74 @@ Owns: mutation of an already-constructed grid.
 Does not own: initial grid construction (see ``grid_creator``).
 """
 
-import pandas as pd
-import numpy as np
-import yaml
-import re
 import json
+import re
+from pathlib import Path
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+import numpy as np
+import pandas as pd
+import yaml
 from shapely.wkt import loads
 
 from .Classes import (
-    AC_DC_converter, Cable_options, DCDC_converter, Exp_Line_AC, Gen_AC,
-    Gen_DC, Line_AC, Line_DC, MTDCPrice_Zone, Node_AC, Node_DC,
-    OffshorePrice_Zone, Price_Zone, Ren_Source, Ren_source_zone,
-    rec_Line_AC, Size_selection, Storage, Electrolyser, TF_Line_AC, TimeSeries,
+    AC_DC_converter,
+    Cable_options,
+    DCDC_converter,
+    Electrolyser,
+    Exp_Line_AC,
+    Gen_AC,
+    Gen_DC,
+    Line_AC,
+    Line_DC,
+    MTDCPrice_Zone,
+    Node_AC,
+    Node_DC,
+    OffshorePrice_Zone,
+    Price_Zone,
+    Ren_Source,
+    Ren_source_zone,
+    Size_selection,
+    Storage,
+    TF_Line_AC,
+    TimeSeries,
+    rec_Line_AC,
 )
 from .constants import (
-    SQRT_3,
-    MAX_RATING_PLACEHOLDER,
-    DEFAULT_V_MIN_DC,
-    DEFAULT_V_MAX_DC,
-    THEVENIN_SOURCE_V,
-    DEFAULT_PCC_P_FLOOR_FRACTION,
-    NodeType,
-    ConverterDCType,
     DEFAULT_GEN_TYPE,
-    CableType,
-    DataInput,
-    Polarity,
-    AcDcSide,
-    PricingStrategy,
-    LinkCost,
-    PowerFactorMode,
-    TSType,
-    TS_RENEWABLE_TYPES,
+    DEFAULT_PCC_P_FLOOR_FRACTION,
+    DEFAULT_V_MAX_DC,
+    DEFAULT_V_MIN_DC,
+    MAX_RATING_PLACEHOLDER,
+    SQRT_3,
+    THEVENIN_SOURCE_V,
     TS_CONV_PF_TYPES,
-    TS_STORAGE_PF_TYPES,
     TS_H2_PF_TYPES,
+    TS_RENEWABLE_TYPES,
+    TS_STORAGE_PF_TYPES,
+    AcDcSide,
+    CableType,
+    ConverterDCType,
+    DataInput,
+    LinkCost,
+    NodeType,
+    Polarity,
+    PowerFactorMode,
+    PricingStrategy,
+    TSType,
 )
 from .grid_analysis import (
-    pol2cart,
-    cart2pol,
-    pol2cartz,
-    cartz2pol,
-    cable_parameters,
-    converter_parameters,
     analyse_grid,
-    grid_state,
+    cable_parameters,
+    cart2pol,
+    cartz2pol,
+    converter_parameters,
     current_fuel_type_distribution,
+    grid_state,
+    pol2cart,
+    pol2cartz,
 )
-
-from pathlib import Path
 
 """
 """
@@ -2832,7 +2849,6 @@ def add_TimeSeries(grid, Time_Series_data,associated=None,TS_type=None,name=None
         TS = pd.DataFrame(Time_Series_data, columns=[name])
     else:
         TS = Time_Series_data
-    Time_series = {}
     # check if there are nan values in Time series and change to 0
     TS.fillna(0, inplace=True)
 
@@ -2870,7 +2886,6 @@ def add_TimeSeries(grid, Time_Series_data,associated=None,TS_type=None,name=None
 
 
     grid.Time_series_ran = False
-    s = 1
 
 
 def assign_RenToZone(grid, ren_source, zone, link_availability=True):
@@ -3041,7 +3056,6 @@ def assign_lineToCable_options(grid, line, new_cable_option_name):
         If the line or cable option is not found.
     """
     new_cable_option = None
-    old_cable_option = None
 
     # Normalize to a line object present in grid.lines_AC_ct
     lines_ct = getattr(grid, "lines_AC_ct", [])
@@ -3069,7 +3083,6 @@ def assign_lineToCable_options(grid, line, new_cable_option_name):
     # Remove line from its old cable_option (if any), using identity
     for cable_option in grid.Cable_options:
         if line_obj in cable_option.lines:
-            old_cable_option = cable_option
             cable_option.lines = [l for l in cable_option.lines if l is not line_obj]
             break
 
@@ -3122,7 +3135,7 @@ def expand_cable_database(data, format='yaml', save_yaml=False):
 
     if format.lower() == 'yaml':
         if isinstance(data, (str, Path)):
-            with open(data, 'r') as f:
+            with open(data) as f:
                 new_cables = yaml.safe_load(f)
         elif isinstance(data, dict):
             new_cables = data

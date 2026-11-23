@@ -1,9 +1,9 @@
-# -*- coding: utf-8 -*-
 """STATCOM sizing with a PCC power-factor limit in multi_scenario_TEP."""
 
 import numpy as np
 import pyomo.environ as pyo
 import pytest
+
 import pyflow_acdc as pyf
 from pyflow_tests._test_solver_deps import require_ipopt
 

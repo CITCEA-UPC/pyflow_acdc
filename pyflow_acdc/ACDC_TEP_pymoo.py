@@ -1,16 +1,23 @@
-from pymoo.core.problem import ElementwiseProblem
+import time
+
+import matplotlib.pyplot as plt
 import numpy as np
 import pyomo.environ as pyo
-from pymoo.algorithms.soo.nonconvex.ga import GA
 from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.algorithms.soo.nonconvex.ga import GA
+from pymoo.core.problem import ElementwiseProblem
 from pymoo.optimize import minimize
-import time
-import matplotlib.pyplot as plt
+
+from .ACDC_OPF import calculate_objective, obj_w_rule, opf_obj
+from .constants import (
+    DEFAULT_DISCOUNT_RATE,
+    DEFAULT_TIME_LIMIT,
+    HOURS_PER_YEAR,
+    present_value_factor,
+)
+from .grid_analysis import analyse_grid
 from .NL_models.ACDC_OPF_NL_model import export_acdc_nl_model_to_pyflow_acdc
 from .pyomo_model_solve import pyomo_model_solve
-from .ACDC_OPF import opf_obj, obj_w_rule, calculate_objective
-from .grid_analysis import analyse_grid
-from .constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, DEFAULT_TIME_LIMIT, present_value_factor
 
 __all__ = [
     'transmission_expansion_pymoo'
@@ -365,6 +372,7 @@ class TEPOuterProblem(ElementwiseProblem):
             self.pyomo_runs += 1
 
             results, stats = pyomo_model_solve(self.model, self.grid, solver='ipopt', tee=False, time_limit=self.time_limit, suppress_warnings=True)
+            pyomo_logger.setLevel(original_level)
             self.pyomo_time += stats['time']
             if results is None:
                 out["F"] = 1e24
@@ -465,7 +473,7 @@ def _handle_single_objective_result(res, problem, grid,show_plot=False):
 
     # Now grid contains the optimized solution
     print(f"Best objective: {res.F[0]}")
-    print(f"Grid now has optimized investments")
+    print("Grid now has optimized investments")
 
 
 

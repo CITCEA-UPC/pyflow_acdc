@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run all Python files in a doc_examples subfolder."""
 
 from __future__ import annotations

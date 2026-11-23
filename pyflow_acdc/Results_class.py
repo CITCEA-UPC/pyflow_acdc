@@ -1,12 +1,20 @@
 import os
+
 # -*- coding: utf-8 -*-
 """Results tables and terminal reporting for power-flow / OPF runs."""
 import numpy as np
-from prettytable import PrettyTable as pt
 import pandas as pd
+from prettytable import PrettyTable as pt
 
 from .Classes import Price_Zone
-from .constants import SQRT_3, HOURS_PER_YEAR, NodeType, AcDcSide, DataExportType, coerce_data_export_type
+from .constants import (
+    HOURS_PER_YEAR,
+    SQRT_3,
+    AcDcSide,
+    DataExportType,
+    NodeType,
+    coerce_data_export_type,
+)
 
 __all__ = ['Results']
 
@@ -149,7 +157,6 @@ class Results:
             if self.Grid.TEP_multiScenario_res is not None:
                 self.tep_ts_norm(print_table=print_table)
                 self.tep_multi_scenario_res(print_table=print_table)
-                s=1
             else:
                 self.tep_norm(print_table=print_table)
         if self.Grid.MP_TEP_run:
@@ -295,12 +302,9 @@ class Results:
             if self.Grid.OPF_run:
                 P_AC = np.vstack([node.PGi+sum(rs.PGi_ren*rs.gamma for rs in node.connected_RenSource)
                                         +sum(gen.PGen for gen in node.connected_gen if gen.PGen >0) for node in self.Grid.nodes_AC])
-
-                Q_AC = np.vstack([node.QGi+sum(gen.QGen for gen in node.connected_gen) for node in self.Grid.nodes_AC])
             else:
                 P_AC = np.vstack([node.PGi+sum(rs.PGi_ren*rs.gamma for rs in node.connected_RenSource)
                                         +sum(gen.Pset for gen in node.connected_gen if gen.Pset >0) for node in self.Grid.nodes_AC])
-                Q_AC = np.vstack([node.QGi+sum(gen.Qset for gen in node.connected_gen) for node in self.Grid.nodes_AC])
 
             for node in self.Grid.nodes_AC:
                 if not self.Grid.OPF_run and node.type == NodeType.SLACK:
@@ -834,8 +838,6 @@ class Results:
         for g in range(self.Grid.Num_Grids_AC):
             for line in self.Grid.lines_AC:
                 if self.Grid.Graph_line_to_Grid_index_AC[line] == g:
-                    i = line.fromNode.nodeNumber
-                    j = line.toNode.nodeNumber
                     I_base = self.Grid.S_base/line.kV_base
 
                     i_from = line.i_from*I_base/SQRT_3
@@ -1557,7 +1559,7 @@ class Results:
             all_dfs[n_clusters] = df
 
             if print_table:
-                print(f'\n--------------')
+                print('\n--------------')
                 print(f'Cluster Representatives (k={n_clusters})')
                 print('')
                 table = pt()
@@ -2073,7 +2075,6 @@ class Results:
         SC = TEP_multiScenario_res['PZ_cost_of_generation']
         weight = TEP_multiScenario_res['weights']
         price = TEP_multiScenario_res['price']
-        OPF_obj = TEP_multiScenario_res['OPF_obj']
 
         # Per-price-zone normalized costs
         rows_zones = []

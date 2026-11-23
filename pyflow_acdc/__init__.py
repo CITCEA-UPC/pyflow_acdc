@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 pyflow-acdc package initialization.
 Provides grid simulation and power flow analysis functionality.

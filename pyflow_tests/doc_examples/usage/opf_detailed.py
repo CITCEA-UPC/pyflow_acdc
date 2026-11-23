@@ -1,6 +1,7 @@
 """Usage guide: Detailed OPF example (``docs/usage.rst``)."""
-import pyflow_acdc as pyf
 import pandas as pd
+
+import pyflow_acdc as pyf
 
 build_only = not pyf.is_pyomo_solver_available("ipopt")
 

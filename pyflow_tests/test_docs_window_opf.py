@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Docs smoke for window OPF page (CSV load + example present).
 
 Does not run the heavy four-season IPOPT example; that file is for
@@ -8,7 +7,6 @@ literalinclude / interactive use only.
 from pathlib import Path
 
 import pyflow_acdc as pyf
-
 from pyflow_acdc.example_grids.PF._pei_bess_data import PEI_SEASONS
 from pyflow_tests._test_solver_deps import (
     dash_missing_for_run_test,

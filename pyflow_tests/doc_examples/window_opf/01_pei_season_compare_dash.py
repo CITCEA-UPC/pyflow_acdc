@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PEI: solve each season window, attach season-compare, open Dash.
 
 Heavy: four 24 h IPOPT windows. Docs CI does not execute this file; it is the

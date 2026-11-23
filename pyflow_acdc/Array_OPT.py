@@ -13,14 +13,16 @@ Two coupled problems, usually run in sequence by ``sequential_CSS``:
 Owns path-MIP orchestration and CSS dispatch. Solver-specific linear CSS
 implementation lives in ``AC_L_CSS_ortools``.
 """
-import time
+import math
 import os
+import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+
 import numpy as np
-import math
-import pyomo.environ as pyo
 import pandas as pd
+import pyomo.environ as pyo
+
 try:
     import gurobipy
     GUROBI_AVAILABLE = True
@@ -33,31 +35,29 @@ try:
 except ImportError:
     ORTOOLS_AVAILABLE = False
 
-from .NL_models.ACDC_OPF_NL_model import opf_create_nl_model_acdc,TEP_variables
-from .L_models.AC_OPF_L_model import opf_create_l_model_acdc,export_acdc_l_model_to_pyflow_acdc
-from .pyomo_model_solve import pyomo_model_solve, build_only_solver_stats
 from .ACDC_OPF import (
-    obj_w_rule,
-    export_acdc_nl_model_to_pyflow_acdc,
     calculate_objective,
+    export_acdc_nl_model_to_pyflow_acdc,
+    obj_w_rule,
 )
-from .NL_models.ACDC_Static_TEP import transmission_expansion
-from .L_models.ACDC_L_TEP import linear_transmission_expansion
-
-from .Graph_and_plot import save_network_svg
 from .constants import (
-    HOURS_PER_YEAR,
+    CT_SELECTION_THRESHOLD,
     DEFAULT_DISCOUNT_RATE,
     DEFAULT_TIME_LIMIT,
-    present_value_factor,
-    NodeType,
+    HOURS_PER_YEAR,
+    ORTOOLS_LINEAR_SOLVERS,
     CssMode,
     MIPBackend,
+    NodeType,
     ObjComponent,
-    CT_SELECTION_THRESHOLD,
-    ORTOOLS_LINEAR_SOLVERS,
+    present_value_factor,
 )
-
+from .Graph_and_plot import save_network_svg
+from .L_models.AC_OPF_L_model import export_acdc_l_model_to_pyflow_acdc, opf_create_l_model_acdc
+from .L_models.ACDC_L_TEP import linear_transmission_expansion
+from .NL_models.ACDC_OPF_NL_model import TEP_variables, opf_create_nl_model_acdc
+from .NL_models.ACDC_Static_TEP import transmission_expansion
+from .pyomo_model_solve import build_only_solver_stats, pyomo_model_solve
 
 __all__ = [
     'sequential_CSS',
@@ -137,7 +137,6 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=HOURS_PER_YEAR,discount
         max_iter = len(grid.Cable_options[0].cable_types)
     og_cable_types = grid.Cable_options[0].cable_types.copy()
 
-    MIP_time = grid.MIP_time
     if max_turbines_per_string is not None:
         max_flow = max_turbines_per_string
     else:
@@ -168,14 +167,14 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=HOURS_PER_YEAR,discount
         t1 = time.perf_counter()
         if sub_min_connections:
             if tee and i==0:
-                print(f'Using min sub connections iterationfor sequential CSS')
+                print('Using min sub connections iterationfor sequential CSS')
             # Use the shared MIPConfig for internal calls
             flag, high_flow,model_MIP,feasible_solutions_MIP ,ns, sub_iter , path_time = min_sub_connections(
                 grid, max_flow, mip_cfg=mip_cfg, max_ns=max_ns
             )
         else:
             if tee and i==0:
-                print(f'Using user defined substation limit path graph for sequential CSS')
+                print('Using user defined substation limit path graph for sequential CSS')
             flag, high_flow,model_MIP,feasible_solutions_MIP = MIP_path_graph(
                 grid, max_flow, mip_cfg=mip_cfg,sub_k_max=max_ns
             )
@@ -190,7 +189,7 @@ def sequential_CSS(grid,NPV=True,LCoE=None,n_years=25,Hy=HOURS_PER_YEAR,discount
         if not flag:
             if i == 0:
                 if tee:
-                    print(f'MIP failed on first iteration, returning None')
+                    print('MIP failed on first iteration, returning None')
                 return None, None, None, None,i
             else:
                 if tee:
@@ -1033,15 +1032,6 @@ def MIP_path_graph_ortools(grid, max_flow=None, crossings=False, tee=False, call
         elif status == cp_model.OPTIMAL:
             relgap = 0.0  # Optimal means gap is 0
 
-        # Get termination status name
-        termination_map = {
-            cp_model.OPTIMAL: 'OPTIMAL',
-            cp_model.FEASIBLE: 'FEASIBLE',
-            cp_model.INFEASIBLE: 'INFEASIBLE',
-            cp_model.MODEL_INVALID: 'MODEL_INVALID',
-            cp_model.UNKNOWN: 'UNKNOWN'
-        }
-        termination = termination_map.get(status, 'UNKNOWN')
 
         # Add final solution to feasible_solutions if callback was used
         if callback:
@@ -1967,9 +1957,10 @@ def _create_master_problem_ortools(grid, crossings=True, max_flow=None, min_turb
 
 
 def _plot_feasible_solutions(results,type='solution', plot_type='MIP', suptitle=None, show=True, save_path=None, width_mm=None):
-    import matplotlib.pyplot as plt
     # local import to ensure availability regardless of module-level imports
     import os
+
+    import matplotlib.pyplot as plt
     FS = 10
 
     # Determine which column to extract based on type parameter

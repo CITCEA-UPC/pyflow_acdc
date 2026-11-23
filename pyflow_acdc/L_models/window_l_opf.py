@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Coupled linear AC(/DC) window OPF (frame blocks + parent SoC / H₂ links).
 
 Linear counterpart of :mod:`pyflow_acdc.NL_models.window_opf`. Uses
@@ -24,8 +23,8 @@ from ..ACDC_OPF import (
 )
 from ..grid_analysis import analyse_grid
 from ..NL_models.window_opf import (
-    _concat_rolling_results,
     _carry_state_from_results,
+    _concat_rolling_results,
     _electrolysers_to_empty_after_rolling_commit,
     _empty_h2_tank,
     _rolling_commit_windows,

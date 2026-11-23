@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Parser tests for :mod:`pyflow_acdc.pyomo_model_solve` using committed log fixtures."""
 
 from pathlib import Path

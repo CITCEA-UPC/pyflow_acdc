@@ -1,24 +1,25 @@
-# -*- coding: utf-8 -*-
 """
 AC/DC Power Flow calculations module.
 Provides functions for AC and AC/DC power flow analysis.
 """
-import numpy as np
-import warnings
 import time
-from .grid_analysis import analyse_grid, pol2cartz, cartz2pol
+import warnings
+
+import numpy as np
+
 from .constants import (
-    DEFAULT_TOLERANCE,
-    PF_OUTER_TOLERANCE,
-    PF_INNER_TOLERANCE,
-    PF_SEQ_TOL_FACTOR,
     CONV_TOLERANCE,
-    DEFAULT_PF_MAX_ITER,
     DEFAULT_CONV_MAX_ITER,
-    NodeType,
+    DEFAULT_PF_MAX_ITER,
+    DEFAULT_TOLERANCE,
+    PF_INNER_TOLERANCE,
+    PF_OUTER_TOLERANCE,
+    PF_SEQ_TOL_FACTOR,
     ConverterDCType,
+    NodeType,
     PowerLossModel,
 )
+from .grid_analysis import analyse_grid, cartz2pol, pol2cartz
 
 __all__ = [
     'ac_power_flow',
@@ -227,7 +228,6 @@ def acdc_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
             P_DC = conv.P_DC
             conv.P_AC = -P_DC
             AC_node.P_s = conv.P_AC
-            s = 1
 
     grid.update_pq_ac()
     grid.create_Ybus_AC()
@@ -257,19 +257,15 @@ def acdc_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
                         conv.P_AC = conv.Node_AC.P_INJ-(PGi_ren+PGi_opt-conv.Node_AC.PLi)
                         conv.Q_AC = conv.Node_AC.Q_INJ-(conv.Node_AC.QGi+QGi_opt+QGi_ren-conv.Node_AC.QLi+conv.Node_AC.Q_s_fx)
                     if conv.AC_type == NodeType.PV:
-                        conv.Q_AC = conv.Node_AC.Q_INJ-(conv.Node_AC.QGi+QGi_opt-conv.Node_AC.QLi+conv.Node_AC.Q_s_fx)
+                        conv.Q_AC = conv.Node_AC.Q_INJ-(conv.Node_AC.QGi+QGi_opt+QGi_ren-conv.Node_AC.QLi+conv.Node_AC.Q_s_fx)
                 flow_conv_P_AC(grid,conv)
-                s=1
 
         if QLimit == True:
             for conv in grid.Converters_ACDC:
                 converter_qlimit(grid,conv)
 
         if grid.iter_num_seq == 0:
-            s = 1
             grid.check_slack_n_droop(change_slack2Droop)
-
-        s = 1
 
         grid.update_pq_ac()
         grid.update_p_dc()
@@ -314,7 +310,6 @@ def acdc_sequential(grid, tol_lim=PF_OUTER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITE
         # Store the current iteration's Ps values
         ps_iterations[grid.iter_num_seq, :] = Ps_AC_new.flatten()
 
-        s = 1
         for node in grid.nodes_AC:
             node.P_s = Ps_AC_new[node.nodeNumber]
             grid.Ps_AC[node.nodeNumber] = np.copy(Ps_AC_new[node.nodeNumber])
@@ -385,7 +380,6 @@ def load_flow_dc(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
 
 
     V = np.zeros(grid.nn_DC)
-    s = 1
 
     for node in grid.nodes_DC:
         V[node.nodeNumber] = node.V
@@ -399,7 +393,6 @@ def load_flow_dc(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
         iter_num += 1
 
         P = np.zeros((grid.nn_DC, 1))
-        P1 = np.zeros((grid.nn_DC, 1))
         Pf = np.zeros((grid.nn_DC, 1))
         for node in grid.nodes_DC:
 
@@ -417,7 +410,6 @@ def load_flow_dc(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
                     n = node.nodeNumber
                     Droop_change = (node.V_ini-V[n])*node.Droop_rate
                     P_known[n] = np.copy(grid.P_DC[n]+grid.Pconv_DC[n]) + Droop_change
-                    s = 1
 
         dPa = P_known-P
 
@@ -472,13 +464,10 @@ def load_flow_dc(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER,D
             if conv.type== ConverterDCType.DROOP and Droop_PF:
                 conv.P_DC         = P_known[n].item()-grid.P_DC[n].item()
                 conv.Node_DC.Pconv= P_known[n].item()-grid.P_DC[n].item()
-                s = 1
             elif conv.type== ConverterDCType.SLACK:
                 conv.Node_DC.Pconv = Pf[n].item()-grid.P_DC[n].item()
                 conv.P_DC          = Pf[n].item()-grid.P_DC[n].item()
-                s = 1
     grid.update_p_dc()
-    s = 1
     return _as_tol_float(tol), tol_history
 
 def jacobian_ac(grid, Voltages, Angles,P,Q):
@@ -617,7 +606,6 @@ def load_flow_ac(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
         k = 0  # Index for dTh vector
         for i in range(grid.nn_AC):
             if grid.nodes_AC[i].type != NodeType.SLACK:
-                s = 1
                 # grid.nodes_AC[i].theta += dTh[k].item()
                 angles[i] += dTh[k].item()
                 k += 1  # Move to the next element in dTh
@@ -646,7 +634,6 @@ def load_flow_ac(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
     if grid.dif > 0.11:
         grid.voltage_violation = 1
 
-    V_violation = grid.voltage_violation
     Pf = np.zeros((grid.nn_AC, 1))
     Qf = np.zeros((grid.nn_AC, 1))
     for node in grid.nodes_AC:
@@ -660,7 +647,6 @@ def load_flow_ac(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
             Qf[i] += V[i]*V[k] * \
                 (G*np.sin(angles[i]-angles[k]) -
                  B*np.cos(angles[i]-angles[k]))
-    Sf = Pf+1j*Qf
 
     for node in grid.nodes_AC:
         i = node.nodeNumber
@@ -670,7 +656,6 @@ def load_flow_ac(grid, tol_lim=PF_INNER_TOLERANCE, maxIter=DEFAULT_PF_MAX_ITER):
         node.theta = angles[i].item()
     grid.P_AC_INJ = np.vstack([node.P_INJ for node in grid.nodes_AC])
     grid.Q_INJ = np.vstack([node.Q_INJ for node in grid.nodes_AC])
-    s=1
     return _as_tol_float(tol), tol_history
 
 
@@ -730,7 +715,6 @@ def flow_conv_P_AC(grid, conv):
     conv.Node_DC.Pconv = P_DC
     conv.Node_AC.P_s = P_AC
     conv.Ic = Ic
-    s=1
 
 
 def jacobian_conv_no_transformer(grid, conv, U_c, Pc, Qc, Ps, Qs):
@@ -822,7 +806,7 @@ def flow_conv(grid, conv, tol_lim=CONV_TOLERANCE, maxIter=DEFAULT_CONV_MAX_ITER)
     if conv.bf == 0:
         tol = flow_conv_no_filter(grid,conv, tol_lim, maxIter)
 
-    elif conv.Gtf == 0:
+    elif conv.Ztf == 0:
 
         tol = flow_conv_no_transformer(grid,conv, tol_lim, maxIter)
 
@@ -939,13 +923,11 @@ def flow_conv_no_filter(grid, conv, tol_lim, maxIter):
 
     conv.th_c = th_c
 
-    Ps_old = conv.Node_AC.P_s
     conv.P_loss = P_loss
     conv.P_loss_tf = abs(Ps-Pc)
     n = conv.Node_AC.nodeNumber
 
     grid.Ps_AC_new[n] += Ps
-    s=1
     return tol2
 
 
@@ -1026,8 +1008,6 @@ def flow_conv_no_transformer(grid, conv, tol_lim, maxIter):
         tol2 = abs(Pc_known-Pc_new)
 
         Pc_known = np.copy(Pc_new)
-
-        s = 1
 
     Ps = -Us*Us*Gc+Us*Uc*(Gc*np.cos(th_s-th_c)+Bc*np.sin(th_s-th_c))
     Qs = Us*Us*Bcf+Us*Uc*(Gc*np.sin(th_s-th_c)-Bc*np.cos(th_s-th_c))
@@ -1167,7 +1147,6 @@ def flow_conv_complete(grid, conv, tol_lim, maxIter):
     conv.Ic =  np.sqrt(Pc*Pc+Qc*Qc)/Uc
 
     grid.Ps_AC_new[conv.Node_AC.nodeNumber] += Ps
-    s=1
     return tol2
 def mmc_loss(conv,Pc):
     Vdc = conv.Node_DC.V
@@ -1176,14 +1155,12 @@ def mmc_loss(conv,Pc):
     I = (-Vdc +np.sqrt(Vdc**2-4*Ra*Pc/3))/(-2*Ra)
 
     P_loss = 3*I**2*Ra
-    P_loss2 = 6*I**2*Ra
     conv.Vsum = -Ra*I + Vdc
     return P_loss,I
 
 def converter_qlimit(grid, conv):
 
     Us = conv.Node_AC.V
-    th_s = conv.Node_AC.theta
 
     conj_Ztf = np.conj(conv.Ztf/ conv.np_conv)
     conj_Zc = np.conj(conv.Zc/ conv.np_conv)
@@ -1216,7 +1193,6 @@ def converter_qlimit(grid, conv):
         r = Us*Icmax
         rVmin = Us*conv.Ucmin
         rVmax = Us*conv.Ucmax
-        s=1
     else:
         r = Us*Icmax
         S0v = -Us**2*(1/(conj_Ztf+conj_Zc))
@@ -1250,8 +1226,6 @@ def converter_qlimit(grid, conv):
     Qs_max = min(Qs_plus, Qs_plusV)
     Qs_min = max(Qs_minus, Qs_minusV)
 
-    name = conv.name
-
     conv.Node_AC.Q_min = Qs_minus
     conv.Node_AC.Q_max = Qs_plus
 
@@ -1275,7 +1249,6 @@ def converter_qlimit(grid, conv):
             elif Q_req < Qs_minus:
                 conv.Node_AC.Q_s = Qs_min
                 conv.Node_AC.Q_AC = Q_req-Qs_min
-                s = 1
 
         else:
             warnings.warn(f'Limiting Q from converter and changing AC node {conv.Node_AC.name} to PQ')

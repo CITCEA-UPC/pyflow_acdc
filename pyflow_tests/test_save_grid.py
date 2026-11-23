@@ -1,10 +1,10 @@
-# -*- coding: utf-8 -*-
 """Round-trip tests for ``save_grid_to_file``."""
 
 import enum
 import importlib.util
 
 import pytest
+
 import pyflow_acdc as pyf
 from pyflow_acdc.Export_files import create_dictionaries
 

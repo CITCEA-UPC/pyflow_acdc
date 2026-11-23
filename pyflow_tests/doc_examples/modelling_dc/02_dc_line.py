@@ -1,5 +1,6 @@
 """Docs: api\\modelling_dc.rst — DC line"""
 import pyflow_acdc as pyf
+
 # Create an AC node
 pyf.initialize_pyflowacdc()
 node1 = pyf.Node_DC('Slack', 1, 0,0,525,name='Bus1')

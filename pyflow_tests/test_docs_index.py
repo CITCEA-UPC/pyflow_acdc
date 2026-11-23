@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run all examples in doc_examples/index/."""
 
 from pyflow_tests.run_doc_examples import run_doc_examples

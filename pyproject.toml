@@ -142,9 +142,10 @@ line-length = 100          # dense numerical/Pyomo expressions; relax from defau
 extend-exclude = ["pyflow_acdc/example_grids"]
 
 [tool.ruff.lint]
-# F/E/W/I/B only — legacy mixed-case API and power-system symbols (P, Q, V) are
-# intentional; pep8-naming (N) and pyupgrade (UP) are deferred to a rename pass.
-select = ["E", "W", "F", "I", "B"]
+# F/E/W/I/B plus selected UP/PIE/PLW rules — legacy mixed-case API and power-system
+# symbols (P, Q, V) are intentional; pep8-naming (N) and the rest of pyupgrade (UP)
+# are deferred to a rename pass.
+select = ["E", "W", "F", "I", "B", "UP009", "UP015", "UP024", "PIE808", "PLW0127", "PLW2901"]
 ignore = [
     "E402",   # lazy / optional imports in large modules
     "E501",   # long Pyomo expressions and grid literals (line-length = 100)
@@ -154,19 +155,15 @@ ignore = [
     "E712",   # legacy True/False/None comparisons
     "E741",   # I, O, l in power-system math
     "F405",   # star re-exports (__init__.py)
-    "F841",   # assigned-but-unused in solver/debug paths
     "B007",   # unused loop control variable
-    "B010",   # setattr on dynamic grid elements
     "B028",   # warnings without explicit stacklevel
     "B905",   # zip() without strict=
-    "F541",   # f-string without placeholders
-    "I001",   # import sort — enable after a dedicated cleanup pass
 ]
 
 [tool.ruff.lint.per-file-ignores]
 # Class names intentionally keep underscores/mixed case (owner decision, Tier F WON'T DO).
 "pyflow_acdc/Classes.py" = ["N801"]   # class name should use CapWords
-"pyflow_acdc/__init__.py" = ["F401", "F403", "F405"]  # re-export surface + controlled star imports
+"pyflow_acdc/__init__.py" = ["F401", "F403", "F405", "I001"]  # re-export surface + controlled star imports (order matters)
 # try/import availability probes (import tests presence, not the symbol)
 "pyflow_acdc/Array_OPT.py" = ["F401"]
 "pyflow_acdc/Results_class.py" = ["F401"]

@@ -6,26 +6,26 @@ geometry derived from element coordinates.
 Owns: folium map generation and geographic styling.
 Does not own: non-geographic plots (see ``Graph_and_plot``).
 """
-import networkx as nx
-import numpy as np
+import colorsys
 import os
+import webbrowser
 from datetime import datetime, timedelta
 from importlib import resources
-import colorsys
 
-import geopandas as gpd
-import pandas as pd
-import folium
 import branca
-from folium.plugins import Draw,MarkerCluster,AntPath,TimestampedGeoJson
-import webbrowser
+import folium
+import geopandas as gpd
+import networkx as nx
+import numpy as np
+import pandas as pd
+from folium.plugins import AntPath, Draw, MarkerCluster, TimestampedGeoJson
 
-from .Graph_and_plot import (
-    update_hovertexts,
-    create_subgraph_color_dict,
-    create_geometries_from_coords,
-)
 from .Classes import Node_AC
+from .Graph_and_plot import (
+    create_geometries_from_coords,
+    create_subgraph_color_dict,
+    update_hovertexts,
+)
 
 __all__ = [
     'darken_color',
@@ -592,7 +592,6 @@ def plot_folium_network(
                     opacity=0.8,
                     popup=folium.Popup(row["hover_text"], max_width=360, min_width=220)
                 ).add_to(tech_name)
-        s=1
     # Calculate map center from node coordinates
     if not gdf_nodes_AC.empty:
         # Get bounds of all nodes

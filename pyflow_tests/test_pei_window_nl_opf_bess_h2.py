@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Phase 6: PEI 24 h window_nl_opf with coupled BESS and electrolyser.
 
 Uses the full ``PEI_grid`` with BE, UK, and DK export links. Validates model
@@ -6,8 +5,8 @@ assembly, Table 1 asset parameters, and (when IPOPT is available) a coupled solv
 """
 
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_acdc.example_grids.PF._pei_bess_data import (
     BESS_E_MAX_MWH,
     BESS_P_NOM_MW,

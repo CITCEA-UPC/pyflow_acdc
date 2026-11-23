@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Build and load committed ``solver_stats`` JSON fixtures from solver log parsers."""
 
 from __future__ import annotations

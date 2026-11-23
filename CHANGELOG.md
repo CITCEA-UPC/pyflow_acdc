@@ -18,8 +18,23 @@ and this project aims to follow [Semantic Versioning](https://semver.org/).
   passed in MVA/MW to ``_calculate_grid_loading``, which expects p.u.
 - ``multi_scenario_TEP`` with ``clustering_options=None`` no longer reaches the
   no-clustering path through a ``TypeError``.
+- NL OPF converter ``Qs`` without transformer used the free filter angle ``th_f`` in
+  the ``sin`` term; it now uses ``θs − θc`` like the power flow.
+- NL OPF export wrote ``Uc`` / ``Uf`` into ``conv.th_c`` / ``conv.th_f``; it now
+  writes the angles.
+- Converter transformer and phase reactor were treated as absent when their
+  resistance was 0. A lossless transformer or reactor (R = 0, X ≠ 0) is now modelled
+  (``Z_Y_parameters``, PF / OPF branch choice on ``Ztf == 0``, MATACDC export flag).
+- Sequential AC/DC PF: converter on a PV node left ``QGi_ren`` out of ``Q_AC``.
+- Generator hover text (``inPu`` off) showed P and Q ``S_base`` times too high.
+- ``export_acdc_tep_ms_to_pyflow_acdc(not_transposed=True)`` raised ``NameError``
+  without price zones.
+- ``ACDC_TEP_pymoo`` restores the Pyomo logger level after each solve.
 
 ### Changed
+- Ruff: pinned to 0.17.3 in CI, also checks ``pyflow_tests``. ``I001``, ``F541``,
+  ``B010`` and ``F841`` enforced, plus ``UP009/015/024``, ``PIE808``, ``PLW0127`` and
+  ``PLW2901``. Unused variables and ``s=1`` debug lines removed.
 - ``AC_losses`` (objective and results) leaves out the grid Thevenin line
   (``is_grid_thevenin``), so grid-side losses are not counted.
 - **`Energy_cost`**: removed ``OnlyGen`` flag from OPF runners and ``grid.OnlyGen``;

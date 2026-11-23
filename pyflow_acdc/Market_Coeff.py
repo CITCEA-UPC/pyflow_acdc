@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Price-zone market coefficients from order-book and ENTSO-E data.
 
 Builds quadratic **benefit-of-consumption** and **cost-of-generation** curves
@@ -17,16 +16,17 @@ Typical workflow::
 See :doc:`market_coef` and :ref:`Price_zone_modelling`.
 """
 
+import re
 import time
+
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import plotly.io as pio
-import numpy as np
-from scipy.interpolate import interp1d
+from plotly.subplots import make_subplots
 from scipy.integrate import quad
+from scipy.interpolate import interp1d
 from scipy.optimize import minimize
-import re
 
 __all__ = [
     'price_zone_data_pd',
@@ -225,7 +225,6 @@ def price_zone_coef_data(df, start, end, increase_eq_price=50):
         # print(hour_of_year)
 
         # point= (week*7+week_day)*24+hour+24
-        new_row = pd.DataFrame({'volume': [volume], 'price': [price]})
         min_hour=min(min_hour,hour_of_year)
         max_hour=max(max_hour,hour_of_year)
         # Append the new row to the appropriate DataFrame
@@ -249,7 +248,6 @@ def price_zone_coef_data(df, start, end, increase_eq_price=50):
 
 
     small_data=data[min_hour-1: max_hour]
-    s=1
     count = 0
 
     for entry in small_data:
@@ -552,7 +550,6 @@ def plot_curves(data, hour, name=None):
     purchase_data = chosen_entry['Purchase']
     intSet = chosen_entry['Integrated_sets']
     pcg = chosen_entry['prediction_CG']
-    pbc = chosen_entry['prediction_BC']
 
     curve_data= chosen_entry['poly']
     # Create a subplot figure with 2 rows and 1 column
@@ -717,7 +714,7 @@ def compute_hour_of_year(df,production_types=None, Area= None):
 
 
     else:
-        print(f"No MTU-like column found in the dataframe.")
+        print("No MTU-like column found in the dataframe.")
         df['Hour of Year'] = df.index + 1
 
 

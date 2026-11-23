@@ -6,8 +6,8 @@ from pathlib import Path
 
 from docutils import nodes
 from docutils.parsers.rst import directives
-from sphinx.util.docutils import SphinxDirective
 from sphinx.util import logging
+from sphinx.util.docutils import SphinxDirective
 
 logger = logging.getLogger(__name__)
 

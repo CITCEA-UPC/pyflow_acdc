@@ -1,10 +1,7 @@
 """Docs: usage_mp_tep.rst, api/tep_dynamic.rst — Multi-period Multi-scenario Dynamic TEP"""
 
 import pyflow_acdc as pyf
-
 from pyflow_tests.test_constants import north_sea_ms_clustering_options
-
-
 
 build_only = True
 

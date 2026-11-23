@@ -7,19 +7,20 @@ Owns: non-interactive figure generation.
 Does not own: interactive Dash apps (see ``Graph_Dash``) or geographic maps
 (see ``Mapping``).
 """
+import itertools
+import logging
+import os
+from concurrent.futures import ThreadPoolExecutor
+
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
 import networkx as nx
+import numpy as np
 import pandas as pd
 import plotly.graph_objs as go
 import plotly.io as pio
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-import logging
-import itertools
-import numpy as np
-from concurrent.futures import ThreadPoolExecutor
-import os
 import utm
-from shapely.geometry import Point, LineString,Polygon,MultiPolygon
+from shapely.geometry import LineString, MultiPolygon, Point, Polygon
 
 from .Classes import Node_AC, Node_DC
 
@@ -461,7 +462,6 @@ def update_conv_hovertext(conv,S_base,text):
 def update_gen_hovertext(gen,S_base,text):
      if text =='data':
          name= gen.name
-         node = gen.Node_AC
          n_gens = gen.np_gen
          installation_cost = np.round(gen.base_cost/10**6, decimals=2)
          P_max = np.round(gen.Max_pow_gen * S_base * gen.np_gen, decimals=2)
@@ -490,12 +490,11 @@ def update_gen_hovertext(gen,S_base,text):
         load = gen.loading
         Loading = np.round(load, decimals=0).astype(int)
 
-        gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br> P gen: {Pto*S_base}MW<br>Q Gen: {Qto*S_base}MVAR<br>Loading: {Loading}%"
+        gen.hover_text = f"Generator: {name}<br>Number of generators: {n_gens}<br> P gen: {Pto}MW<br>Q Gen: {Qto}MVAR<br>Loading: {Loading}%"
 
 def update_renSource_hovertext(renSource,S_base,text):
      if text =='data':
          name= renSource.name
-         node = renSource.Node
          n_rs = renSource.np_rsgen
          installation_cost = np.round(renSource.base_cost/10**6, decimals=2)
          rating = np.round(renSource.capacity_MVA, decimals=2)
@@ -588,7 +587,7 @@ def assign_layout_to_missing_nodes(G, pos):
             # Attempt to apply planar layout to missing nodes
             pos_missing = nx.planar_layout(G.subgraph(missing_nodes))
             pos.update(pos_missing)
-        except nx.NetworkXException as e:
+        except nx.NetworkXException:
             logging.warning("Planar layout failed, falling back to Kamada-Kawai layout.")
             # Fall back to Kamada-Kawai layout
             pos_missing = nx.kamada_kawai_layout(G.subgraph(missing_nodes))
@@ -673,16 +672,11 @@ def plot_graph(Grid,text='inPu',base_node_size=10,G=None,show=True):
     # Initialize pos with node_positions if provided, else empty dict
     pos = calculate_positions(G, Grid)
 
-    lines_ac = Grid.lines_AC if Grid.lines_AC is not None else []
     lines_ac_exp = Grid.lines_AC_exp if Grid.lines_AC_exp is not None else []
-    lines_ac_rec = Grid.lines_AC_rec if Grid.lines_AC_rec is not None else []
-    lines_ac_ct = Grid.lines_AC_ct if Grid.lines_AC_ct is not None else []
     lines_dc = Grid.lines_DC if Grid.lines_DC is not None else []
     nodes_DC = Grid.nodes_DC if Grid.nodes_DC is not None else []
     lines_dc_set = set(lines_dc)
     lines_ac_exp_set = set(lines_ac_exp)
-    lines_ac_rec_set = set(lines_ac_rec)
-    lines_ac_ct_set = set(lines_ac_ct)
 
 
     pio.renderers.default = 'browser'
@@ -838,7 +832,6 @@ def plot_graph(Grid,text='inPu',base_node_size=10,G=None,show=True):
     # Display plot
     if show:
         pio.show(fig)
-    s=1
     return fig
 
 def plot_TS_res(grid, start, end, plotting_choices=None,show=True,path=None,save_format=None,skip_failed=False):

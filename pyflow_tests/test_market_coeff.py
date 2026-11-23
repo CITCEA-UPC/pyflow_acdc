@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Market_Coeff tests using synthetic order-book data (no EPEX / ENTSO-E files)."""
 
 import pandas as pd

@@ -1,16 +1,22 @@
-# -*- coding: utf-8 -*-
 """
 Created on Thu Nov  7 18:25:02 2024
 
 @author: BernardoCastro
 """
 
-import pyomo.environ as pyo
-import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
-from ..constants import CT_SELECTION_THRESHOLD, BINARY_THRESHOLD, PricingStrategy, AcDcSide, LinkCost, PowerFactorMode
+import numpy as np
+import pyomo.environ as pyo
 
+from ..constants import (
+    BINARY_THRESHOLD,
+    CT_SELECTION_THRESHOLD,
+    AcDcSide,
+    LinkCost,
+    PowerFactorMode,
+    PricingStrategy,
+)
 
 __all__ = [
     'opf_create_nl_model_acdc',
@@ -1106,7 +1112,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         model.ct_P_AC_loss_constraint     = pyo.Constraint(model.lines_AC_ct, rule=P_loss_AC_rule_ct)
 
 
-    s=1
     def P_to_AC_line_tf(model,trafo):
         tf = grid.lines_AC_tf[trafo]
         f = tf.fromNode.nodeNumber
@@ -1313,8 +1318,6 @@ def AC_constraints(model,grid,AC_info,limit_flow_rate=True,TEP=False):
         if grid.CT_AC:
             model.ct_S_to_AC_limit_constraint   = pyo.Constraint(model.lines_AC_ct, model.ct_set, rule=S_to_AC_line_rule_ct)
             model.ct_S_from_AC_limit_constraint = pyo.Constraint(model.lines_AC_ct, model.ct_set, rule=S_from_AC_limit_rule_ct)
-
-    s=1
 
 
 def DC_variables(model,grid,DC_info,TEP=False,limit_flow_rate=1):
@@ -1639,13 +1642,11 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
        if (not TEP) and element.np_conv <= 0:
            return pyo.Constraint.Skip
        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-       nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
        Gc  = element.Gc
        Bc  = element.Bc
        Gtf = element.Gtf
        Btf = element.Btf
-       Bf  = element.bf
 
        if element.bf == 0:
            Ztf = element.Ztf
@@ -1662,9 +1663,7 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
                (Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
 
 
-       elif element.Gtf == 0:
-
-           Bcf = Bc+Bf
+       elif element.Ztf == 0:
 
            Ps = -model.V_AC[nAC]**2*Gc+model.V_AC[nAC]*model.Uc[conv] * \
                (Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
@@ -1682,7 +1681,6 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
        if (not TEP) and element.np_conv <= 0:
            return pyo.Constraint.Skip
        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-       nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
        Gc = element.Gc
        Bc = element.Bc
@@ -1703,12 +1701,12 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
 
            Qs = model.V_AC[nAC]**2*Bc+model.V_AC[nAC]*model.Uc[conv]*(Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
 
-       elif element.Gtf == 0:
+       elif element.Ztf == 0:
 
            Bcf = Bc+Bf
 
            Qs = model.V_AC[nAC]**2*Bcf+model.V_AC[nAC]*model.Uc[conv] * \
-                (Gc*pyo.sin(model.theta_AC[nAC]-model.th_f[conv])-Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
+                (Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
 
        else:
 
@@ -1725,13 +1723,9 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
        if (not TEP) and element.np_conv <= 0:
            return pyo.Constraint.Skip
        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-       nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
        Gc = element.Gc
        Bc = element.Bc
-       Gtf = element.Gtf
-       Btf = element.Btf
-       Bf = element.bf
 
        if element.bf == 0:
            Ztf = element.Ztf
@@ -1749,9 +1743,7 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
                (Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
 
 
-       elif element.Gtf == 0:
-
-           Bcf = Bc+Bf
+       elif element.Ztf == 0:
 
            Pc = model.Uc[conv]**2*Gc-model.V_AC[nAC]*model.Uc[conv]*(Gc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv])-Bc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv]))
 
@@ -1768,13 +1760,9 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
        if (not TEP) and element.np_conv <= 0:
            return pyo.Constraint.Skip
        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-       nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
        Gc = element.Gc
        Bc = element.Bc
-       Gtf = element.Gtf
-       Btf = element.Btf
-       Bf = element.bf
 
        if element.bf == 0:
            Ztf = element.Ztf
@@ -1791,9 +1779,7 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Qc = -model.Uc[conv]**2*Bc+model.V_AC[nAC]*model.Uc[conv] * \
                (Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
 
-       elif element.Gtf == 0:
-
-           Bcf = Bc+Bf
+       elif element.Ztf == 0:
 
            Qc = -model.Uc[conv]*model.Uc[conv]*Bc+model.V_AC[nAC]*model.Uc[conv] * \
                (Gc*pyo.sin(model.theta_AC[nAC]-model.th_c[conv])+Bc*pyo.cos(model.theta_AC[nAC]-model.th_c[conv]))
@@ -1813,10 +1799,9 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
        if (not TEP) and element.np_conv <= 0:
            return pyo.Constraint.Skip
        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-       nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
 
-       if element.bf == 0 or element.Gtf == 0:
+       if element.bf == 0 or element.Ztf == 0:
         return pyo.Constraint.Skip
 
        else:
@@ -1824,7 +1809,6 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
            Bc = element.Bc
            Gtf = element.Gtf
            Btf = element.Btf
-           Bf = element.bf
 
            Psf = model.Uf[conv]*model.Uf[conv]*Gtf-model.Uf[conv]*model.V_AC[nAC] * \
                (Gtf*pyo.cos(model.theta_AC[nAC]-model.th_f[conv])-Btf*pyo.sin(model.theta_AC[nAC]-model.th_f[conv]))
@@ -1842,10 +1826,8 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
        if (not TEP) and element.np_conv <= 0:
            return pyo.Constraint.Skip
        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-       nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
-       constraints = pyo.ConstraintList()
 
-       if element.bf == 0 or element.Gtf == 0:
+       if element.bf == 0 or element.Ztf == 0:
         return pyo.Constraint.Skip
 
        else:
@@ -1899,7 +1881,6 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
     def Conv_DC_rule(model, conv):
         if (not TEP) and grid.Converters_ACDC[conv].np_conv <= 0:
             return pyo.Constraint.Skip
-        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
         nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
 
         return model.P_conv_c_AC[conv]*model.np_conv[conv]+model.P_conv_DC[nDC] + model.P_conv_loss[conv]*model.np_conv[conv] == 0
@@ -1908,10 +1889,10 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
         element=grid.Converters_ACDC[conv]
         if (not TEP) and element.np_conv <= 0:
             return pyo.Constraint.Skip
-        nAC = grid.Converters_ACDC[conv].Node_AC.nodeNumber
-        nDC = grid.Converters_ACDC[conv].Node_DC.nodeNumber
         a = grid.Converters_ACDC[conv].a_conv
-        b = grid.Converters_ACDC[conv].b_conv
+        # b·|I| and the direction-dependent c_inver are left out on purpose: |I| and the
+        # rectifier/inverter switch are non-smooth at I = 0, which ipopt cannot pass through.
+        b = grid.Converters_ACDC[conv].b_conv  # noqa: F841
 
         if element.power_loss_model == 'MMC':
              Vdc = model.V_DC[element.Node_DC.nodeNumber]
@@ -1931,7 +1912,7 @@ def Converter_constraints(model,grid,Conv_info,TEP=False):
             # c_inver = (element.c_inver_og /model.np_conv[conv])*element.basekA**2/grid.S_base
             # c_rect = (element.c_rect_og   /model.np_conv[conv])*element.basekA**2/grid.S_base
 
-            c_inver=grid.Converters_ACDC[conv].c_inver
+            c_inver=grid.Converters_ACDC[conv].c_inver  # noqa: F841 (see b above)
             c_rect=grid.Converters_ACDC[conv].c_rect
 
 
@@ -2259,7 +2240,6 @@ def TEP_parameters(model,grid,AC_info,DC_info,Conv_info):
     if grid.DCmode:
         DC_Lists,DC_nodes_info,DC_lines_info,DCDC_info = DC_info
         P_lineDC_limit,NP_lineDC    = DC_lines_info
-        lista_DCDC = DCDC_info
 
         model.np_gen_DC = pyo.Param(model.gen_DC,initialize=np_gen_DC,mutable=True)
         model.NumLinesDCP = pyo.Param(model.lines_DC,initialize=NP_lineDC,mutable=True)
@@ -2275,8 +2255,8 @@ def TEP_variables(model,grid,n_init_install=None):
     if n_init_install not in (None, "max", "mean"):
         raise ValueError("n_init_install must be one of: None, 'max', 'mean'.")
 
-    from .ACDC_Static_TEP import get_TEP_variables
     from ..grid_analysis import get_gen_p_min_eff
+    from .ACDC_Static_TEP import get_TEP_variables
 
     tep_vars = get_TEP_variables(grid)
 
@@ -2284,14 +2264,11 @@ def TEP_variables(model,grid,n_init_install=None):
     np_conv = tep_vars['converters']['np_conv']
     np_conv_model_first_guess = tep_vars['converters']['np_conv_model_first_guess']
     np_conv_max = tep_vars['converters']['np_conv_max']
-    S_limit_conv = tep_vars['converters']['S_limit_conv']
 
     # Extract DC line variables
-    P_lineDC_limit = tep_vars['dc_lines']['P_lineDC_limit']
     NP_lineDC = tep_vars['dc_lines']['NP_lineDC']
     NP_lineDC_model_first_guess = tep_vars['dc_lines']['NP_lineDC_model_first_guess']
     NP_lineDC_max = tep_vars['dc_lines']['NP_lineDC_max']
-    Line_length = tep_vars['dc_lines']['Line_length']
 
     # Extract AC line variables
     NP_lineAC = tep_vars['ac_lines']['NP_lineAC']
@@ -2783,7 +2760,6 @@ def export_acdc_nl_model_to_pyflow_acdc(model,grid,Price_Zones,TEP=False):
 
     if grid.ACmode and grid.DCmode:
         # converters
-        P_conv_DC_conv_values= {k: np.float64(pyo.value(v)) for k, v in model.P_conv_DC.items()}
         P_conv_s_AC_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_s_AC.items()}
         Q_conv_s_AC_values   = {k: np.float64(pyo.value(v)) for k, v in model.Q_conv_s_AC.items()}
         P_conv_c_AC_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_c_AC.items()}
@@ -2791,6 +2767,8 @@ def export_acdc_nl_model_to_pyflow_acdc(model,grid,Price_Zones,TEP=False):
         P_conv_loss_values   = {k: np.float64(pyo.value(v)) for k, v in model.P_conv_loss.items()}
         Uc_values            = {k: np.float64(pyo.value(v)) for k, v in model.Uc.items()}
         Uf_values            = {k: np.float64(pyo.value(v)) for k, v in model.Uf.items()}
+        th_c_values          = {k: np.float64(pyo.value(v)) for k, v in model.th_c.items()}
+        th_f_values          = {k: np.float64(pyo.value(v)) for k, v in model.th_f.items()}
         nconv_TEP            = {k: np.float64(pyo.value(v)) for k, v in model.np_conv.items()}
 
         # Parallelize converter processing
@@ -2808,8 +2786,8 @@ def export_acdc_nl_model_to_pyflow_acdc(model,grid,Price_Zones,TEP=False):
             conv.U_c       = Uc_values[nconv]
             conv.U_f       = Uf_values[nconv]
             conv.U_s       = V_AC_values[conv.Node_AC.nodeNumber]
-            conv.th_c      = Uc_values[nconv]
-            conv.th_f      = Uf_values[nconv]
+            conv.th_c      = th_c_values[nconv]
+            conv.th_f      = th_f_values[nconv]
             conv.th_s      = theta_AC_values[conv.Node_AC.nodeNumber]
 
 

@@ -1,16 +1,15 @@
-# -*- coding: utf-8 -*-
 """
 Created on Thu Nov  7 18:25:02 2024
 
 @author: BernardoCastro
 """
 
-import pyomo.environ as pyo
-import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 
-from ..constants import CT_SELECTION_THRESHOLD, BINARY_THRESHOLD
+import numpy as np
+import pyomo.environ as pyo
 
+from ..constants import BINARY_THRESHOLD, CT_SELECTION_THRESHOLD
 
 __all__ = [
     'opf_create_l_model_acdc',
@@ -1356,8 +1355,8 @@ def TEP_parameters(model,grid):
 
 def TEP_variables(model,grid):
 
-    from ..NL_models.ACDC_Static_TEP import get_TEP_variables
     from ..grid_analysis import get_gen_p_min_eff
+    from ..NL_models.ACDC_Static_TEP import get_TEP_variables
 
     tep_vars = get_TEP_variables(grid)
 
@@ -1807,7 +1806,7 @@ def analyze_oversizing_issues_grid(grid, tee=True):
     active_lines_data.sort(key=lambda x: x['network_flow'])
 
     if tee:
-        print(f"\nActive lines summary:")
+        print("\nActive lines summary:")
         print(f"{'Line':<6} {'From':<6} {'To':<6} {'Flow':<8} {'Config':<8} {'Cable Type':<12}")
         print("-" * 50)
         for line_data in active_lines_data:
@@ -1816,7 +1815,7 @@ def analyze_oversizing_issues_grid(grid, tee=True):
 
     # Analysis 1: Check for lines with lower flow but higher config than others
     if tee:
-        print(f"\n=== ANALYSIS 1: Lower flow with higher config ===")
+        print("\n=== ANALYSIS 1: Lower flow with higher config ===")
     oversizing_type1 = []
     oversized_lines_type1 = set()  # Track lines already identified as oversized
 
@@ -1862,7 +1861,7 @@ def analyze_oversizing_issues_grid(grid, tee=True):
 
     # Analysis 2: Check for lines with same flow but different configs
     if tee:
-        print(f"\n=== ANALYSIS 2: Same flow with different configs ===")
+        print("\n=== ANALYSIS 2: Same flow with different configs ===")
     oversizing_type2 = []
     oversized_lines_type2 = set()  # Track lines already identified as oversized
 
@@ -1911,13 +1910,13 @@ def analyze_oversizing_issues_grid(grid, tee=True):
     # Summary
     total_issues = len(oversizing_type1) + len(oversizing_type2)
     if total_issues > 0 and tee:
-        print(f"\n=== SUMMARY ===")
+        print("\n=== SUMMARY ===")
         print(f"Total potential oversizing issues found: {total_issues}")
         print(f"  - Type 1 (lower flow, higher config): {len(oversizing_type1)}")
         print(f"  - Type 2 (same flow, different configs): {len(oversizing_type2)}")
-        print(f"\nRecommendation: Consider increasing time limit or adjusting cable type constraints")
+        print("\nRecommendation: Consider increasing time limit or adjusting cable type constraints")
     elif tee:
-        print(f"\nNo oversizing issues detected. Solution appears consistent.")
+        print("\nNo oversizing issues detected. Solution appears consistent.")
 
     return oversizing_type1, oversizing_type2
 

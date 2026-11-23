@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run doc examples in doc_examples/tep_mp/."""
 
 from pyflow_tests.run_doc_examples import run_doc_examples

@@ -1,28 +1,37 @@
-import numpy as np
-import pyomo.environ as pyo
-import pandas as pd
-import time
+import copy
 import math
 import os
-import copy
+import time
 
-from .ACDC_OPF_NL_model import opf_create_nl_model_acdc,TEP_variables,export_acdc_nl_model_to_pyflow_acdc
-from ..pyomo_model_solve import pyomo_model_solve, build_only_solver_stats
-from ..ACDC_OPF import opf_obj, obj_w_rule, calculate_objective_from_model, optimal_pf
+import numpy as np
+import pandas as pd
+import pyomo.environ as pyo
+
+from ..ACDC_OPF import calculate_objective_from_model, obj_w_rule, opf_obj, optimal_pf
+from ..constants import (
+    DEFAULT_DISCOUNT_RATE,
+    HOURS_PER_YEAR,
+    PF_INNER_TOLERANCE,
+    DataExportType,
+    present_value_factor,
+)
+from ..Graph_and_plot import create_geometries_from_layout, save_network_svg
+from ..grid_analysis import analyse_grid, current_fuel_type_distribution
+from ..pyomo_model_solve import build_only_solver_stats, pyomo_model_solve
+from ..Results_class import Results
+from ..Time_series import _modify_parameters, results_ts_opf, ts_acdc_opf
+from .ACDC_OPF_NL_model import (
+    TEP_variables,
+    export_acdc_nl_model_to_pyflow_acdc,
+    opf_create_nl_model_acdc,
+)
 from .ACDC_Static_TEP import (
-    get_TEP_variables,
     _initialize_MS_STEP_sets_model,
+    export_acdc_tep_ms_to_pyflow_acdc,
+    get_TEP_variables,
     identify_standalone_rs_conv_pairs,
     update_grid_scenario_frame,
-    export_acdc_tep_ms_to_pyflow_acdc,
 )
-from ..grid_analysis import analyse_grid, current_fuel_type_distribution
-from ..Time_series import _modify_parameters, ts_acdc_opf, results_ts_opf
-from ..Graph_and_plot import save_network_svg, create_geometries_from_layout
-from ..Results_class import Results
-from ..constants import HOURS_PER_YEAR, DEFAULT_DISCOUNT_RATE, PF_INNER_TOLERANCE, present_value_factor, DataExportType
-
-
 
 __all__ = [
     'multi_period_transmission_expansion',
@@ -996,7 +1005,7 @@ def multi_period_transmission_expansion(
     model = pyo.ConcreteModel()
     model.name        ="Dynamic TEP MTDC AC/DC hybrid OPF"
 
-    model.inv_periods = pyo.Set(initialize=list(range(0,n_periods)))
+    model.inv_periods = pyo.Set(initialize=list(range(n_periods)))
     grid.TEP_n_periods = n_periods
     model.inv_model = pyo.Block(model.inv_periods)
 
@@ -1791,7 +1800,7 @@ def multi_period_MS_TEP(
     pre_opt_fuel_type_distribution = current_fuel_type_distribution(grid, output='df')
     model = pyo.ConcreteModel()
     model.name = "MP TEP MS MTDC AC/DC hybrid OPF"
-    model.inv_periods = pyo.Set(initialize=list(range(0, n_periods)))
+    model.inv_periods = pyo.Set(initialize=list(range(n_periods)))
     model.inv_model = pyo.Block(model.inv_periods)
     #model.clustering = clustering
     #model.n_clusters = n_clusters

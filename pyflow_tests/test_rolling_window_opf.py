@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Rolling window NL OPF: partitioning, carry-over, SoC modes (build_only)."""
 
 import pandas as pd
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_acdc.NL_models.window_opf import (
     _rolling_commit_windows,
     _ts_inclusive_0based,

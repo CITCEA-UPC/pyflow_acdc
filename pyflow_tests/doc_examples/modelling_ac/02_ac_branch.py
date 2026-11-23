@@ -1,5 +1,6 @@
 """Docs: api\\modelling_ac.rst — AC branch"""
 import pyflow_acdc as pyf
+
 # Create an AC node
 pyf.initialize_pyflowacdc()
 node1 = pyf.Node_AC('PQ', 1, 0,66, Power_Gained=0.5, name='Bus1')

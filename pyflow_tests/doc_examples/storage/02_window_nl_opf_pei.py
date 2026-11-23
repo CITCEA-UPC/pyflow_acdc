@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """PEI 24 h coupled window NL OPF with BESS and electrolyser (build-only)."""
 
 import pyflow_acdc as pyf

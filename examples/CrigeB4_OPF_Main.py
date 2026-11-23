@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Created on Wed Dec 20 10:55:43 2023
 
@@ -8,9 +7,12 @@ This grid is based on the CIGRE B4 test system. DCDC converters have been simpli
 """
 
 import time
-import pandas as pd
-import pyflow_acdc as pyf
 from pathlib import Path
+
+import pandas as pd
+
+import pyflow_acdc as pyf
+
 start_time = time.perf_counter()
 
 S_base=100 #MVAres

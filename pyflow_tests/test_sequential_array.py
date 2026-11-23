@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 """Sequential CSS on alpha_ventus (linear and PF loss post-processing)."""
 import time
 from pathlib import Path
 
-import pyflow_acdc as pyf
 import pyomo.environ as pyo
 
+import pyflow_acdc as pyf
 from pyflow_acdc.constants import CssMode
 from pyflow_tests._test_solver_deps import (
     mip_solvers,

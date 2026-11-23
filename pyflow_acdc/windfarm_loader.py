@@ -9,6 +9,7 @@ Does not own: grid construction (delegates to ``grid_creator``).
 import json
 import os
 from pathlib import Path
+
 from shapely.geometry import LineString, MultiPolygon, Polygon, shape
 
 from .grid_creator import create_grid_from_pickle

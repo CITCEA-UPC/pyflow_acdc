@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """OPF post-solve result helpers (public API not called from res.all()).
 
 Uses ``build_only`` when Ipopt is unavailable (helpers read ``pyo.value(...)``
@@ -6,7 +5,6 @@ on initializer values).
 """
 
 import pyflow_acdc as pyf
-
 from pyflow_tests._test_solver_deps import (
     pyomo_missing_for_run_test,
     require_pyomo,

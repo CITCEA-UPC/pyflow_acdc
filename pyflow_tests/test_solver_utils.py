@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Unit tests for pyflow_acdc.solver_utils (mocked solvers; no binaries required)."""
 
 import builtins

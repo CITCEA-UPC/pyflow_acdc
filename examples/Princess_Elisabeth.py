@@ -1,6 +1,4 @@
-import time
 import pyflow_acdc as pyf
-
 
 S_base=100 #MVA
 
@@ -9,7 +7,7 @@ S_base=100 #MVA
 
 pyf.plot_folium(grid)
 """
-Sequential algorithm 
+Sequential algorithm
 
 """
 

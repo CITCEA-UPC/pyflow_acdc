@@ -4,16 +4,26 @@ Created on Thu Feb 15 13:24:05 2024
 @author: BernardoCastro
 """
 import time
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 import pyomo.environ as pyo
-import warnings
 
-from .NL_models.ACDC_OPF_NL_model import opf_create_nl_model_acdc, export_acdc_nl_model_to_pyflow_acdc
-from .L_models.AC_OPF_L_model import opf_create_l_model_acdc, export_acdc_l_model_to_pyflow_acdc
+from .constants import (
+    AcDcSide,
+    ConverterDCType,
+    ConverterOpfFxType,
+    NodeType,
+    ObjComponent,
+    default_obj_weights,
+)
 from .grid_analysis import analyse_grid
-from .constants import NodeType, ConverterDCType, ConverterOpfFxType, ObjComponent, default_obj_weights, AcDcSide
+from .L_models.AC_OPF_L_model import export_acdc_l_model_to_pyflow_acdc, opf_create_l_model_acdc
+from .NL_models.ACDC_OPF_NL_model import (
+    export_acdc_nl_model_to_pyflow_acdc,
+    opf_create_nl_model_acdc,
+)
 from .pyomo_model_solve import (
     build_only_solver_stats,
     export_solver_progress_to_excel,
@@ -588,7 +598,6 @@ def opf_obj(model,grid,weights_def):
             total += (model.SoC[s] - model.soc_ref[s]) ** 2
         return total
 
-    s=1
     for key, entry in weights_def.items():
         if key == ObjComponent.EXT_GEN:
             entry['f'] = formula_Min_Ext_Gen()
@@ -616,7 +625,6 @@ def opf_obj(model,grid,weights_def):
             entry['f'] = formula_H2_sale()
         elif key == ObjComponent.SOC_DEVIATION:
             entry['f'] = formula_SoC_deviation()
-    s=1
     total_weight = sum(entry['w'] for entry in weights_def.values())
     if total_weight== 0:
         weighted_sum=0
@@ -637,12 +645,12 @@ def translate_pyf_opf(grid,Price_Zones=False):
     ACmode= grid.ACmode
     DCmode = grid.DCmode
     "AC system info"
-    lista_nodos_AC = list(range(0, grid.nn_AC))
-    lista_lineas_AC = list(range(0, grid.nl_AC))
-    lista_lineas_AC_exp = list(range(0, grid.nle_AC))
-    lista_lineas_AC_tf = list(range(0, grid.nttf))
-    lista_lineas_AC_rec = list(range(0, grid.nlr_AC))
-    lista_lineas_AC_ct = list(range(0, grid.nct_AC))
+    lista_nodos_AC = list(range(grid.nn_AC))
+    lista_lineas_AC = list(range(grid.nl_AC))
+    lista_lineas_AC_exp = list(range(grid.nle_AC))
+    lista_lineas_AC_tf = list(range(grid.nttf))
+    lista_lineas_AC_rec = list(range(grid.nlr_AC))
+    lista_lineas_AC_ct = list(range(grid.nct_AC))
     # Dictionaries for AC variables
     price, V_ini_AC, Theta_ini = {}, {}, {}
     P_renSource, P_know, Q_know,np_rsgen = {}, {}, {}, {}
@@ -653,8 +661,8 @@ def translate_pyf_opf(grid,Price_Zones=False):
 
     S_lineACct_lim,cab_types_set,allowed_types = {},{},{}
 
-    u_min_ac = list(range(0, grid.nn_AC))
-    u_max_ac = list(range(0, grid.nn_AC))
+    u_min_ac = list(range(grid.nn_AC))
+    u_max_ac = list(range(grid.nn_AC))
 
     AC_slack, AC_PV = [], []
 
@@ -666,7 +674,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
         fc[gen.genNumber] = gen.fc
         np_gen[gen.genNumber] = gen.np_gen
 
-    lista_gen = list(range(0, grid.n_gen))
+    lista_gen = list(range(grid.n_gen))
 
     for gen in grid.Generators_DC:
         lf_DC[gen.genNumber_DC] = gen.lf
@@ -674,7 +682,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
         fc_DC[gen.genNumber_DC] = gen.fc
         np_gen_DC[gen.genNumber_DC] = gen.np_gen
 
-    lista_gen_DC = list(range(0, grid.n_gen_DC))
+    lista_gen_DC = list(range(grid.n_gen_DC))
 
     nn_rs=0
     for rs in grid.RenSources:
@@ -682,7 +690,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
         P_renSource[rs.rsNumber]=rs.PGi_ren
         np_rsgen[rs.rsNumber] = rs.np_rsgen
 
-    lista_rs = list(range(0, nn_rs))
+    lista_rs = list(range(nn_rs))
 
     gen_rs_info = pack_variables(P_renSource,np_rsgen,lista_rs)
     gen_AC_info = pack_variables(lf,qf,fc,np_gen,lista_gen)
@@ -712,7 +720,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
         dt_hours_st[n] = s.dt_hours
         S_base_st[n] = s.S_base
         connected_st[n] = s.connected
-    lista_storage = list(range(0, nn_st))
+    lista_storage = list(range(nn_st))
     storage_lim = pack_variables(P_charge_max, P_discharge_max, P_max_st, S_max_st)
     storage_soc = pack_variables(
         soc_min_st, soc_max_st, soc_initial, soc_ref, soc_final)
@@ -739,7 +747,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
         S_base_el[e] = el.S_base
         dt_hours_el[e] = el.dt_hours
         connected_el[e] = el.connected
-    lista_electrolyser = list(range(0, nn_el))
+    lista_electrolyser = list(range(nn_el))
     hydrogen_lim = pack_variables(
         P_min_el, P_max_el, Q_min_el, Q_max_el, H2_mass_max)
     hydrogen_state = pack_variables(H2_mass_initial, H2_mass_final)
@@ -781,7 +789,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
 
             PGL_min[m.price_zone_num] = pgl_min_val
             PGL_max[m.price_zone_num] = pgl_max_val
-        lista_M = list(range(0, nn_M))
+        lista_M = list(range(nn_M))
 
     Price_Zone_Lists = pack_variables(lista_M, node2price_zone, price_zone2node)
     Price_Zone_lim = pack_variables(price_zone_as, price_zone_bs, PGL_min, PGL_max)
@@ -826,7 +834,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
             for i in range(len(l.MVA_rating_list)):
                 S_lineACct_lim[l.lineNumber,i] = l.MVA_rating_list[i] / grid.S_base
         if grid.Cable_options is not None and len(grid.Cable_options) > 0:
-            cab_types_set = list(range(0,len(grid.Cable_options[0]._cable_types)))
+            cab_types_set = list(range(len(grid.Cable_options[0]._cable_types)))
 
         else:
             cab_types_set = []
@@ -846,16 +854,15 @@ def translate_pyf_opf(grid,Price_Zones=False):
     if DCmode:
 
         # DC and Converter Variables (if not OnlyAC)
-        lista_nodos_DC = list(range(0, grid.nn_DC))
-        lista_nodos_DC_sin_cn=lista_nodos_DC
-        lista_lineas_DC = list(range(0, grid.nl_DC))
-        lista_conv = list(range(0, grid.nconv))
+        lista_nodos_DC = list(range(grid.nn_DC))
+        lista_lineas_DC = list(range(grid.nl_DC))
+        lista_conv = list(range(grid.nconv))
 
 
-        u_min_dc = list(range(0, grid.nn_DC))
-        u_max_dc = list(range(0, grid.nn_DC))
-        u_c_min = list(range(0, grid.nconv))
-        u_c_max = list(range(0, grid.nconv))
+        u_min_dc = list(range(grid.nn_DC))
+        u_max_dc = list(range(grid.nn_DC))
+        u_c_min = list(range(grid.nconv))
+        u_c_max = list(range(grid.nconv))
 
         V_ini_DC, P_known_DC, P_conv_limit,price_dc = {}, {}, {},{}
         P_lineDC_limit, NP_lineDC = {}, {}
@@ -880,7 +887,7 @@ def translate_pyf_opf(grid,Price_Zones=False):
             P_lineDC_limit[l.lineNumber] = l.MW_rating / grid.S_base
             NP_lineDC[l.lineNumber] = l.np_line
 
-        lista_DCDC = list(range(0, grid.ncdc_DC))
+        lista_DCDC = list(range(grid.ncdc_DC))
 
         for cn in grid.Converters_DCDC:
             P_DCDC_limit[cn.ConvNumber] = cn.MW_rating / grid.S_base

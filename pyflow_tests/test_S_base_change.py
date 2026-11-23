@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
 """Tests for ``change_S_base``: per-unit rescaling and PF equivalence across bases."""
 
 import numpy as np
+
 import pyflow_acdc as pyf
 from pyflow_acdc.constants import DEFAULT_TOLERANCE
 

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Interactive Dash applications.
 
 Builds interactive (Dash/Plotly) apps for exploring grids and time-series /
@@ -12,10 +11,10 @@ import colorsys
 import os
 
 import dash
-from dash import dcc, html, ctx
-from dash.dependencies import Input, Output, State, ALL, MATCH
 import pandas as pd
 import plotly.graph_objects as go
+from dash import ctx, dcc, html
+from dash.dependencies import ALL, MATCH, Input, Output, State
 from plotly.subplots import make_subplots
 
 __all__ = [
@@ -1394,7 +1393,6 @@ def _rolling_frame_limits(rolling_info, start_window, visible_windows):
     n = len(commits)
     if n == 0:
         raise ValueError('rolling_info.commits is empty')
-    n_all = int(rolling_info.get('n_windows', n))
     if start_window is None:
         raise ValueError('start_window is required')
     if visible_windows is None:
@@ -3325,8 +3323,8 @@ def create_mp_ts_dash(ts_inv, grid_name='MP time series'):
 
         figs = []
         styles = []
-        for choice, cols, ymin, ymax in zip(choices, series_list, ymins, ymaxs):
-            cols = cols or []
+        for choice, series_cols, ymin, ymax in zip(choices, series_list, ymins, ymaxs):
+            cols = series_cols or []
             if ymin is not None and ymax is not None:
                 y_limits = (ymin, ymax)
             else:

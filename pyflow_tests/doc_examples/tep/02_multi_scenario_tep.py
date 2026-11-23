@@ -1,10 +1,7 @@
 """Docs: usage_tep.rst — Multi-scenario TEP"""
 
 import pyflow_acdc as pyf
-
 from pyflow_tests.test_constants import north_sea_ms_clustering_options
-
-
 
 build_only = True
 

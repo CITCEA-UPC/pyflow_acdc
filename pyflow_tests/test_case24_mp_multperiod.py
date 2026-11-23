@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Fast multi-period TEP tests on the case24_MP example grid."""
 
 import importlib.util
@@ -6,8 +5,8 @@ import sys
 from pathlib import Path
 
 import pytest
-import pyflow_acdc as pyf
 
+import pyflow_acdc as pyf
 from pyflow_tests._test_solver_deps import require_pyomo, tep_solver
 
 
@@ -101,7 +100,7 @@ def test_case24_sequential_step_orchestration_fake_solve(monkeypatch):
     inv_csv = mod._resolve_example_path("case24_MP_TEP_inv_series_10.csv")
     mix_csv = mod._resolve_example_path("case24_MP_TEP_gen_mix_limits.csv")
 
-    run_results = pyf.sequential_STEP(
+    pyf.sequential_STEP(
         grid=grid,
         inv_data=inv_csv,
         mix_data=mix_csv,

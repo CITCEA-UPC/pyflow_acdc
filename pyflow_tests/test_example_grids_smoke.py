@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Smoke tests for example_grids factory functions (PF / OPF / TEP / Wind_Array).
 
@@ -13,6 +12,7 @@ import sys
 from pathlib import Path
 
 import pytest
+
 import pyflow_acdc as pyf
 
 EXAMPLE_GRIDS_DIR = Path(pyf.__file__).resolve().parent / "example_grids"

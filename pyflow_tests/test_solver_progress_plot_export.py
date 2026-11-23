@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Plot/export smoke tests for solver progress using committed stats fixtures.
 
 Parser coverage lives in :mod:`pyflow_tests.test_pyomo_model_solve`.

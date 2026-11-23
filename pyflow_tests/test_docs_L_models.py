@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run linear-model doc examples in doc_examples/L_models/."""
 
 from pyflow_tests.run_doc_examples import run_doc_examples

@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
 """Unified MIP path graph on alpha_ventus (Pyomo backend)."""
 import time
 
-import pyflow_acdc as pyf
 import pyomo.environ as pyo
 
+import pyflow_acdc as pyf
 from pyflow_acdc.Array_OPT import _create_master_problem_pyomo
 from pyflow_acdc.constants import MIPBackend
 from pyflow_acdc.solver_utils import is_pyomo_solver_available
