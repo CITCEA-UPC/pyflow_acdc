@@ -5,6 +5,7 @@ import pyomo.environ as pyo
 import pytest
 
 import pyflow_acdc as pyf
+from pyflow_tests._test_solver_deps import require_ipopt
 
 
 def _grid(power_factor=None, statcom_mvar=50):
@@ -33,6 +34,7 @@ def test_scenario_weights_length_must_match_frames():
 
 
 def test_fixed_statcom_q_within_rating():
+    require_ipopt()
     grid, statcom = _grid()
     model, _, _, stats = pyf.multi_scenario_opf(grid, ObjRule={"AC_losses": 1}, scenario_weights=[0.3, 0.7])
     assert stats["solution_found"]
@@ -42,6 +44,7 @@ def test_fixed_statcom_q_within_rating():
 
 
 def test_unreachable_power_factor_has_no_solution():
+    require_ipopt()
     grid, _ = _grid(power_factor=0.999999, statcom_mvar=1)
     _, _, _, stats = pyf.multi_scenario_opf(grid, ObjRule={"AC_losses": 1}, scenario_weights=[0.3, 0.7])
     assert not stats["solution_found"]

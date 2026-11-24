@@ -95,6 +95,7 @@ def opf_create_nl_model_acdc(model,grid,PV_set,Price_Zones,TEP=False,limit_flow_
 
     if TEP:
         TEP_variables(model,grid,n_init_install=n_init_install)
+        TEP_gen_bounds(model,grid)
     else:
         TEP_parameters(model,grid,AC_info,DC_info,Conv_info)
 
@@ -2251,11 +2252,52 @@ def TEP_parameters(model,grid,AC_info,DC_info,Conv_info):
         model.np_conv = pyo.Param(model.conv,initialize=np_conv,mutable=True)
 
 
+def TEP_gen_bounds(model,grid):
+    """P and Q of sized generators within ``np_gen`` units. Only on an OPF model: TEP decision blocks have no PGi_gen."""
+    from ..grid_analysis import get_gen_p_min_eff
+
+    if not grid.GPR:
+        return
+
+    if grid.ACmode:
+        def P_gen_lower_bound_rule(model, g):
+            gen = grid.Generators[g]
+            return (get_gen_p_min_eff(gen, model.np_gen[g], model.P_load_eff[g]) <= model.PGi_gen[g])
+
+        def Q_gen_lower_bound_rule(model, g):
+            gen = grid.Generators[g]
+            return (gen.Min_pow_genR * model.np_gen[g] <= model.QGi_gen[g])
+
+        def P_gen_upper_bound_rule(model, g):
+            gen = grid.Generators[g]
+            return (model.PGi_gen[g] <= gen.Max_pow_gen * model.np_gen[g])
+
+        def Q_gen_upper_bound_rule(model, g):
+            gen = grid.Generators[g]
+            return (model.QGi_gen[g] <= gen.Max_pow_genR * model.np_gen[g])
+
+        model.PGi_lower_bound = pyo.Constraint(model.gen_AC,rule=P_gen_lower_bound_rule)
+        model.QGi_lower_bound = pyo.Constraint(model.gen_AC,rule=Q_gen_lower_bound_rule)
+        model.PGi_upper_bound = pyo.Constraint(model.gen_AC,rule=P_gen_upper_bound_rule)
+        model.QGi_upper_bound = pyo.Constraint(model.gen_AC,rule=Q_gen_upper_bound_rule)
+
+    if grid.DCmode:
+        def P_gen_DC_lower_bound_rule(model, g):
+            gen = grid.Generators_DC[g]
+            return (gen.Min_pow_gen * model.np_gen_DC[g] <= model.PGi_gen_DC[g])
+
+        def P_gen_DC_upper_bound_rule(model, g):
+            gen = grid.Generators_DC[g]
+            return (model.PGi_gen_DC[g] <= gen.Max_pow_gen * model.np_gen_DC[g])
+
+        model.PGi_lower_bound = pyo.Constraint(model.gen_DC,rule=P_gen_DC_lower_bound_rule)
+        model.PGi_upper_bound = pyo.Constraint(model.gen_DC,rule=P_gen_DC_upper_bound_rule)
+
+
 def TEP_variables(model,grid,n_init_install=None):
     if n_init_install not in (None, "max", "mean"):
         raise ValueError("n_init_install must be one of: None, 'max', 'mean'.")
 
-    from ..grid_analysis import get_gen_p_min_eff
     from .ACDC_Static_TEP import get_TEP_variables
 
     tep_vars = get_TEP_variables(grid)
@@ -2316,32 +2358,8 @@ def TEP_variables(model,grid,n_init_install=None):
                 return (np_gen[g], np_gen[g])
 
         if grid.GPR:
-
-            def P_gen_lower_bound_rule(model, g):
-                gen = grid.Generators[g]
-                return (get_gen_p_min_eff(gen, model.np_gen[g], model.P_load_eff[g]) <= model.PGi_gen[g])
-
-            def Q_gen_lower_bound_rule(model, g):
-                gen = grid.Generators[g]
-                return (gen.Min_pow_genR * model.np_gen[g] <= model.QGi_gen[g])
-
-            def P_gen_upper_bound_rule(model, g):
-                gen = grid.Generators[g]
-                return (model.PGi_gen[g] <= gen.Max_pow_gen * model.np_gen[g])
-
-            def Q_gen_upper_bound_rule(model, g):
-                gen = grid.Generators[g]
-                return (model.QGi_gen[g] <= gen.Max_pow_genR * model.np_gen[g])
-
-
             model.np_gen = pyo.Var(model.gen_AC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds,initialize=np_gen_model_first_guess)
             model.np_gen_base = pyo.Param(model.gen_AC,initialize=np_gen)
-
-            model.PGi_lower_bound = pyo.Constraint(model.gen_AC,rule=P_gen_lower_bound_rule)
-            model.QGi_lower_bound = pyo.Constraint(model.gen_AC,rule=Q_gen_lower_bound_rule)
-            model.PGi_upper_bound = pyo.Constraint(model.gen_AC,rule=P_gen_upper_bound_rule)
-            model.QGi_upper_bound = pyo.Constraint(model.gen_AC,rule=Q_gen_upper_bound_rule)
-
 
         elif hasattr(model,'gen_AC'):
             model.np_gen = pyo.Param(model.gen_AC,initialize=np_gen)
@@ -2381,22 +2399,8 @@ def TEP_variables(model,grid,n_init_install=None):
                 return (np_gen_DC[g],np_gen_DC[g])
 
         if grid.GPR:
-
-            def P_gen_DC_lower_bound_rule(model, g):
-                gen = grid.Generators_DC[g]
-                return (gen.Min_pow_gen * model.np_gen_DC[g] <= model.PGi_gen_DC[g])
-            def P_gen_DC_upper_bound_rule(model, g):
-                gen = grid.Generators_DC[g]
-                return (model.PGi_gen_DC[g] <= gen.Max_pow_gen * model.np_gen_DC[g])
-
-
-
             model.np_gen_DC = pyo.Var(model.gen_DC,within=pyo.NonNegativeIntegers,bounds=np_gen_bounds_DC,initialize=np_gen_DC_model_first_guess)
             model.np_gen_DC_base = pyo.Param(model.gen_DC,initialize=np_gen_DC)
-
-            model.PGi_lower_bound = pyo.Constraint(model.gen_DC,rule=P_gen_DC_lower_bound_rule)
-            model.PGi_upper_bound = pyo.Constraint(model.gen_DC,rule=P_gen_DC_upper_bound_rule)
-
 
         elif hasattr(model,'gen_DC'):
             model.np_gen_DC = pyo.Param(model.gen_DC,initialize=np_gen_DC)

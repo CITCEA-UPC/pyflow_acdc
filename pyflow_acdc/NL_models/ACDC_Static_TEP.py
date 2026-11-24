@@ -1167,12 +1167,12 @@ def _create_scenarios(
 
 def _scenario_frames(grid, clustering_options, scenario_weights, tee=False):
     """Number of scenario frames and whether they are clusters; checks ``scenario_weights`` against them."""
-    if tee:
+    if tee and clustering_options:
         print('Trying clustering')
     # clustering_options=None gives one frame per time-series row (clustering=False).
     from ..Time_series_clustering import cluster_analysis
     n_clusters, clustering = cluster_analysis(grid, clustering_options)
-    if (clustering_options and clustering_options.get('print_details')) or tee:
+    if clustering and (clustering_options.get('print_details') or tee):
         print('Clustering done')
     if scenario_weights is not None:
         if clustering:
